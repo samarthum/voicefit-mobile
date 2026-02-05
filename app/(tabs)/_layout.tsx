@@ -1,6 +1,22 @@
-import { Tabs } from "expo-router";
+import { Tabs, Redirect } from "expo-router";
+import { ActivityIndicator, View } from "react-native";
+import { useAuth } from "@clerk/clerk-expo";
 
 export default function TabsLayout() {
+  const { isLoaded, isSignedIn } = useAuth();
+
+  if (!isLoaded) {
+    return (
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+        <ActivityIndicator />
+      </View>
+    );
+  }
+
+  if (!isSignedIn) {
+    return <Redirect href="/sign-in" />;
+  }
+
   return (
     <Tabs
       initialRouteName="dashboard"
