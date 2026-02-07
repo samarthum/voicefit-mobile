@@ -25,10 +25,14 @@ export default function TabsLayout() {
         tabBarLabelStyle: { fontSize: 12 },
       }}
     >
-      <Tabs.Screen name="dashboard" options={{ title: "Dashboard" }} />
+      <Tabs.Screen name="dashboard" options={{ title: "Home" }} />
       <Tabs.Screen name="log" options={{ title: "Log" }} />
-      <Tabs.Screen name="meals" options={{ title: "Meals" }} />
+      <Tabs.Screen name="workouts" options={{ title: "Workouts" }} />
       <Tabs.Screen name="settings" options={{ title: "Settings" }} />
+      {/* Hidden from tab bar but still routable */}
+      <Tabs.Screen name="feed" options={{ href: null }} />
+      <Tabs.Screen name="coach" options={{ href: null }} />
+      <Tabs.Screen name="meals" options={{ href: null }} />
     </Tabs>
   );
 }
