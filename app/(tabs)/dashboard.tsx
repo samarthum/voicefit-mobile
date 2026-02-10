@@ -101,6 +101,7 @@ const TREND_TABS: TrendMetric[] = ["calories", "steps", "weight"];
 const MIN_RECORDING_DURATION_MS = 1000;
 const DEFAULT_WEIGHT_GOAL = 70;
 const WEB_PREVIEW_FLAGS_KEY = "__vf_home_preview_flags";
+const WAVE_BARS = [12, 20, 32, 44, 28, 52, 36, 56, 40, 24, 48, 32, 52, 20, 36, 44, 28, 16, 24, 12];
 
 function toLocalDateString(value: Date) {
   const year = value.getFullYear();
@@ -139,6 +140,17 @@ function formatTrendDay(date: string) {
 
 function safeNumber(value: number | null | undefined) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function formatMealTypeLabel(mealType: string) {
+  if (!mealType) return "Meal";
+  return mealType.charAt(0).toUpperCase() + mealType.slice(1);
+}
+
+function formatRecordingDuration(totalSeconds: number) {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
 function getErrorMessage(error: unknown) {
@@ -225,6 +237,42 @@ function MicGlyph({ color = "#FFFFFF" }: { color?: string }) {
   );
 }
 
+function CloseGlyph({ color = COLORS.textSecondary }: { color?: string }) {
+  return (
+    <Svg width={14} height={14} viewBox="0 0 14 14" fill="none">
+      <Path d="M2 2L12 12" stroke={color} strokeWidth={2.2} strokeLinecap="round" />
+      <Path d="M12 2L2 12" stroke={color} strokeWidth={2.2} strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+function KeyboardGlyph({ color = COLORS.textSecondary }: { color?: string }) {
+  return (
+    <Svg width={18} height={18} viewBox="0 0 18 18" fill="none">
+      <Path d="M2 4.5H16C16.55 4.5 17 4.95 17 5.5V13.5C17 14.05 16.55 14.5 16 14.5H2C1.45 14.5 1 14.05 1 13.5V5.5C1 4.95 1.45 4.5 2 4.5Z" stroke={color} strokeWidth={1.8} />
+      <Path d="M4.2 8H4.9M7.2 8H7.9M10.2 8H10.9M13.2 8H13.9M5 11H13" stroke={color} strokeWidth={1.8} strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+function SendGlyph({ color = "#FFFFFF" }: { color?: string }) {
+  return (
+    <Svg width={18} height={18} viewBox="0 0 18 18" fill="none">
+      <Path d="M5 12L2 17L16 9L2 1L5 6" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+      <Path d="M5 12H9" stroke={color} strokeWidth={2} strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+function PlusGlyph({ color = COLORS.textSecondary }: { color?: string }) {
+  return (
+    <Svg width={12} height={12} viewBox="0 0 12 12" fill="none">
+      <Path d="M6 1V11" stroke={color} strokeWidth={2} strokeLinecap="round" />
+      <Path d="M1 6H11" stroke={color} strokeWidth={2} strokeLinecap="round" />
+    </Svg>
+  );
+}
+
 function CoachBadge() {
   return (
     <View style={styles.coachBadge}>
@@ -278,6 +326,39 @@ function MealThumb({ description }: { description: string }) {
         <Path d="M15 11C15.8 10.3 16.6 10 17.5 10" stroke="#34C759" strokeWidth={1.4} strokeLinecap="round" />
       </Svg>
     </View>
+  );
+}
+
+function QuickMealThumb({ description }: { description: string }) {
+  const lower = description.toLowerCase();
+
+  if (lower.includes("salmon") || lower.includes("fish")) {
+    return (
+      <Svg width={20} height={20} viewBox="0 0 20 20" fill="none">
+        <Path d="M3 12C5.2 8 8.9 7.4 13.8 9.8C10.8 14.2 7.2 15 3 12Z" fill="#FFB36B" stroke="#1A1A1A" strokeWidth={1} />
+        <Path d="M12.7 8.8L15.6 7.2" stroke="#1A1A1A" strokeWidth={1} strokeLinecap="round" />
+        <SvgCircle cx={8} cy={10.4} r={0.7} fill="#1A1A1A" />
+      </Svg>
+    );
+  }
+
+  if (lower.includes("oat") || lower.includes("breakfast")) {
+    return (
+      <Svg width={20} height={20} viewBox="0 0 20 20" fill="none">
+        <Path d="M5 2.5H12.5C13.3 2.5 14 3.2 14 4V15.3H6.2C5.5 15.3 5 14.8 5 14.1V2.5Z" fill="#F7C778" stroke="#1A1A1A" strokeWidth={1} />
+        <Path d="M6.8 1H10.7" stroke="#1A1A1A" strokeWidth={1} strokeLinecap="round" />
+        <Path d="M5.8 6.4H13.3" stroke="#FFFFFF" strokeWidth={1} opacity={0.8} />
+      </Svg>
+    );
+  }
+
+  return (
+    <Svg width={20} height={20} viewBox="0 0 20 20" fill="none">
+      <Path d="M3.2 10H16.8C16 13.2 13.8 15 10 15C6.2 15 4 13.2 3.2 10Z" fill="#D7DEE0" stroke="#1A1A1A" strokeWidth={1} />
+      <Path d="M4 10C5 7.3 7 5.7 10 5.7C13 5.7 15 7.3 16 10" stroke="#1A1A1A" strokeWidth={1} />
+      <Path d="M7.3 7.2C7.8 6.2 8.3 5.8 9.1 5.5" stroke="#34C759" strokeWidth={1.2} strokeLinecap="round" />
+      <Path d="M10.3 6.5C11.1 5.9 11.8 5.6 12.8 5.5" stroke="#34C759" strokeWidth={1.2} strokeLinecap="round" />
+    </Svg>
   );
 }
 
@@ -557,6 +638,15 @@ export default function DashboardScreen() {
     };
   }, [recording]);
 
+  useEffect(() => {
+    if (commandState !== "cc_recording") return;
+    if (!isWebPreview) return;
+    const timer = setInterval(() => {
+      setRecordingSeconds((prev) => prev + 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [commandState, isWebPreview]);
+
   const dashboard = dashboardQuery.data;
   const weeklyFull = dashboard?.weeklyTrends ?? [];
   const weeklyCurrent = weeklyFull.slice(-7);
@@ -588,6 +678,7 @@ export default function DashboardScreen() {
           { id: "q1", description: "Chicken Salad", calories: 450, mealType: "lunch" },
           { id: "q2", description: "Overnight Oats", calories: 320, mealType: "breakfast" },
         ];
+  const displayedQuickAddItems = quickAddItems.slice(0, 3);
 
   const metricCurrentValues = weeklyCurrent
     .map((point) => metricValueFromPoint(point, trendTab))
@@ -1106,52 +1197,77 @@ export default function DashboardScreen() {
 
       return (
         <View style={styles.sheetContent}>
-          <View style={styles.sheetHeader}>
-            <Text style={styles.sheetTitle}>Command Center</Text>
-            <Pressable style={styles.sheetCloseButton} onPress={closeCommandCenter} testID="cc-close">
-              <Text style={styles.sheetCloseText}>Close</Text>
+          <View style={styles.sheetHeaderExpanded}>
+            <Text style={styles.sheetTitleExpanded}>Command Center</Text>
+            <Pressable style={styles.sheetCloseCircle} onPress={closeCommandCenter} testID="cc-close">
+              <CloseGlyph />
             </Pressable>
           </View>
 
-          <TextInput
-            style={styles.commandInput}
-            placeholder='Type meal or workout, e.g. "Chicken salad 450 cal"'
-            placeholderTextColor={COLORS.textTertiary}
-            value={commandText}
-            onChangeText={handleCommandInputChange}
-            multiline
-            testID="cc-input-text"
-          />
+          <View style={styles.commandInputArea}>
+            <TextInput
+              style={styles.commandInputExpanded}
+              placeholder='Try: "Had a chicken salad for lunch, about 450 calories" or "Just ran 5k in 25 minutes"'
+              placeholderTextColor={COLORS.textTertiary}
+              value={commandText}
+              onChangeText={handleCommandInputChange}
+              multiline
+              testID="cc-input-text"
+            />
+          </View>
 
-          <Text style={styles.quickAddLabel}>Quick Add</Text>
-          <View style={styles.quickAddList}>
-            {quickAddItems.slice(0, 3).map((item, index) => (
+          <View style={styles.ccActionsRow}>
+            <View style={styles.ccActionsSide}>
+              <Pressable style={styles.ccActionBtn}>
+                <KeyboardGlyph />
+              </Pressable>
+            </View>
+            <Pressable style={styles.ccMicBig} onPress={() => void startRecording()} testID="cc-big-mic">
+              <View pointerEvents="none" style={styles.ccMicBigPulse} />
+              <MicGlyph />
+            </Pressable>
+            <View style={[styles.ccActionsSide, styles.ccActionsSideRight]}>
+              <Pressable
+                style={[styles.ccSendCircle, sendDisabled && styles.ccSendCircleDisabled]}
+                disabled={sendDisabled}
+                onPress={() => void sendTyped()}
+                testID="cc-send"
+              >
+                <SendGlyph />
+              </Pressable>
+            </View>
+          </View>
+
+          <Text style={styles.quickAddLabelExpanded}>Quick Add</Text>
+          <View style={styles.quickAddRows}>
+            {displayedQuickAddItems.map((item, index) => (
               <Pressable
                 key={item.id}
-                style={styles.quickAddChip}
+                style={[
+                  styles.quickAddRow,
+                  index === displayedQuickAddItems.length - 1 && styles.quickAddRowLast,
+                ]}
                 testID={`cc-quick-add-${index}`}
                 onPress={() => {
                   void runSaveAction({ kind: "quick_add", item });
                 }}
               >
-                <Text style={styles.quickAddChipText}>{item.description}</Text>
-                <Text style={styles.quickAddChipMeta}>{item.calories} kcal</Text>
+                <View style={styles.quickAddLeft}>
+                  <View style={styles.quickAddThumb}>
+                    <QuickMealThumb description={item.description} />
+                  </View>
+                  <View>
+                    <Text style={styles.quickAddName}>{item.description}</Text>
+                    <Text style={styles.quickAddDetail}>
+                      {item.calories} kcal · {formatMealTypeLabel(item.mealType)}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.quickAddPlus}>
+                  <PlusGlyph />
+                </View>
               </Pressable>
             ))}
-          </View>
-
-          <View style={styles.sheetActionsRow}>
-            <Pressable style={styles.bigMicButton} onPress={() => void startRecording()} testID="cc-big-mic">
-              <MicGlyph />
-            </Pressable>
-            <Pressable
-              style={[styles.sendButton, sendDisabled && styles.sendButtonDisabled]}
-              disabled={sendDisabled}
-              onPress={() => void sendTyped()}
-              testID="cc-send"
-            >
-              <Text style={styles.sendButtonText}>Send</Text>
-            </Pressable>
           </View>
         </View>
       );
@@ -1168,17 +1284,47 @@ export default function DashboardScreen() {
     }
 
     if (commandState === "cc_recording") {
+      const liveText = voiceTranscript.trim();
       return (
-        <View style={styles.sheetContentCentered}>
-          <Text style={styles.recordingPill}>Recording</Text>
-          <Text style={styles.recordingTime}>{recordingSeconds}s</Text>
-          <View style={styles.recordingActions}>
-            <Pressable style={styles.secondaryActionButton} onPress={closeCommandCenter} testID="cc-recording-discard">
-              <Text style={styles.secondaryActionText}>Discard</Text>
+        <View style={styles.recordingSheet}>
+          <View style={styles.recordingHeader}>
+            <View style={styles.recordingTimerWrap}>
+              <View style={styles.recordingDot} />
+              <Text style={styles.recordingTimer}>{formatRecordingDuration(recordingSeconds)}</Text>
+            </View>
+            <Text style={styles.recordingTitle}>Listening</Text>
+            <Pressable style={styles.sheetCloseCircle} onPress={closeCommandCenter} testID="cc-recording-discard">
+              <CloseGlyph />
             </Pressable>
-            <Pressable style={styles.primaryActionButton} onPress={() => void stopRecording()} testID="cc-recording-stop">
-              <Text style={styles.primaryActionText}>Stop</Text>
+          </View>
+
+          <View style={styles.liveTranscriptWrap}>
+            {liveText ? (
+              <Text style={styles.liveTranscriptText}>
+                {liveText}
+                <Text style={styles.liveTranscriptCursor}>|</Text>
+              </Text>
+            ) : (
+              <Text style={styles.liveTranscriptHint}>Start speaking...</Text>
+            )}
+          </View>
+
+          <View style={styles.waveform}>
+            {WAVE_BARS.map((height, index) => (
+              <View
+                key={`wave-${index}`}
+                style={[styles.waveBar, { height, opacity: index % 2 === 0 ? 0.9 : 0.55 }]}
+              />
+            ))}
+          </View>
+
+          <View style={styles.recordMicArea}>
+            <Pressable style={styles.recordStopButton} onPress={() => void stopRecording()} testID="cc-recording-stop">
+              <View pointerEvents="none" style={styles.recordStopButtonOuter1} />
+              <View pointerEvents="none" style={styles.recordStopButtonOuter2} />
+              <View style={styles.recordStopSquare} />
             </Pressable>
+            <Text style={styles.recordStopLabel}>Tap to stop</Text>
           </View>
         </View>
       );
@@ -1189,7 +1335,12 @@ export default function DashboardScreen() {
         <View style={styles.sheetContent}>
           <View style={styles.interpretingHeader}>
             <Text style={styles.sheetTitle}>Interpreting...</Text>
-            {isInterpretingVoice ? <ActivityIndicator color={COLORS.black} /> : null}
+            <View style={styles.interpretingHeaderRight}>
+              {isInterpretingVoice ? <ActivityIndicator color={COLORS.black} /> : null}
+              <Pressable style={styles.sheetCloseCircle} onPress={closeCommandCenter} testID="cc-interpreting-discard">
+                <CloseGlyph />
+              </Pressable>
+            </View>
           </View>
 
           <TextInput
@@ -1215,7 +1366,7 @@ export default function DashboardScreen() {
             <Pressable style={styles.secondaryActionButton} onPress={() => void startRecording()} testID="cc-interpreting-retry-voice">
               <Text style={styles.secondaryActionText}>Retry voice</Text>
             </Pressable>
-            <Pressable style={styles.primaryActionButton} onPress={closeCommandCenter} testID="cc-interpreting-discard">
+            <Pressable style={styles.primaryActionButton} onPress={closeCommandCenter}>
               <Text style={styles.primaryActionText}>Discard</Text>
             </Pressable>
           </View>
@@ -1528,7 +1679,10 @@ export default function DashboardScreen() {
               if (canCloseViaBackdrop) closeCommandCenter();
             }}
           />
-          <View style={styles.sheetWrap} testID={`cc-sheet-${commandState}`}>{renderCommandContent()}</View>
+          <View style={styles.sheetWrap} testID={`cc-sheet-${commandState}`}>
+            <View style={styles.sheetHandle} />
+            {renderCommandContent()}
+          </View>
         </View>
       </Modal>
 
@@ -1944,118 +2098,180 @@ const styles = StyleSheet.create({
   },
   modalBackdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.22)",
+    backgroundColor: "rgba(0,0,0,0.4)",
   },
   sheetWrap: {
     backgroundColor: COLORS.bg,
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
-    paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 28,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 0,
+    paddingBottom: 34,
     minHeight: 260,
   },
+  sheetHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: COLORS.border,
+    alignSelf: "center",
+    marginTop: 10,
+    marginBottom: 14,
+  },
   sheetContent: {
-    gap: 12,
+    gap: 0,
   },
   sheetContentCentered: {
-    minHeight: 160,
+    minHeight: 180,
     alignItems: "center",
     justifyContent: "center",
     gap: 10,
   },
-  sheetHeader: {
+  sheetHeaderExpanded: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    paddingBottom: 14,
+  },
+  sheetTitleExpanded: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: COLORS.textPrimary,
+    letterSpacing: -0.3,
+  },
+  sheetCloseCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 999,
+    backgroundColor: COLORS.surface,
+    alignItems: "center",
+    justifyContent: "center",
   },
   sheetTitle: {
     fontSize: 18,
     fontWeight: "700",
     color: COLORS.textPrimary,
   },
-  sheetCloseButton: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: COLORS.surface,
+  commandInputArea: {
+    paddingBottom: 14,
   },
-  sheetCloseText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: COLORS.textSecondary,
-  },
-  commandInput: {
-    minHeight: 98,
-    borderRadius: 12,
+  commandInputExpanded: {
+    minHeight: 92,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: COLORS.border,
-    backgroundColor: COLORS.surface,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    backgroundColor: COLORS.bg,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     color: COLORS.textPrimary,
-    fontSize: 15,
+    fontSize: 16,
+    lineHeight: 24,
     textAlignVertical: "top",
   },
-  quickAddLabel: {
-    fontSize: 12,
-    fontWeight: "700",
-    letterSpacing: 0.4,
-    color: COLORS.textSecondary,
-  },
-  quickAddList: {
-    gap: 8,
-  },
-  quickAddChip: {
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+  ccActionsRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
+    justifyContent: "space-between",
+    paddingBottom: 8,
   },
-  quickAddChipText: {
-    fontSize: 14,
+  ccActionsSide: {
+    width: 64,
+    alignItems: "flex-start",
+  },
+  ccActionsSideRight: {
+    alignItems: "flex-end",
+  },
+  ccActionBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.surface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  ccMicBig: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: COLORS.textPrimary,
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+  },
+  ccMicBigPulse: {
+    position: "absolute",
+    inset: -5,
+    borderRadius: 999,
+    borderWidth: 2.5,
+    borderColor: "rgba(26,26,26,0.08)",
+  },
+  ccSendCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.textPrimary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  ccSendCircleDisabled: {
+    opacity: 0.3,
+  },
+  quickAddLabelExpanded: {
+    fontSize: 13,
+    fontWeight: "600",
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+    color: COLORS.textSecondary,
+    paddingTop: 4,
+    paddingBottom: 10,
+  },
+  quickAddRows: {
+    gap: 0,
+  },
+  quickAddRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 11,
+    borderBottomWidth: 1,
+    borderColor: COLORS.border,
+  },
+  quickAddRowLast: {
+    borderBottomWidth: 0,
+  },
+  quickAddLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flex: 1,
+  },
+  quickAddThumb: {
+    width: 34,
+    height: 34,
+    borderRadius: 8,
+    backgroundColor: COLORS.surface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  quickAddName: {
+    fontSize: 15,
     fontWeight: "600",
     color: COLORS.textPrimary,
+    lineHeight: 18,
   },
-  quickAddChipMeta: {
-    fontSize: 13,
+  quickAddDetail: {
+    fontSize: 12,
     color: COLORS.textSecondary,
-    fontWeight: "600",
+    marginTop: 2,
+    lineHeight: 14,
   },
-  sheetActionsRow: {
-    marginTop: 6,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-  },
-  bigMicButton: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: COLORS.textPrimary,
+  quickAddPlus: {
+    width: 28,
+    height: 28,
+    borderRadius: 999,
+    backgroundColor: COLORS.surface,
     alignItems: "center",
     justifyContent: "center",
-  },
-  sendButton: {
-    flex: 1,
-    borderRadius: 12,
-    backgroundColor: COLORS.textPrimary,
-    minHeight: 52,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  sendButtonDisabled: {
-    opacity: 0.4,
-  },
-  sendButtonText: {
-    color: COLORS.bg,
-    fontSize: 16,
-    fontWeight: "700",
   },
   processingTitle: {
     fontSize: 18,
@@ -2066,42 +2282,140 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: COLORS.textSecondary,
   },
-  recordingPill: {
-    borderRadius: 999,
-    backgroundColor: "rgba(255,59,48,0.12)",
-    color: COLORS.error,
-    fontSize: 13,
-    fontWeight: "700",
-    paddingHorizontal: 12,
-    paddingVertical: 4,
+  recordingSheet: {
+    alignItems: "center",
+    paddingHorizontal: 8,
   },
-  recordingTime: {
-    fontSize: 32,
-    fontWeight: "800",
-    color: COLORS.textPrimary,
-    letterSpacing: -0.8,
-  },
-  recordingActions: {
-    marginTop: 8,
+  recordingHeader: {
+    width: "100%",
     flexDirection: "row",
-    gap: 10,
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 30,
+  },
+  recordingTimerWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    minWidth: 72,
+  },
+  recordingDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: COLORS.error,
+  },
+  recordingTimer: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: COLORS.error,
+  },
+  recordingTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: COLORS.textPrimary,
+    letterSpacing: -0.3,
+  },
+  liveTranscriptWrap: {
+    width: "100%",
+    minHeight: 60,
+    marginBottom: 24,
+    paddingHorizontal: 8,
+    alignItems: "center",
+  },
+  liveTranscriptText: {
+    fontSize: 20,
+    fontWeight: "500",
+    color: COLORS.textPrimary,
+    lineHeight: 30,
+    letterSpacing: -0.3,
+    textAlign: "center",
+  },
+  liveTranscriptCursor: {
+    color: COLORS.textPrimary,
+  },
+  liveTranscriptHint: {
+    fontSize: 16,
+    color: COLORS.textTertiary,
+    fontStyle: "italic",
+  },
+  waveform: {
+    width: "100%",
+    height: 60,
+    marginBottom: 28,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 3,
+  },
+  waveBar: {
+    width: 4,
+    borderRadius: 999,
+    backgroundColor: COLORS.textPrimary,
+  },
+  recordMicArea: {
+    alignItems: "center",
+    gap: 16,
+    marginBottom: 6,
+  },
+  recordStopButton: {
+    width: 80,
+    height: 80,
+    borderRadius: 999,
+    backgroundColor: COLORS.error,
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+  },
+  recordStopButtonOuter1: {
+    position: "absolute",
+    inset: -8,
+    borderRadius: 999,
+    borderWidth: 2.5,
+    borderColor: "rgba(255,59,48,0.15)",
+  },
+  recordStopButtonOuter2: {
+    position: "absolute",
+    inset: -18,
+    borderRadius: 999,
+    borderWidth: 2,
+    borderColor: "rgba(255,59,48,0.08)",
+  },
+  recordStopSquare: {
+    width: 24,
+    height: 24,
+    borderRadius: 5,
+    backgroundColor: COLORS.bg,
+  },
+  recordStopLabel: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: COLORS.textSecondary,
   },
   interpretingHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    marginBottom: 12,
+  },
+  interpretingHeaderRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
   voiceTranscriptInput: {
-    minHeight: 90,
-    borderRadius: 12,
-    borderWidth: 1,
+    minHeight: 96,
+    borderRadius: 16,
+    borderWidth: 1.5,
     borderColor: COLORS.border,
-    backgroundColor: COLORS.surface,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    backgroundColor: COLORS.bg,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     color: COLORS.textPrimary,
-    fontSize: 15,
+    fontSize: 16,
+    lineHeight: 24,
     textAlignVertical: "top",
+    marginBottom: 12,
   },
   interpretingActions: {
     flexDirection: "row",
