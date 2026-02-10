@@ -14,6 +14,7 @@ import {
   View,
 } from "react-native";
 import { Audio } from "expo-av";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "@clerk/clerk-expo";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
@@ -1262,7 +1263,7 @@ export default function DashboardScreen() {
   };
 
   return (
-    <View style={styles.root}>
+    <SafeAreaView style={styles.root} edges={["top"]}>
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         keyboardDismissMode="on-drag"
@@ -1532,7 +1533,7 @@ export default function DashboardScreen() {
           <Text style={styles.toastText}>{commandToast}</Text>
         </View>
       ) : null}
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -1886,7 +1887,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 12,
     right: 12,
-    bottom: 0,
+    bottom: 8,
   },
   commandCollapsed: {
     borderRadius: 20,

@@ -2,6 +2,7 @@ import { Tabs, Redirect } from "expo-router";
 import { ActivityIndicator, Platform, View } from "react-native";
 import { useAuth } from "@clerk/clerk-expo";
 import Svg, { Path, Circle } from "react-native-svg";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 function HomeTabIcon({ color }: { color: string }) {
   return (
@@ -41,6 +42,12 @@ function SettingsTabIcon({ color }: { color: string }) {
 export default function TabsLayout() {
   const { isLoaded, isSignedIn } = useAuth();
   const bypassAuthForWebPreview = __DEV__ && Platform.OS === "web";
+  const insets = useSafeAreaInsets();
+  const isAndroid = Platform.OS === "android";
+  const tabBarPaddingBottom = isAndroid ? 18 : Math.max(insets.bottom, 10);
+  const tabBarHeight = isAndroid
+    ? 92
+    : 83 + Math.max(insets.bottom - 10, 0);
 
   if (!isLoaded) {
     return (
@@ -64,14 +71,16 @@ export default function TabsLayout() {
         tabBarLabelStyle: {
           fontSize: 10,
           fontWeight: "500",
-          marginTop: 2,
+          marginTop: 1,
         },
+        tabBarIconStyle: isAndroid ? { marginTop: 2 } : undefined,
+        tabBarItemStyle: isAndroid ? { justifyContent: "flex-start", paddingTop: 2 } : undefined,
         tabBarStyle: {
-          height: 83,
+          height: tabBarHeight,
           borderTopWidth: 1,
           borderTopColor: "#E8E8E8",
-          paddingTop: 10,
-          paddingBottom: 10,
+          paddingTop: isAndroid ? 6 : 10,
+          paddingBottom: tabBarPaddingBottom,
           backgroundColor: "#FFFFFF",
         },
       }}
