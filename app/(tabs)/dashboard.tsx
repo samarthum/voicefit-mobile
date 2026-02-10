@@ -1288,14 +1288,20 @@ export default function DashboardScreen() {
       return (
         <View style={styles.recordingSheet}>
           <View style={styles.recordingHeader}>
-            <View style={styles.recordingTimerWrap}>
-              <View style={styles.recordingDot} />
-              <Text style={styles.recordingTimer}>{formatRecordingDuration(recordingSeconds)}</Text>
+            <View style={styles.recordingHeaderSide}>
+              <View style={styles.recordingTimerWrap}>
+                <View style={styles.recordingDot} />
+                <Text style={styles.recordingTimer}>{formatRecordingDuration(recordingSeconds)}</Text>
+              </View>
             </View>
-            <Text style={styles.recordingTitle}>Listening</Text>
-            <Pressable style={styles.sheetCloseCircle} onPress={closeCommandCenter} testID="cc-recording-discard">
-              <CloseGlyph />
-            </Pressable>
+            <View style={styles.recordingHeaderCenter}>
+              <Text style={styles.recordingTitle}>Listening</Text>
+            </View>
+            <View style={[styles.recordingHeaderSide, styles.recordingHeaderSideRight]}>
+              <Pressable style={styles.sheetCloseCircle} onPress={closeCommandCenter} testID="cc-recording-discard">
+                <CloseGlyph />
+              </Pressable>
+            </View>
           </View>
 
           <View style={styles.liveTranscriptWrap}>
@@ -2290,14 +2296,24 @@ const styles = StyleSheet.create({
     width: "100%",
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
     marginBottom: 30,
+  },
+  recordingHeaderSide: {
+    width: 82,
+    alignItems: "flex-start",
+  },
+  recordingHeaderSideRight: {
+    alignItems: "flex-end",
+  },
+  recordingHeaderCenter: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
   },
   recordingTimerWrap: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    minWidth: 72,
   },
   recordingDot: {
     width: 8,
