@@ -13,7 +13,13 @@
 - Home asset inventory (doc): `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/assets/home/asset-inventory.md`
 - Home asset inventory (json): `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/assets/home/asset-inventory.json`
 - Home implementation screenshots (web): `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/output/playwright/home-states/`
+- Home vs prototype comparison screenshots: `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/output/playwright/compare/`
 - Interaction diagram registry: `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/interaction-specs/diagrams/README.md`
+
+## Current implementation status (2026-02-10)
+- Home: implemented in mobile codebase (UI + command center state flows + error subtype handling), with visual comparison pass complete against prototype.
+- Command Center on Home: implemented with typed, voice, quick-add, auto-save, and recoverable error paths.
+- Pending on Home: analytics instrumentation, iOS device QA pass, and strict asset-source parity (`coach-badge-premium.svg` + extracted inventory files in app runtime).
 
 ## Locked premium constraints (global)
 - Meal thumbnails must not use emoji glyphs.
@@ -24,7 +30,7 @@
 
 | Screen | Locked design section | Prototype | Asset links | Interaction/state spec |
 |---|---|---|---|---|
-| Home | `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/design-decisions.md` (Home Screen + Ask Coach + Premium Asset Policy) | `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/home.html` | `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/assets/home/asset-inventory.md`, `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/assets/home/icons`, `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/assets/home/illustrations`, `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/implementation-checklists/home-screen-implementation-checklist.md` | `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/interaction-specs/home-interaction-spec.md` |
+| Home | `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/design-decisions.md` (Home Screen + Ask Coach + Premium Asset Policy) | `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/home.html` | `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/assets/home/asset-inventory.md`, `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/assets/home/icons`, `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/assets/home/illustrations`, `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/implementation-checklists/home-screen-implementation-checklist.md`, `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/output/playwright/home-states/`, `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/output/playwright/compare/` | `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/interaction-specs/home-interaction-spec.md` |
 | Workouts | Pending lock | `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/workouts.html` | Pending | Pending |
 | Workout Session | Pending lock | `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/workout-session.html` | Pending | Pending |
 | Exercise Picker | Pending lock | `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/exercise-picker.html` | Pending | Pending |
