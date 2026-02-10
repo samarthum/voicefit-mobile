@@ -2,6 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Keyboard,
+  Linking,
+  Modal,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -10,24 +13,45 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { Audio } from "expo-av";
 import { useAuth } from "@clerk/clerk-expo";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
-import type {
-  ConversationEvent,
-  DashboardData,
-  InterpretEntryResponse,
-} from "@voicefit/contracts/types";
-import { apiRequest } from "../../lib/api-client";
+import type { DashboardData, InterpretEntryResponse } from "@voicefit/contracts/types";
+import Svg, {
+  Circle as SvgCircle,
+  Defs,
+  Line,
+  LinearGradient,
+  Path,
+  Stop,
+} from "react-native-svg";
+import { apiFormRequest, apiRequest } from "../../lib/api-client";
 
-type TrendTab = "calories" | "steps" | "weight" | "workouts";
+type TrendMetric = "calories" | "steps" | "weight";
 
-interface ConversationResponse {
-  events: ConversationEvent[];
-  total: number;
-  limit: number;
-  offset: number;
-}
+type CommandState =
+  | "cc_collapsed"
+  | "cc_expanded_empty"
+  | "cc_expanded_typing"
+  | "cc_submitting_typed"
+  | "cc_recording"
+  | "cc_interpreting_voice"
+  | "cc_auto_saving"
+  | "cc_quick_add_saving"
+  | "cc_error";
+
+type CommandErrorSubtype =
+  | "typed_interpret_failure"
+  | "voice_interpret_failure"
+  | "mic_permission_denied"
+  | "auto_save_failure"
+  | "quick_add_failure"
+  | null;
+
+type EntrySource = "text" | "voice";
+
+type RecentMeal = DashboardData["recentMeals"][number];
 
 interface WorkoutSessionListItem {
   id: string;
@@ -38,59 +62,107 @@ interface WorkoutSessionsResponse {
   sessions: WorkoutSessionListItem[];
 }
 
-const todayDate = () => new Date().toISOString().slice(0, 10);
+interface QuickAddItem {
+  id: string;
+  description: string;
+  calories: number;
+  mealType: string;
+}
 
-function parseIsoDate(date: string) {
+type SaveAction =
+  | {
+      kind: "entry";
+      interpreted: InterpretEntryResponse;
+      transcript: string;
+      source: EntrySource;
+    }
+  | {
+      kind: "quick_add";
+      item: QuickAddItem;
+    };
+
+const COLORS = {
+  bg: "#FFFFFF",
+  surface: "#F8F8F8",
+  border: "#E8E8E8",
+  textPrimary: "#1A1A1A",
+  textSecondary: "#8E8E93",
+  textTertiary: "#AEAEB2",
+  calories: "#FF9500",
+  steps: "#34C759",
+  weight: "#007AFF",
+  error: "#FF3B30",
+  ringTrack: "#F0F0F0",
+  black: "#111111",
+};
+
+const TREND_TABS: TrendMetric[] = ["calories", "steps", "weight"];
+const MIN_RECORDING_DURATION_MS = 1000;
+const DEFAULT_WEIGHT_GOAL = 70;
+const WEB_PREVIEW_FLAGS_KEY = "__vf_home_preview_flags";
+
+function toLocalDateString(value: Date) {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function parseDateKey(date: string) {
   const parsed = new Date(`${date}T12:00:00`);
   return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
 }
 
-function formatDateLabel(date: string) {
-  const target = parseIsoDate(date);
-  const today = parseIsoDate(todayDate());
-  const diffDays = Math.round((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-
-  if (diffDays === 0) return "Today";
-  if (diffDays === -1) return "Yesterday";
-  if (diffDays === 1) return "Tomorrow";
-
-  return target.toLocaleDateString("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-  });
+function getLastSevenDaysEndingToday() {
+  const today = new Date();
+  const items: { date: string; dayNum: string; dayLabel: string }[] = [];
+  for (let i = 6; i >= 0; i -= 1) {
+    const d = new Date(today);
+    d.setDate(today.getDate() - i);
+    const dayLabel = d
+      .toLocaleDateString("en-US", { weekday: "short" })
+      .slice(0, 1)
+      .toUpperCase();
+    items.push({
+      date: toLocalDateString(d),
+      dayNum: String(d.getDate()),
+      dayLabel,
+    });
+  }
+  return items;
 }
 
-function toWeekday(date: string) {
-  return parseIsoDate(date).toLocaleDateString("en-US", { weekday: "short" });
+function formatTrendDay(date: string) {
+  return parseDateKey(date).toLocaleDateString("en-US", { weekday: "short" });
 }
 
-function progressPercent(current: number, goal: number) {
-  if (!goal || goal <= 0) return 0;
-  return Math.max(0, Math.min(100, (current / goal) * 100));
+function safeNumber(value: number | null | undefined) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 function getErrorMessage(error: unknown) {
   if (error instanceof Error && error.message.trim()) return error.message;
-  return "Something went wrong.";
+  return "Something went wrong. Please try again.";
 }
 
-function formatTimestamp(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString();
-}
-
-function kindLabel(kind: string) {
-  switch (kind) {
-    case "meal": return "Meal";
-    case "workout_set": return "Workout";
-    case "weight": return "Weight";
-    case "steps": return "Steps";
-    case "question": return "Question";
-    case "system": return "System";
-    default: return kind;
+function hasWebPreviewFlag(flag: string) {
+  if (!__DEV__ || Platform.OS !== "web") return false;
+  if (typeof window === "undefined") return false;
+  try {
+    const raw = window.localStorage.getItem(WEB_PREVIEW_FLAGS_KEY) ?? "";
+    const parts = raw
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean);
+    return parts.includes(flag);
+  } catch {
+    return false;
   }
+}
+
+function progressPercent(current: number, goal: number) {
+  if (!goal || goal <= 0) return 0;
+  return Math.max(0, Math.min(1, current / goal));
 }
 
 function buildWorkoutSystemText(payload: {
@@ -111,12 +183,12 @@ function buildWorkoutSystemText(payload: {
 }
 
 async function ensureQuickSession(token: string) {
-  const date = todayDate();
+  const date = toLocalDateString(new Date());
   const list = await apiRequest<WorkoutSessionsResponse>(
     `/api/workout-sessions?date=${date}&limit=5`,
     { token }
   );
-  const active = list.sessions.find((s) => !s.endedAt);
+  const active = list.sessions.find((session) => !session.endedAt);
   if (active) return active.id;
 
   const created = await apiRequest<{ id: string }>("/api/workout-sessions", {
@@ -127,33 +199,338 @@ async function ensureQuickSession(token: string) {
   return created.id;
 }
 
+function SparkleGlyph({ color = COLORS.textTertiary }: { color?: string }) {
+  return (
+    <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z"
+        fill={color}
+      />
+    </Svg>
+  );
+}
+
+function MicGlyph({ color = "#FFFFFF" }: { color?: string }) {
+  return (
+    <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M12 15C9.79 15 8 13.21 8 11V6C8 3.79 9.79 2 12 2C14.21 2 16 3.79 16 6V11C16 13.21 14.21 15 12 15Z"
+        stroke={color}
+        strokeWidth={2}
+      />
+      <Path d="M5 10V11C5 14.87 8.13 18 12 18C15.87 18 19 14.87 19 11V10" stroke={color} strokeWidth={2} />
+      <Path d="M12 18V22" stroke={color} strokeWidth={2} />
+    </Svg>
+  );
+}
+
+function CoachBadge() {
+  return (
+    <View style={styles.coachBadge}>
+      <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
+        <Path
+          d="M12 3L14 9L20 12L14 15L12 21L10 15L4 12L10 9L12 3Z"
+          fill="#FFFFFF"
+          opacity={0.95}
+        />
+      </Svg>
+    </View>
+  );
+}
+
+function MealThumb({ description }: { description: string }) {
+  const lower = description.toLowerCase();
+
+  if (lower.includes("salmon") || lower.includes("fish")) {
+    return (
+      <View style={styles.mealThumb}>
+        <Svg width={30} height={30} viewBox="0 0 30 30" fill="none">
+          <SvgCircle cx={15} cy={15} r={13} fill="#EFEFF0" />
+          <Path d="M8 17C11 12 16 11 22 14C18 19 13 20 8 17Z" fill="#FFB36B" stroke="#1A1A1A" strokeWidth={1} />
+          <Path d="M20 13L23 11" stroke="#1A1A1A" strokeWidth={1.2} strokeLinecap="round" />
+          <SvgCircle cx={14} cy={15} r={0.8} fill="#1A1A1A" />
+        </Svg>
+      </View>
+    );
+  }
+
+  if (lower.includes("oat") || lower.includes("breakfast")) {
+    return (
+      <View style={styles.mealThumb}>
+        <Svg width={30} height={30} viewBox="0 0 30 30" fill="none">
+          <SvgCircle cx={15} cy={15} r={13} fill="#EFEFF0" />
+          <Path d="M10 9H18C19.1 9 20 9.9 20 11V21H12C10.9 21 10 20.1 10 19V9Z" fill="#F7C778" stroke="#1A1A1A" strokeWidth={1} />
+          <Path d="M12 7H16" stroke="#1A1A1A" strokeWidth={1.2} strokeLinecap="round" />
+          <Path d="M11 13H19" stroke="#FFFFFF" strokeWidth={1.2} opacity={0.8} />
+        </Svg>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.mealThumb}>
+      <Svg width={30} height={30} viewBox="0 0 30 30" fill="none">
+        <SvgCircle cx={15} cy={15} r={13} fill="#EFEFF0" />
+        <Path d="M8 15H22C21 19 18 21 15 21C12 21 9 19 8 15Z" fill="#D7DEE0" stroke="#1A1A1A" strokeWidth={1} />
+        <Path d="M9 15C10 12 12 10 15 10C18 10 20 12 21 15" stroke="#1A1A1A" strokeWidth={1} />
+        <Path d="M12 12C12.7 11 13.3 10.5 14 10" stroke="#34C759" strokeWidth={1.4} strokeLinecap="round" />
+        <Path d="M15 11C15.8 10.3 16.6 10 17.5 10" stroke="#34C759" strokeWidth={1.4} strokeLinecap="round" />
+      </Svg>
+    </View>
+  );
+}
+
+function CalorieRing({ consumed, goal }: { consumed: number; goal: number }) {
+  const size = 180;
+  const stroke = 10;
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const left = Math.max(goal - consumed, 0);
+  const progress = progressPercent(left, goal);
+  const offset = circumference * (1 - progress);
+
+  return (
+    <View style={styles.heroRingWrap}>
+      <Svg width={size} height={size}>
+        <SvgCircle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke={COLORS.ringTrack}
+          strokeWidth={stroke}
+          fill="none"
+        />
+        <SvgCircle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke={COLORS.calories}
+          strokeWidth={stroke}
+          strokeDasharray={`${circumference} ${circumference}`}
+          strokeDashoffset={offset}
+          strokeLinecap="round"
+          fill="none"
+          transform={`rotate(-90 ${size / 2} ${size / 2})`}
+        />
+      </Svg>
+      <View style={styles.heroRingCenter}>
+        <Text style={styles.heroRingNumber}>{left.toLocaleString()}</Text>
+        <Text style={styles.heroRingLabel}>calories left</Text>
+      </View>
+    </View>
+  );
+}
+
+function MiniStepsRing({ current, goal }: { current: number; goal: number }) {
+  const size = 40;
+  const stroke = 4;
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const progress = progressPercent(current, goal);
+
+  return (
+    <Svg width={size} height={size}>
+      <SvgCircle cx={size / 2} cy={size / 2} r={radius} stroke={COLORS.ringTrack} strokeWidth={stroke} fill="none" />
+      <SvgCircle
+        cx={size / 2}
+        cy={size / 2}
+        r={radius}
+        stroke={COLORS.steps}
+        strokeWidth={stroke}
+        strokeDasharray={`${circumference} ${circumference}`}
+        strokeDashoffset={circumference * (1 - progress)}
+        strokeLinecap="round"
+        fill="none"
+        transform={`rotate(-90 ${size / 2} ${size / 2})`}
+      />
+    </Svg>
+  );
+}
+
+function WeightSparkline() {
+  return (
+    <Svg width={44} height={24} viewBox="0 0 44 24" fill="none">
+      <Path d="M2 6L9 8L16 5L23 9L30 11L37 15L42 18" stroke={COLORS.weight} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
+      <SvgCircle cx={42} cy={18} r={2.2} fill={COLORS.weight} />
+    </Svg>
+  );
+}
+
+function buildLinePaths(values: number[], width: number, height: number, metric: TrendMetric) {
+  const innerLeft = 10;
+  const innerRight = width - 10;
+  const innerTop = 12;
+  const innerBottom = height - 30;
+
+  const nonEmpty = values.length > 0;
+  const min = nonEmpty ? Math.min(...values) : 0;
+  const max = nonEmpty ? Math.max(...values) : 1;
+  const range = max - min || 1;
+
+  const points = values.map((value, index) => {
+    const x =
+      values.length <= 1
+        ? innerLeft
+        : innerLeft + (index * (innerRight - innerLeft)) / (values.length - 1);
+    const normalized = (value - min) / range;
+    const y = innerBottom - normalized * (innerBottom - innerTop);
+    return { x, y, value };
+  });
+
+  const pointPairs = points.map((p) => `${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(" L ");
+  const line = points.length ? `M ${pointPairs}` : "";
+
+  const area = points.length
+    ? `${line} L ${points[points.length - 1]?.x.toFixed(2)} ${innerBottom.toFixed(2)} L ${points[0]?.x.toFixed(2)} ${innerBottom.toFixed(2)} Z`
+    : "";
+
+  const goalValue = metric === "calories" ? 2000 : null;
+  const goalY =
+    goalValue == null
+      ? null
+      : innerBottom - ((goalValue - min) / range) * (innerBottom - innerTop);
+
+  return { points, line, area, innerBottom, goalY, width };
+}
+
+function metricValueFromPoint(point: DashboardData["weeklyTrends"][number], metric: TrendMetric) {
+  if (metric === "calories") return point.calories;
+  if (metric === "steps") return point.steps;
+  return point.weight;
+}
+
+function metricColor(metric: TrendMetric) {
+  if (metric === "calories") return COLORS.calories;
+  if (metric === "steps") return COLORS.steps;
+  return COLORS.weight;
+}
+
+function mockDashboardData(selectedDate: string): DashboardData {
+  const base = parseDateKey(selectedDate);
+  const trends = Array.from({ length: 14 }, (_, idx) => {
+    const d = new Date(base);
+    d.setDate(base.getDate() - (13 - idx));
+    const date = toLocalDateString(d);
+    const calories = [1760, 1680, 1840, 1710, 1520, 1805, 1560, 1690, 1620, 1750, 1670, 1490, 1780, 1560][idx];
+    const steps = [8400, 7100, 9100, 8020, 6900, 9500, 6842, 7001, 7320, 8120, 7900, 6400, 8700, 7420][idx];
+    const weight = [73.4, 73.3, 73.2, 73.1, 73.0, 72.9, 72.8, 73.2, 73.0, 72.9, 72.8, 72.6, 72.5, 72.4][idx];
+    return { date, calories, steps, weight, workouts: idx % 3 === 0 ? 1 : 0 };
+  });
+
+  return {
+    today: {
+      calories: { consumed: 495, goal: 2000 },
+      steps: { count: 6842, goal: 10000 },
+      weight: 72.4,
+      workoutSessions: 1,
+      workoutSets: 8,
+    },
+    weeklyTrends: trends,
+    recentMeals: [
+      {
+        id: "meal-1",
+        description: "Chicken Salad",
+        calories: 450,
+        mealType: "lunch",
+        eatenAt: new Date(base.getFullYear(), base.getMonth(), base.getDate(), 12, 30).toISOString(),
+      },
+      {
+        id: "meal-2",
+        description: "Overnight Oats",
+        calories: 320,
+        mealType: "breakfast",
+        eatenAt: new Date(base.getFullYear(), base.getMonth(), base.getDate(), 8, 15).toISOString(),
+      },
+      {
+        id: "meal-3",
+        description: "Grilled Salmon & Rice",
+        calories: 620,
+        mealType: "dinner",
+        eatenAt: new Date(base.getFullYear(), base.getMonth(), base.getDate() - 1, 19, 5).toISOString(),
+      },
+    ],
+    recentExercises: ["Bench Press", "Deadlift", "Squat"],
+  };
+}
+
+const ERROR_COPY: Record<Exclude<CommandErrorSubtype, null>, {
+  title: string;
+  body: string;
+  primary: string;
+  secondary: string | null;
+  tertiary: string | null;
+}> = {
+  typed_interpret_failure: {
+    title: "Couldn't understand that entry",
+    body: "Edit your text and try again.",
+    primary: "Retry typed",
+    secondary: "Edit text",
+    tertiary: "Discard",
+  },
+  voice_interpret_failure: {
+    title: "Couldn't understand your recording",
+    body: "Retry voice or edit the transcript.",
+    primary: "Retry voice",
+    secondary: "Edit text",
+    tertiary: "Discard",
+  },
+  mic_permission_denied: {
+    title: "Microphone access is off",
+    body: "Enable microphone in Settings to log by voice.",
+    primary: "Open Settings",
+    secondary: "Use typing instead",
+    tertiary: "Discard",
+  },
+  auto_save_failure: {
+    title: "Couldn't save right now",
+    body: "We kept your entry. Try saving again.",
+    primary: "Retry save",
+    secondary: "Discard",
+    tertiary: null,
+  },
+  quick_add_failure: {
+    title: "Couldn't add that item",
+    body: "Please try again.",
+    primary: "Retry save",
+    secondary: "Discard",
+    tertiary: null,
+  },
+};
+
 export default function DashboardScreen() {
   const { getToken } = useAuth();
   const queryClient = useQueryClient();
   const router = useRouter();
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const isWebPreview = __DEV__ && Platform.OS === "web";
 
-  const [selectedDate, setSelectedDate] = useState(todayDate());
-  const [trendTab, setTrendTab] = useState<TrendTab>("calories");
+  const today = toLocalDateString(new Date());
+  const dayOptions = useMemo(() => getLastSevenDaysEndingToday(), []);
 
-  // Quick log state
-  const [quickInput, setQuickInput] = useState("");
-  const [quickError, setQuickError] = useState<string | null>(null);
-  const [quickMessage, setQuickMessage] = useState<string | null>(null);
-  const quickSuccessTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [selectedDate, setSelectedDate] = useState(today);
+  const [trendTab, setTrendTab] = useState<TrendMetric>("calories");
+  const [chartWidth, setChartWidth] = useState(320);
 
-  useEffect(() => {
-    if (!quickMessage) return;
-    quickSuccessTimerRef.current = setTimeout(() => setQuickMessage(null), 3000);
-    return () => { if (quickSuccessTimerRef.current) clearTimeout(quickSuccessTimerRef.current); };
-  }, [quickMessage]);
+  const [commandState, setCommandState] = useState<CommandState>("cc_collapsed");
+  const [commandText, setCommandText] = useState("");
+  const [voiceTranscript, setVoiceTranscript] = useState("");
+  const [recording, setRecording] = useState<Audio.Recording | null>(null);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [isInterpretingVoice, setIsInterpretingVoice] = useState(false);
 
-  const isToday = selectedDate === todayDate();
+  const [commandToast, setCommandToast] = useState<string | null>(null);
+  const [commandErrorSubtype, setCommandErrorSubtype] = useState<CommandErrorSubtype>(null);
+  const [commandErrorDetail, setCommandErrorDetail] = useState<string | null>(null);
 
-  // Dashboard data
-  const { data, isLoading, error, refetch, isRefetching } = useQuery<DashboardData>({
+  const pendingSaveRef = useRef<SaveAction | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const dashboardQuery = useQuery<DashboardData>({
     queryKey: ["dashboard", timezone, selectedDate],
     queryFn: async () => {
+      if (isWebPreview) {
+        return mockDashboardData(selectedDate);
+      }
       const token = await getToken();
       if (!token) throw new Error("Not signed in");
       return apiRequest<DashboardData>(
@@ -163,32 +540,197 @@ export default function DashboardScreen() {
     },
   });
 
-  // Recent activity (last 10 conversation events)
-  const activityQuery = useQuery<ConversationResponse>({
-    queryKey: ["recent-activity", timezone],
-    queryFn: async () => {
+  useEffect(() => {
+    if (!commandToast) return;
+    toastTimerRef.current = setTimeout(() => setCommandToast(null), 2200);
+    return () => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    };
+  }, [commandToast]);
+
+  useEffect(() => {
+    return () => {
+      if (recording) {
+        recording.stopAndUnloadAsync().catch(() => undefined);
+      }
+    };
+  }, [recording]);
+
+  const dashboard = dashboardQuery.data;
+  const weeklyFull = dashboard?.weeklyTrends ?? [];
+  const weeklyCurrent = weeklyFull.slice(-7);
+  const weeklyPrior = weeklyFull.slice(-14, -7);
+
+  const loggedDates = useMemo(() => {
+    const dates = new Set<string>();
+    for (const trend of weeklyFull) {
+      const hasData =
+        trend.calories > 0 ||
+        (trend.steps ?? 0) > 0 ||
+        trend.weight != null ||
+        trend.workouts > 0;
+      if (hasData) dates.add(trend.date);
+    }
+    return dates;
+  }, [weeklyFull]);
+
+  const recentMeals = dashboard?.recentMeals.slice(0, 3) ?? [];
+  const quickAddItems: QuickAddItem[] =
+    recentMeals.length > 0
+      ? recentMeals.map((meal) => ({
+          id: meal.id,
+          description: meal.description,
+          calories: meal.calories,
+          mealType: meal.mealType,
+        }))
+      : [
+          { id: "q1", description: "Chicken Salad", calories: 450, mealType: "lunch" },
+          { id: "q2", description: "Overnight Oats", calories: 320, mealType: "breakfast" },
+        ];
+
+  const metricCurrentValues = weeklyCurrent
+    .map((point) => metricValueFromPoint(point, trendTab))
+    .map((value) => safeNumber(value));
+
+  const normalizedTrendValues = useMemo(() => {
+    let last = 0;
+    return metricCurrentValues.map((value) => {
+      if (value == null) return last;
+      last = value;
+      return value;
+    });
+  }, [metricCurrentValues]);
+
+  const trendChart = useMemo(
+    () => buildLinePaths(normalizedTrendValues, chartWidth - 8, 160, trendTab),
+    [normalizedTrendValues, chartWidth, trendTab]
+  );
+
+  const metricAverage = useMemo(() => {
+    const values = metricCurrentValues.filter((value): value is number => value != null);
+    if (!values.length) return null;
+    const total = values.reduce((sum, value) => sum + value, 0);
+    return total / values.length;
+  }, [metricCurrentValues]);
+
+  const priorAverage = useMemo(() => {
+    const values = weeklyPrior
+      .map((point) => metricValueFromPoint(point, trendTab))
+      .map((value) => safeNumber(value))
+      .filter((value): value is number => value != null);
+
+    if (!values.length) return null;
+    return values.reduce((sum, value) => sum + value, 0) / values.length;
+  }, [weeklyPrior, trendTab]);
+
+  const trendChange = useMemo(() => {
+    if (metricAverage == null || priorAverage == null || priorAverage === 0) return null;
+    return ((metricAverage - priorAverage) / priorAverage) * 100;
+  }, [metricAverage, priorAverage]);
+
+  const trendChangeColor = useMemo(() => {
+    if (trendChange == null) return COLORS.textSecondary;
+    const improving =
+      trendTab === "calories" || trendTab === "weight" ? trendChange <= 0 : trendChange >= 0;
+    return improving ? COLORS.steps : COLORS.error;
+  }, [trendChange, trendTab]);
+
+  const todayCaloriesConsumed = dashboard?.today.calories.consumed ?? 0;
+  const todayCaloriesGoal = dashboard?.today.calories.goal ?? 2000;
+
+  const todaySteps = dashboard?.today.steps.count ?? 0;
+  const todayStepsGoal = dashboard?.today.steps.goal ?? 10000;
+
+  const recentWeight = dashboard?.today.weight;
+  const prevWeight = useMemo(() => {
+    if (!weeklyCurrent.length) return null;
+    const weights = weeklyCurrent
+      .map((day) => day.weight)
+      .filter((value): value is number => value != null);
+    if (weights.length < 2) return null;
+    return weights[0];
+  }, [weeklyCurrent]);
+
+  const weightDelta =
+    recentWeight != null && prevWeight != null
+      ? Number((recentWeight - prevWeight).toFixed(1))
+      : null;
+
+  const homeBlockingError = Boolean(dashboardQuery.error && !dashboardQuery.data);
+
+  const closeCommandCenter = () => {
+    setCommandState("cc_collapsed");
+    setCommandErrorSubtype(null);
+    setCommandErrorDetail(null);
+    setIsInterpretingVoice(false);
+  };
+
+  const openCommandCenter = () => {
+    setCommandErrorSubtype(null);
+    setCommandErrorDetail(null);
+    setCommandState(commandText.trim() ? "cc_expanded_typing" : "cc_expanded_empty");
+  };
+
+  const setCommandError = (subtype: Exclude<CommandErrorSubtype, null>, detail?: string) => {
+    setCommandErrorSubtype(subtype);
+    setCommandErrorDetail(detail ?? null);
+    setCommandState("cc_error");
+  };
+
+  const refreshAfterSave = async () => {
+    if (isWebPreview) {
+      await dashboardQuery.refetch();
+      return;
+    }
+    await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    await queryClient.invalidateQueries({ queryKey: ["workout-sessions"] });
+    await queryClient.invalidateQueries({ queryKey: ["meals"] });
+  };
+
+  const runSaveAction = async (action: SaveAction) => {
+    pendingSaveRef.current = action;
+    setCommandErrorSubtype(null);
+    setCommandErrorDetail(null);
+    setCommandState(action.kind === "quick_add" ? "cc_quick_add_saving" : "cc_auto_saving");
+
+    try {
+      if (isWebPreview) {
+        if (action.kind === "entry" && hasWebPreviewFlag("save_fail")) {
+          throw new Error("Mock auto-save failure.");
+        }
+        if (action.kind === "quick_add" && hasWebPreviewFlag("quick_add_fail")) {
+          throw new Error("Mock quick-add save failure.");
+        }
+        await new Promise((resolve) => setTimeout(resolve, 550));
+        await refreshAfterSave();
+        setCommandToast("Saved");
+        closeCommandCenter();
+        return;
+      }
+
       const token = await getToken();
       if (!token) throw new Error("Not signed in");
-      return apiRequest<ConversationResponse>(
-        `/api/conversation?${new URLSearchParams({ limit: "10", offset: "0", timezone })}`,
-        { token }
-      );
-    },
-  });
 
-  // Quick log mutation (from feed)
-  const quickLogMutation = useMutation({
-    mutationFn: async () => {
-      const transcript = quickInput.trim();
-      if (!transcript) throw new Error("Enter something to log.");
-      const token = await getToken();
-      if (!token) throw new Error("Not signed in");
+      if (action.kind === "quick_add") {
+        await apiRequest("/api/meals", {
+          method: "POST",
+          token,
+          body: JSON.stringify({
+            eatenAt: new Date().toISOString(),
+            mealType: action.item.mealType,
+            description: action.item.description,
+            calories: action.item.calories,
+            transcriptRaw: `quick_add:${action.item.description}`,
+          }),
+        });
 
-      const interpreted = await apiRequest<InterpretEntryResponse>("/api/interpret/entry", {
-        method: "POST",
-        token,
-        body: JSON.stringify({ transcript, source: "text", timezone }),
-      });
+        await refreshAfterSave();
+        setCommandToast("Saved");
+        closeCommandCenter();
+        return;
+      }
+
+      const { interpreted, transcript, source } = action;
 
       if (interpreted.intent === "meal") {
         await apiRequest("/api/meals", {
@@ -202,10 +744,7 @@ export default function DashboardScreen() {
             transcriptRaw: transcript,
           }),
         });
-        return { message: "Meal logged." };
-      }
-
-      if (interpreted.intent === "workout_set") {
+      } else if (interpreted.intent === "workout_set") {
         const sessionId = await ensureQuickSession(token);
         await apiRequest("/api/workout-sets", {
           method: "POST",
@@ -222,679 +761,1406 @@ export default function DashboardScreen() {
             transcriptRaw: transcript,
           }),
         });
-        return { message: buildWorkoutSystemText(interpreted.payload) };
-      }
-
-      if (interpreted.intent === "steps") {
+      } else if (interpreted.intent === "steps") {
         await apiRequest("/api/daily-metrics", {
           method: "POST",
           token,
-          body: JSON.stringify({ date: todayDate(), steps: Math.round(interpreted.payload.value) }),
+          body: JSON.stringify({
+            date: toLocalDateString(new Date()),
+            steps: Math.round(interpreted.payload.value),
+          }),
         });
-        return { message: `Saved ${Math.round(interpreted.payload.value).toLocaleString()} steps.` };
-      }
-
-      if (interpreted.intent === "weight") {
+      } else if (interpreted.intent === "weight") {
         await apiRequest("/api/daily-metrics", {
           method: "POST",
           token,
-          body: JSON.stringify({ date: todayDate(), weightKg: interpreted.payload.value }),
+          body: JSON.stringify({
+            date: toLocalDateString(new Date()),
+            weightKg: interpreted.payload.value,
+          }),
         });
-        return { message: `Saved weight ${interpreted.payload.value} kg.` };
+      } else {
+        await apiRequest("/api/conversation", {
+          method: "POST",
+          token,
+          body: JSON.stringify({
+            kind: "question",
+            userText: transcript,
+            systemText: interpreted.payload.answer,
+            source,
+            referenceType: null,
+            referenceId: null,
+            metadata: { answer: interpreted.payload.answer },
+          }),
+        });
       }
 
-      // question intent
-      await apiRequest("/api/conversation", {
-        method: "POST",
-        token,
-        body: JSON.stringify({
-          kind: "question",
-          userText: transcript,
-          systemText: interpreted.payload.answer,
-          source: "text",
-          referenceType: null,
-          referenceId: null,
-          metadata: { answer: interpreted.payload.answer },
-        }),
+      await refreshAfterSave();
+      setCommandToast("Saved");
+      closeCommandCenter();
+    } catch (error) {
+      setCommandError(
+        action.kind === "quick_add" ? "quick_add_failure" : "auto_save_failure",
+        getErrorMessage(error)
+      );
+    }
+  };
+
+  const interpretEntry = async (transcript: string, source: EntrySource) => {
+    if (isWebPreview) {
+      if (source === "text" && hasWebPreviewFlag("typed_fail")) {
+        throw new Error("Mock typed interpretation failure.");
+      }
+      if (source === "voice" && hasWebPreviewFlag("voice_fail")) {
+        throw new Error("Mock voice interpretation failure.");
+      }
+      const text = transcript.toLowerCase();
+      if (text.includes("run") || text.includes("workout") || text.includes("bench") || text.includes("squat")) {
+        return {
+          intent: "workout_set",
+          payload: {
+            exerciseName: text.includes("run") ? "Running" : "Bench Press",
+            exerciseType: text.includes("run") ? "cardio" : "resistance",
+            reps: text.includes("run") ? null : 10,
+            weightKg: text.includes("run") ? null : 80,
+            durationMinutes: text.includes("run") ? 20 : null,
+            notes: null,
+            confidence: 0.94,
+            assumptions: [],
+          },
+        } as InterpretEntryResponse;
+      }
+      if (text.includes("steps")) {
+        return {
+          intent: "steps",
+          payload: { value: 6800, confidence: 0.97, assumptions: [], unit: "steps" },
+        } as InterpretEntryResponse;
+      }
+      if (text.includes("weight")) {
+        return {
+          intent: "weight",
+          payload: { value: 72.4, confidence: 0.97, assumptions: [], unit: "kg" },
+        } as InterpretEntryResponse;
+      }
+      return {
+        intent: "meal",
+        payload: {
+          mealType: "lunch",
+          description: "Chicken Salad",
+          calories: 450,
+          confidence: 0.96,
+          assumptions: [],
+        },
+      } as InterpretEntryResponse;
+    }
+
+    const token = await getToken();
+    if (!token) throw new Error("Not signed in");
+    return apiRequest<InterpretEntryResponse>("/api/interpret/entry", {
+      method: "POST",
+      token,
+      body: JSON.stringify({ transcript, source, timezone }),
+    });
+  };
+
+  const sendTyped = async () => {
+    const transcript = commandText.trim();
+    if (!transcript) return;
+
+    setCommandState("cc_submitting_typed");
+    setCommandErrorSubtype(null);
+    setCommandErrorDetail(null);
+
+    try {
+      if (isWebPreview && hasWebPreviewFlag("hold_typed_submit")) {
+        await new Promise((resolve) => setTimeout(resolve, 900));
+      }
+      const interpreted = await interpretEntry(transcript, "text");
+      await runSaveAction({
+        kind: "entry",
+        interpreted,
+        transcript,
+        source: "text",
       });
-      return { message: "Question saved." };
-    },
-    onSuccess: async (result) => {
-      setQuickError(null);
-      setQuickMessage(result.message);
-      setQuickInput("");
-      Keyboard.dismiss();
-      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-      await queryClient.invalidateQueries({ queryKey: ["recent-activity"] });
-      await queryClient.invalidateQueries({ queryKey: ["meals"] });
-      await queryClient.invalidateQueries({ queryKey: ["workout-sessions"] });
-    },
-    onError: (err) => {
-      setQuickMessage(null);
-      setQuickError(getErrorMessage(err));
-    },
-  });
+    } catch (error) {
+      setCommandError("typed_interpret_failure", getErrorMessage(error));
+    }
+  };
 
-  const trendData = useMemo(() => data?.weeklyTrends.slice(-7) ?? [], [data?.weeklyTrends]);
-  const recentEvents = activityQuery.data?.events ?? [];
+  const interpretVoiceTranscript = async (text: string) => {
+    const transcript = text.trim();
+    if (!transcript) {
+      setCommandError("voice_interpret_failure", "Transcript cannot be empty.");
+      return;
+    }
 
-  const navigateDate = (dayDelta: number) => {
-    const target = parseIsoDate(selectedDate);
-    target.setDate(target.getDate() + dayDelta);
-    const nextDate = target.toISOString().slice(0, 10);
-    if (nextDate > todayDate()) return;
-    setSelectedDate(nextDate);
+    setIsInterpretingVoice(true);
+    setCommandState("cc_interpreting_voice");
+    setCommandErrorSubtype(null);
+    setCommandErrorDetail(null);
+
+    try {
+      const interpreted = await interpretEntry(transcript, "voice");
+      await runSaveAction({
+        kind: "entry",
+        interpreted,
+        transcript,
+        source: "voice",
+      });
+    } catch (error) {
+      setCommandError("voice_interpret_failure", getErrorMessage(error));
+    } finally {
+      setIsInterpretingVoice(false);
+    }
+  };
+
+  const startRecording = async () => {
+    setCommandErrorSubtype(null);
+    setCommandErrorDetail(null);
+
+    try {
+      if (isWebPreview) {
+        if (hasWebPreviewFlag("mic_denied")) {
+          setCommandError("mic_permission_denied");
+          return;
+        }
+        setRecordingSeconds(0);
+        setCommandState("cc_recording");
+        return;
+      }
+
+      const permission = await Audio.requestPermissionsAsync();
+      if (!permission.granted) {
+        setCommandError("mic_permission_denied");
+        return;
+      }
+
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+      });
+
+      const nextRecording = new Audio.Recording();
+      await nextRecording.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+      nextRecording.setOnRecordingStatusUpdate((status) => {
+        setRecordingSeconds(Math.floor((status.durationMillis ?? 0) / 1000));
+      });
+      await nextRecording.startAsync();
+      setRecording(nextRecording);
+      setRecordingSeconds(0);
+      setCommandState("cc_recording");
+    } catch (error) {
+      setCommandError("voice_interpret_failure", getErrorMessage(error));
+    }
+  };
+
+  const stopRecording = async () => {
+    if (isWebPreview) {
+      setVoiceTranscript("Had chicken salad for lunch, around 450 calories.");
+      setCommandState("cc_interpreting_voice");
+      if (hasWebPreviewFlag("hold_interpreting")) {
+        return;
+      }
+      await interpretVoiceTranscript("Had chicken salad for lunch, around 450 calories.");
+      return;
+    }
+
+    if (!recording) return;
+
+    setCommandState("cc_interpreting_voice");
+    setIsInterpretingVoice(true);
+
+    const activeRecording = recording;
+    setRecording(null);
+
+    try {
+      activeRecording.setOnRecordingStatusUpdate(null);
+      await activeRecording.stopAndUnloadAsync();
+
+      const status = await activeRecording.getStatusAsync();
+      const durationMillis = status.durationMillis ?? 0;
+      const uri = activeRecording.getURI();
+
+      if (!uri || durationMillis < MIN_RECORDING_DURATION_MS) {
+        throw new Error("Recording is too short. Please record at least 1 second.");
+      }
+
+      const token = await getToken();
+      if (!token) throw new Error("Not signed in");
+
+      const formData = new FormData();
+      formData.append(
+        "audio",
+        {
+          uri,
+          name: `voicefit-${Date.now()}.m4a`,
+          type: "audio/m4a",
+        } as unknown as Blob
+      );
+
+      const { transcript } = await apiFormRequest<{ transcript: string }>(
+        "/api/transcribe",
+        formData,
+        { token }
+      );
+
+      const cleanedTranscript = transcript.trim();
+      if (!cleanedTranscript) {
+        throw new Error("Transcript was empty. Please try again.");
+      }
+
+      setVoiceTranscript(cleanedTranscript);
+      await interpretVoiceTranscript(cleanedTranscript);
+    } catch (error) {
+      setCommandError("voice_interpret_failure", getErrorMessage(error));
+    } finally {
+      setIsInterpretingVoice(false);
+    }
+  };
+
+  const handleErrorPrimary = async () => {
+    if (!commandErrorSubtype) return;
+
+    if (commandErrorSubtype === "typed_interpret_failure") {
+      await sendTyped();
+      return;
+    }
+
+    if (commandErrorSubtype === "voice_interpret_failure") {
+      await startRecording();
+      return;
+    }
+
+    if (commandErrorSubtype === "mic_permission_denied") {
+      try {
+        await Linking.openSettings();
+      } catch {
+        setCommandErrorDetail("Open your device settings and enable microphone access.");
+      }
+      return;
+    }
+
+    if (commandErrorSubtype === "auto_save_failure" || commandErrorSubtype === "quick_add_failure") {
+      if (pendingSaveRef.current) {
+        await runSaveAction(pendingSaveRef.current);
+      }
+    }
+  };
+
+  const handleErrorSecondary = () => {
+    if (!commandErrorSubtype) return;
+
+    if (commandErrorSubtype === "typed_interpret_failure") {
+      setCommandState(commandText.trim() ? "cc_expanded_typing" : "cc_expanded_empty");
+      return;
+    }
+
+    if (commandErrorSubtype === "voice_interpret_failure") {
+      if (voiceTranscript.trim()) setCommandText(voiceTranscript.trim());
+      setCommandState(voiceTranscript.trim() ? "cc_expanded_typing" : "cc_expanded_empty");
+      return;
+    }
+
+    if (commandErrorSubtype === "mic_permission_denied") {
+      setCommandState(commandText.trim() ? "cc_expanded_typing" : "cc_expanded_empty");
+      return;
+    }
+
+    closeCommandCenter();
+  };
+
+  const canCloseViaBackdrop =
+    commandState === "cc_expanded_empty" || commandState === "cc_expanded_typing";
+  const modalAnimationType = Platform.OS === "web" ? "none" : "fade";
+
+  const handleCommandInputChange = (text: string) => {
+    setCommandText(text);
+    if (commandState === "cc_expanded_empty" && text.trim()) {
+      setCommandState("cc_expanded_typing");
+    }
+    if (commandState === "cc_expanded_typing" && !text.trim()) {
+      setCommandState("cc_expanded_empty");
+    }
+  };
+
+  const renderTrendPrimary = () => {
+    if (metricAverage == null) return "--";
+    if (trendTab === "calories") return `${Math.round(metricAverage).toLocaleString()} kcal/day`;
+    if (trendTab === "steps") return `${Math.round(metricAverage).toLocaleString()} steps/day`;
+    return `${metricAverage.toFixed(1)} kg avg`;
+  };
+
+  const renderTrendChange = () => {
+    if (trendChange == null) return "No prior window";
+    const rounded = Math.round(trendChange);
+    const sign = rounded > 0 ? "+" : "";
+    return `${sign}${rounded}% vs prior 7 days`;
+  };
+
+  const activeErrorCopy = commandErrorSubtype ? ERROR_COPY[commandErrorSubtype] : null;
+
+  const renderCommandContent = () => {
+    if (commandState === "cc_expanded_empty" || commandState === "cc_expanded_typing") {
+      const sendDisabled = !commandText.trim();
+
+      return (
+        <View style={styles.sheetContent}>
+          <View style={styles.sheetHeader}>
+            <Text style={styles.sheetTitle}>Command Center</Text>
+            <Pressable style={styles.sheetCloseButton} onPress={closeCommandCenter} testID="cc-close">
+              <Text style={styles.sheetCloseText}>Close</Text>
+            </Pressable>
+          </View>
+
+          <TextInput
+            style={styles.commandInput}
+            placeholder='Type meal or workout, e.g. "Chicken salad 450 cal"'
+            placeholderTextColor={COLORS.textTertiary}
+            value={commandText}
+            onChangeText={handleCommandInputChange}
+            multiline
+            testID="cc-input-text"
+          />
+
+          <Text style={styles.quickAddLabel}>Quick Add</Text>
+          <View style={styles.quickAddList}>
+            {quickAddItems.slice(0, 3).map((item, index) => (
+              <Pressable
+                key={item.id}
+                style={styles.quickAddChip}
+                testID={`cc-quick-add-${index}`}
+                onPress={() => {
+                  void runSaveAction({ kind: "quick_add", item });
+                }}
+              >
+                <Text style={styles.quickAddChipText}>{item.description}</Text>
+                <Text style={styles.quickAddChipMeta}>{item.calories} kcal</Text>
+              </Pressable>
+            ))}
+          </View>
+
+          <View style={styles.sheetActionsRow}>
+            <Pressable style={styles.bigMicButton} onPress={() => void startRecording()} testID="cc-big-mic">
+              <MicGlyph />
+            </Pressable>
+            <Pressable
+              style={[styles.sendButton, sendDisabled && styles.sendButtonDisabled]}
+              disabled={sendDisabled}
+              onPress={() => void sendTyped()}
+              testID="cc-send"
+            >
+              <Text style={styles.sendButtonText}>Send</Text>
+            </Pressable>
+          </View>
+        </View>
+      );
+    }
+
+    if (commandState === "cc_submitting_typed") {
+      return (
+        <View style={styles.sheetContentCentered}>
+          <ActivityIndicator color={COLORS.black} />
+          <Text style={styles.processingTitle}>Interpreting entry...</Text>
+          <Text style={styles.processingBody}>{commandText.trim()}</Text>
+        </View>
+      );
+    }
+
+    if (commandState === "cc_recording") {
+      return (
+        <View style={styles.sheetContentCentered}>
+          <Text style={styles.recordingPill}>Recording</Text>
+          <Text style={styles.recordingTime}>{recordingSeconds}s</Text>
+          <View style={styles.recordingActions}>
+            <Pressable style={styles.secondaryActionButton} onPress={closeCommandCenter} testID="cc-recording-discard">
+              <Text style={styles.secondaryActionText}>Discard</Text>
+            </Pressable>
+            <Pressable style={styles.primaryActionButton} onPress={() => void stopRecording()} testID="cc-recording-stop">
+              <Text style={styles.primaryActionText}>Stop</Text>
+            </Pressable>
+          </View>
+        </View>
+      );
+    }
+
+    if (commandState === "cc_interpreting_voice") {
+      return (
+        <View style={styles.sheetContent}>
+          <View style={styles.interpretingHeader}>
+            <Text style={styles.sheetTitle}>Interpreting...</Text>
+            {isInterpretingVoice ? <ActivityIndicator color={COLORS.black} /> : null}
+          </View>
+
+          <TextInput
+            style={styles.voiceTranscriptInput}
+            value={voiceTranscript}
+            onChangeText={setVoiceTranscript}
+            multiline
+            placeholder="Transcript"
+            placeholderTextColor={COLORS.textTertiary}
+            testID="cc-voice-transcript"
+          />
+
+          <View style={styles.interpretingActions}>
+            <Pressable
+              style={styles.secondaryActionButton}
+              onPress={() => {
+                void interpretVoiceTranscript(voiceTranscript);
+              }}
+              testID="cc-interpreting-edit"
+            >
+              <Text style={styles.secondaryActionText}>Edit text</Text>
+            </Pressable>
+            <Pressable style={styles.secondaryActionButton} onPress={() => void startRecording()} testID="cc-interpreting-retry-voice">
+              <Text style={styles.secondaryActionText}>Retry voice</Text>
+            </Pressable>
+            <Pressable style={styles.primaryActionButton} onPress={closeCommandCenter} testID="cc-interpreting-discard">
+              <Text style={styles.primaryActionText}>Discard</Text>
+            </Pressable>
+          </View>
+        </View>
+      );
+    }
+
+    if (commandState === "cc_auto_saving" || commandState === "cc_quick_add_saving") {
+      return (
+        <View style={styles.sheetContentCentered}>
+          <ActivityIndicator color={COLORS.black} />
+          <Text style={styles.processingTitle}>Saving entry...</Text>
+          <Text style={styles.processingBody}>Refreshing Home data</Text>
+        </View>
+      );
+    }
+
+    if (commandState === "cc_error" && activeErrorCopy) {
+      return (
+        <View style={styles.sheetContent}>
+          <Text style={styles.errorTitle}>{activeErrorCopy.title}</Text>
+          <Text style={styles.errorBody}>{activeErrorCopy.body}</Text>
+          {commandErrorDetail ? <Text style={styles.errorDetail}>{commandErrorDetail}</Text> : null}
+
+          <Pressable style={styles.primaryActionButton} onPress={() => void handleErrorPrimary()} testID="cc-error-primary">
+            <Text style={styles.primaryActionText}>{activeErrorCopy.primary}</Text>
+          </Pressable>
+
+          {activeErrorCopy.secondary ? (
+            <Pressable style={styles.secondaryActionButton} onPress={handleErrorSecondary} testID="cc-error-secondary">
+              <Text style={styles.secondaryActionText}>{activeErrorCopy.secondary}</Text>
+            </Pressable>
+          ) : null}
+
+          {activeErrorCopy.tertiary ? (
+            <Pressable style={styles.tertiaryActionButton} onPress={closeCommandCenter} testID="cc-error-tertiary">
+              <Text style={styles.tertiaryActionText}>{activeErrorCopy.tertiary}</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      );
+    }
+
+    return null;
   };
 
   return (
-    <ScrollView
-      contentContainerStyle={styles.container}
-      keyboardDismissMode="on-drag"
-      keyboardShouldPersistTaps="handled"
-      refreshControl={
-        <RefreshControl
-          refreshing={isRefetching}
-          onRefresh={() => {
-            refetch();
-            activityQuery.refetch();
-          }}
-        />
-      }
-    >
-      <Text style={styles.title}>Home</Text>
-
-      {/* ── Quick Log ── */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Quick Log</Text>
-        <TextInput
-          style={styles.input}
-          value={quickInput}
-          onChangeText={setQuickInput}
-          placeholder='e.g. "chicken salad 400 cal" or "ran 5k"'
-          multiline
-          editable={!quickLogMutation.isPending}
-        />
-        {quickError ? <Text style={styles.error}>{quickError}</Text> : null}
-        {quickMessage ? <Text style={styles.success}>{quickMessage}</Text> : null}
-        <Pressable
-          style={[styles.buttonPrimary, quickLogMutation.isPending && styles.disabledButton]}
-          onPress={() => quickLogMutation.mutate()}
-          disabled={quickLogMutation.isPending}
-        >
-          <Text style={styles.buttonPrimaryText}>
-            {quickLogMutation.isPending ? "Processing..." : "Log Entry"}
-          </Text>
-        </Pressable>
-      </View>
-
-      {/* ── Daily Snapshot ── */}
-      <View style={styles.card}>
-        <View style={styles.headerRow}>
-          <View>
-            <Text style={styles.cardTitle}>{formatDateLabel(selectedDate)}</Text>
-            <Text style={styles.helperText}>Daily snapshot</Text>
-          </View>
-          <View style={styles.headerActions}>
-            <Pressable style={styles.iconButton} onPress={() => navigateDate(-1)}>
-              <Text style={styles.iconButtonText}>{"<"}</Text>
-            </Pressable>
-            <Pressable
-              style={[styles.iconButton, isToday && styles.disabledButton]}
-              onPress={() => navigateDate(1)}
-              disabled={isToday}
-            >
-              <Text style={styles.iconButtonText}>{">"}</Text>
-            </Pressable>
-          </View>
+    <View style={styles.root}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        keyboardDismissMode="on-drag"
+        keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl
+            refreshing={dashboardQuery.isRefetching}
+            onRefresh={() => {
+              void dashboardQuery.refetch();
+            }}
+          />
+        }
+      >
+        <View style={styles.headerRowTop}>
+          <Text style={styles.appName}>VoiceFit</Text>
+          <Pressable style={styles.addButton} onPress={openCommandCenter} testID="home-add-button">
+            <Text style={styles.addButtonText}>+</Text>
+          </Pressable>
         </View>
 
-        {isLoading ? (
-          <ActivityIndicator />
-        ) : error ? (
-          <Text style={styles.error}>{getErrorMessage(error)}</Text>
-        ) : data ? (
-          <>
-            <View style={styles.metricCard}>
-              <View style={styles.metricHeader}>
-                <Text style={styles.metricLabel}>Calories</Text>
-                <Text style={styles.metricValue}>
-                  {data.today.calories.consumed.toLocaleString()} /{" "}
-                  {data.today.calories.goal.toLocaleString()} kcal
+        <View style={styles.dayPickerRow}>
+          {dayOptions.map((day) => {
+            const active = day.date === selectedDate;
+            const hasData = loggedDates.has(day.date);
+            const faded = !active && !hasData;
+
+            return (
+              <Pressable
+                key={day.date}
+                style={[styles.dayItem, active && styles.dayItemActive]}
+                testID={`home-day-${day.date}`}
+                onPress={() => {
+                  setSelectedDate(day.date);
+                }}
+              >
+                <Text style={[styles.dayLabel, active && styles.dayLabelActive, faded && styles.dayLabelFaded]}>
+                  {day.dayLabel}
                 </Text>
-              </View>
-              <View style={styles.progressTrack}>
-                <View
-                  style={[
-                    styles.progressFill,
-                    {
-                      width: `${progressPercent(data.today.calories.consumed, data.today.calories.goal)}%`,
-                      backgroundColor: "#FB923C",
-                    },
-                  ]}
-                />
-              </View>
+                <Text style={[styles.dayNum, active && styles.dayNumActive, faded && styles.dayNumFaded]}>
+                  {day.dayNum}
+                </Text>
+                {hasData || active ? (
+                  <View style={[styles.dayDot, active && styles.dayDotActive]} />
+                ) : null}
+              </Pressable>
+            );
+          })}
+        </View>
+
+        {homeBlockingError ? (
+          <View style={styles.blockingErrorCard}>
+            <Text style={styles.blockingErrorTitle}>Could not load Home</Text>
+            <Text style={styles.blockingErrorBody}>{getErrorMessage(dashboardQuery.error)}</Text>
+            <Pressable style={styles.primaryActionButton} onPress={() => void dashboardQuery.refetch()}>
+              <Text style={styles.primaryActionText}>Retry</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <>
+            <View style={styles.heroSection}>
+              <CalorieRing consumed={todayCaloriesConsumed} goal={todayCaloriesGoal} />
             </View>
 
-            <View style={styles.twoCol}>
-              <View style={styles.miniCard}>
-                <Text style={styles.metricLabel}>Steps</Text>
-                <Text style={styles.metricValue}>
-                  {(data.today.steps.count ?? 0).toLocaleString()} /{" "}
-                  {data.today.steps.goal.toLocaleString()}
+            <View style={styles.metricsRow}>
+              <View style={styles.metricCard}>
+                <View style={styles.metricTopRow}>
+                  <Text style={styles.metricLabel}>STEPS</Text>
+                  <MiniStepsRing current={todaySteps} goal={todayStepsGoal} />
+                </View>
+                <Text style={styles.metricMainValue}>{todaySteps.toLocaleString()}</Text>
+                <Text style={styles.metricSubValue}>of {todayStepsGoal.toLocaleString()}</Text>
+              </View>
+
+              <View style={styles.metricCard}>
+                <View style={styles.metricTopRow}>
+                  <Text style={styles.metricLabel}>WEIGHT</Text>
+                  <WeightSparkline />
+                </View>
+                <Text style={styles.metricMainValue}>
+                  {recentWeight == null ? "--" : recentWeight.toFixed(1)}
+                  <Text style={styles.metricUnit}> kg</Text>
                 </Text>
-                <View style={styles.progressTrack}>
-                  <View
-                    style={[
-                      styles.progressFill,
-                      {
-                        width: `${progressPercent(data.today.steps.count ?? 0, data.today.steps.goal)}%`,
-                        backgroundColor: "#10B981",
-                      },
-                    ]}
-                  />
+                <View style={styles.weightMetaRow}>
+                  <Text style={styles.metricSubValue}>goal: {DEFAULT_WEIGHT_GOAL} kg</Text>
+                  {weightDelta != null ? (
+                    <Text style={[styles.weightDelta, weightDelta <= 0 ? styles.weightDeltaGood : styles.weightDeltaBad]}>
+                      {weightDelta <= 0 ? "↓" : "↑"} {Math.abs(weightDelta).toFixed(1)}
+                    </Text>
+                  ) : null}
                 </View>
               </View>
-              <View style={styles.miniCard}>
-                <Text style={styles.metricLabel}>Weight</Text>
-                <Text style={styles.metricValue}>
-                  {data.today.weight === null ? "--" : `${data.today.weight} kg`}
-                </Text>
-                <Text style={styles.helperText}>Latest for this date</Text>
-              </View>
             </View>
 
-            <View style={styles.twoCol}>
-              <View style={styles.miniCard}>
-                <Text style={styles.metricLabel}>Workout Sessions</Text>
-                <Text style={styles.metricValue}>{data.today.workoutSessions}</Text>
+            <Pressable style={styles.coachCard} onPress={() => router.push("/(tabs)/coach")} testID="home-ask-coach">
+              <CoachBadge />
+              <View style={styles.coachTextWrap}>
+                <Text style={styles.coachTitle}>Ask Coach</Text>
+                <Text style={styles.coachSub}>Get AI insights on your trends</Text>
               </View>
-              <View style={styles.miniCard}>
-                <Text style={styles.metricLabel}>Workout Sets</Text>
-                <Text style={styles.metricValue}>{data.today.workoutSets}</Text>
+              <Text style={styles.coachChevron}>›</Text>
+            </Pressable>
+
+            <Text style={styles.sectionTitle}>Weekly Trends</Text>
+            <View style={styles.trendTabsRow}>
+              {TREND_TABS.map((tab) => {
+                const active = tab === trendTab;
+                const label = tab.charAt(0).toUpperCase() + tab.slice(1);
+                return (
+                  <Pressable
+                    key={tab}
+                    style={[styles.trendTab, active && styles.trendTabActive]}
+                    testID={`home-trend-tab-${tab}`}
+                    onPress={() => setTrendTab(tab)}
+                  >
+                    <Text style={[styles.trendTabText, active && styles.trendTabTextActive]}>{label}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <View
+              style={styles.trendCard}
+              onLayout={(event) => {
+                setChartWidth(event.nativeEvent.layout.width - 24);
+              }}
+            >
+              <View style={styles.trendSummaryRow}>
+                <View>
+                  <Text style={styles.trendSummaryMain}>{renderTrendPrimary()}</Text>
+                  <Text style={styles.trendSummarySub}>Last 7 days avg</Text>
+                </View>
+                <Text style={[styles.trendChangeText, { color: trendChangeColor }]}>{renderTrendChange()}</Text>
               </View>
+
+              {dashboardQuery.isLoading && !dashboard ? (
+                <ActivityIndicator color={COLORS.black} />
+              ) : (
+                <>
+                  <Svg width="100%" height={160} viewBox={`0 0 ${trendChart.width} 160`}>
+                    {trendChart.goalY != null ? (
+                      <Line
+                        x1={12}
+                        x2={trendChart.width - 12}
+                        y1={trendChart.goalY}
+                        y2={trendChart.goalY}
+                        stroke={COLORS.calories}
+                        strokeDasharray="4 4"
+                        strokeOpacity={0.45}
+                        strokeWidth={1}
+                      />
+                    ) : null}
+                    <Defs>
+                      <LinearGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
+                        <Stop offset="0" stopColor={metricColor(trendTab)} stopOpacity={0.18} />
+                        <Stop offset="1" stopColor={metricColor(trendTab)} stopOpacity={0.01} />
+                      </LinearGradient>
+                    </Defs>
+                    {trendChart.area ? <Path d={trendChart.area} fill="url(#trendFill)" /> : null}
+                    {trendChart.line ? (
+                      <Path
+                        d={trendChart.line}
+                        stroke={metricColor(trendTab)}
+                        strokeWidth={3}
+                        fill="none"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    ) : null}
+                    {trendChart.points.map((point, index) => {
+                      const edge = index === 0 || index === trendChart.points.length - 1;
+                      return (
+                        <SvgCircle
+                          key={`${point.x}-${point.y}`}
+                          cx={point.x}
+                          cy={point.y}
+                          r={edge ? 4 : 3}
+                          fill={COLORS.bg}
+                          stroke={metricColor(trendTab)}
+                          strokeWidth={2}
+                        />
+                      );
+                    })}
+                  </Svg>
+
+                  <View style={styles.trendDaysRow}>
+                    {weeklyCurrent.map((point) => (
+                      <Text key={point.date} style={styles.trendDayLabel}>
+                        {formatTrendDay(point.date)}
+                      </Text>
+                    ))}
+                  </View>
+                </>
+              )}
+            </View>
+
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.sectionTitle}>Recent Meals</Text>
+              <Pressable onPress={() => router.push("/(tabs)/meals")} testID="home-recent-meals-see-all">
+                <Text style={styles.sectionLink}>See All</Text>
+              </Pressable>
+            </View>
+
+            <View style={styles.mealsWrap}>
+              {dashboardQuery.isLoading && !dashboard ? (
+                <ActivityIndicator color={COLORS.black} />
+              ) : recentMeals.length > 0 ? (
+                recentMeals.map((meal) => (
+                  <View key={meal.id} style={styles.mealRow}>
+                    <MealThumb description={meal.description} />
+                    <View style={styles.mealInfo}>
+                      <Text style={styles.mealTitle}>{meal.description}</Text>
+                      <Text style={styles.mealMeta}>
+                        {meal.mealType} ·
+                        {" "}
+                        {new Date(meal.eatenAt).toLocaleTimeString("en-US", {
+                          hour: "numeric",
+                          minute: "2-digit",
+                        })}
+                      </Text>
+                    </View>
+                    <Text style={styles.mealCalories}>{meal.calories} kcal</Text>
+                  </View>
+                ))
+              ) : (
+                <Text style={styles.emptyText}>No meals logged yet.</Text>
+              )}
             </View>
           </>
-        ) : (
-          <Text style={styles.helperText}>No data yet.</Text>
         )}
-      </View>
+      </ScrollView>
 
-      {/* ── Coach ── */}
-      <Pressable
-        style={styles.coachCard}
-        onPress={() => router.push("/(tabs)/coach")}
-      >
-        <View>
-          <Text style={styles.cardTitle}>Ask Coach</Text>
-          <Text style={styles.helperText}>Get AI insights on your trends</Text>
-        </View>
-        <Text style={styles.chevron}>{">"}</Text>
-      </Pressable>
-
-      {/* ── Weekly Trends ── */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Weekly Trends</Text>
-        <View style={styles.tabRow}>
-          {(["calories", "steps", "weight", "workouts"] as const).map((tab) => (
-            <Pressable
-              key={tab}
-              style={[styles.tabChip, trendTab === tab && styles.tabChipActive]}
-              onPress={() => setTrendTab(tab)}
-            >
-              <Text style={[styles.tabText, trendTab === tab && styles.tabTextActive]}>
-                {tab === "workouts" ? "Workouts" : tab.charAt(0).toUpperCase() + tab.slice(1)}
-              </Text>
+      {commandState === "cc_collapsed" ? (
+        <View style={styles.commandCollapsedWrap}>
+          <Pressable style={styles.commandCollapsed} onPress={openCommandCenter} testID="cc-collapsed-open">
+            <View style={styles.commandLeft}>
+              <SparkleGlyph />
+              <Text style={styles.commandHint}>"Had pasta for lunch..."</Text>
+            </View>
+            <Pressable style={styles.commandMicButton} onPress={() => void startRecording()} testID="cc-collapsed-mic">
+              <MicGlyph />
             </Pressable>
-          ))}
-        </View>
-
-        {isLoading ? (
-          <ActivityIndicator />
-        ) : error ? (
-          <Text style={styles.error}>{getErrorMessage(error)}</Text>
-        ) : trendData.length === 0 ? (
-          <Text style={styles.helperText}>No trend data yet.</Text>
-        ) : trendTab === "calories" ? (
-          trendData.map((day) => (
-            <View key={day.date} style={styles.trendRow}>
-              <Text style={styles.trendDay}>{toWeekday(day.date)}</Text>
-              <View style={styles.trendBarTrack}>
-                <View
-                  style={[
-                    styles.trendBarFill,
-                    {
-                      width: `${progressPercent(day.calories, data?.today.calories.goal ?? 1)}%`,
-                      backgroundColor: "#FB923C",
-                    },
-                  ]}
-                />
-              </View>
-              <Text style={styles.trendValue}>{day.calories.toLocaleString()} kcal</Text>
-            </View>
-          ))
-        ) : trendTab === "steps" ? (
-          trendData.map((day) => (
-            <View key={day.date} style={styles.trendRow}>
-              <Text style={styles.trendDay}>{toWeekday(day.date)}</Text>
-              <View style={styles.trendBarTrack}>
-                <View
-                  style={[
-                    styles.trendBarFill,
-                    {
-                      width: `${progressPercent(day.steps ?? 0, data?.today.steps.goal ?? 1)}%`,
-                      backgroundColor: "#10B981",
-                    },
-                  ]}
-                />
-              </View>
-              <Text style={styles.trendValue}>
-                {day.steps === null ? "--" : day.steps.toLocaleString()}
-              </Text>
-            </View>
-          ))
-        ) : trendTab === "weight" ? (
-          trendData.map((day) => (
-            <View key={day.date} style={styles.trendRow}>
-              <Text style={styles.trendDay}>{toWeekday(day.date)}</Text>
-              <View style={styles.trendBarTrack}>
-                <View
-                  style={[
-                    styles.trendBarFill,
-                    {
-                      width: day.weight === null ? "0%" : "70%",
-                      backgroundColor: "#3B82F6",
-                    },
-                  ]}
-                />
-              </View>
-              <Text style={styles.trendValue}>
-                {day.weight === null ? "--" : `${day.weight} kg`}
-              </Text>
-            </View>
-          ))
-        ) : (
-          trendData.map((day) => (
-            <View key={day.date} style={styles.trendRow}>
-              <Text style={styles.trendDay}>{toWeekday(day.date)}</Text>
-              <View style={styles.trendBarTrack}>
-                <View
-                  style={[
-                    styles.trendBarFill,
-                    {
-                      width: `${Math.min(100, day.workouts * 25)}%`,
-                      backgroundColor: "#8B5CF6",
-                    },
-                  ]}
-                />
-              </View>
-              <Text style={styles.trendValue}>
-                {day.workouts} {day.workouts === 1 ? "session" : "sessions"}
-              </Text>
-            </View>
-          ))
-        )}
-      </View>
-
-      {/* ── Recent Meals ── */}
-      <View style={styles.card}>
-        <View style={styles.headerRow}>
-          <Text style={styles.cardTitle}>Recent Meals</Text>
-          <Pressable onPress={() => router.push("/(tabs)/meals")}>
-            <Text style={styles.linkText}>View All</Text>
           </Pressable>
         </View>
-        {isLoading ? (
-          <ActivityIndicator />
-        ) : error ? (
-          <Text style={styles.error}>{getErrorMessage(error)}</Text>
-        ) : data && data.recentMeals.length > 0 ? (
-          data.recentMeals.map((meal) => (
-            <View key={meal.id} style={styles.listRow}>
-              <View style={styles.listMain}>
-                <Text style={styles.listTitle}>{meal.description}</Text>
-                <Text style={styles.helperText}>
-                  {meal.mealType} · {new Date(meal.eatenAt).toLocaleString()}
-                </Text>
-              </View>
-              <Text style={styles.listValue}>{meal.calories} kcal</Text>
-            </View>
-          ))
-        ) : (
-          <Text style={styles.helperText}>No meals logged yet.</Text>
-        )}
-      </View>
+      ) : null}
 
-      {/* ── Recent Exercises ── */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Recent Exercises</Text>
-        {isLoading ? (
-          <ActivityIndicator />
-        ) : error ? (
-          <Text style={styles.error}>{getErrorMessage(error)}</Text>
-        ) : data && data.recentExercises.length > 0 ? (
-          <View style={styles.chips}>
-            {data.recentExercises.map((exercise) => (
-              <View key={exercise} style={styles.chip}>
-                <Text style={styles.chipText}>{exercise}</Text>
-              </View>
-            ))}
-          </View>
-        ) : (
-          <Text style={styles.helperText}>No exercises logged yet.</Text>
-        )}
-      </View>
-
-      {/* ── Recent Activity ── */}
-      <View style={styles.card}>
-        <View style={styles.headerRow}>
-          <Text style={styles.cardTitle}>Recent Activity</Text>
-          <Pressable onPress={() => router.push("/(tabs)/feed")}>
-            <Text style={styles.linkText}>View All</Text>
-          </Pressable>
+      <Modal
+        visible={commandState !== "cc_collapsed"}
+        transparent
+        animationType={modalAnimationType}
+        onRequestClose={() => {
+          if (canCloseViaBackdrop) closeCommandCenter();
+        }}
+      >
+        <View style={styles.modalRoot}>
+          <Pressable
+            style={styles.modalBackdrop}
+            onPress={() => {
+              if (canCloseViaBackdrop) closeCommandCenter();
+            }}
+          />
+          <View style={styles.sheetWrap} testID={`cc-sheet-${commandState}`}>{renderCommandContent()}</View>
         </View>
-        {activityQuery.isLoading ? (
-          <ActivityIndicator />
-        ) : activityQuery.error ? (
-          <Text style={styles.error}>{getErrorMessage(activityQuery.error)}</Text>
-        ) : recentEvents.length > 0 ? (
-          recentEvents.map((event) => (
-            <View key={event.id} style={styles.eventCard}>
-              <View style={styles.eventHeader}>
-                <Text style={styles.badge}>{kindLabel(event.kind)}</Text>
-                <Text style={styles.timestamp}>{formatTimestamp(event.createdAt)}</Text>
-              </View>
-              <Text style={styles.eventText}>{event.userText}</Text>
-              {event.systemText ? (
-                <Text style={styles.eventSystemText}>{event.systemText}</Text>
-              ) : null}
-            </View>
-          ))
-        ) : (
-          <Text style={styles.helperText}>No activity yet. Use Quick Log above to get started.</Text>
-        )}
-      </View>
-    </ScrollView>
+      </Modal>
+
+      {commandToast ? (
+        <View style={styles.toastWrap} testID="cc-toast">
+          <Text style={styles.toastText}>{commandToast}</Text>
+        </View>
+      ) : null}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    padding: 20,
-    gap: 12,
-    backgroundColor: "#FFFFFF",
-    paddingBottom: 40,
+  root: {
+    flex: 1,
+    backgroundColor: COLORS.bg,
   },
-  title: {
-    fontSize: 24,
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 146,
+    backgroundColor: COLORS.bg,
+  },
+  headerRowTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 8,
+  },
+  appName: {
+    fontSize: 28,
     fontWeight: "700",
-    color: "#111827",
+    letterSpacing: -0.5,
+    color: COLORS.textPrimary,
   },
-  card: {
-    backgroundColor: "#F9FAFB",
+  addButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 999,
+    backgroundColor: COLORS.surface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  addButtonText: {
+    fontSize: 22,
+    lineHeight: 24,
+    color: COLORS.textSecondary,
+    fontWeight: "500",
+  },
+  dayPickerRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 6,
+    marginBottom: 20,
+  },
+  dayItem: {
+    width: 44,
     borderRadius: 12,
-    padding: 14,
-    gap: 8,
+    paddingVertical: 8,
+    alignItems: "center",
+    gap: 5,
   },
-  cardTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#111827",
+  dayItemActive: {
+    backgroundColor: COLORS.textPrimary,
   },
-  helperText: {
+  dayLabel: {
     fontSize: 12,
-    color: "#4B5563",
+    fontWeight: "500",
+    color: COLORS.textTertiary,
   },
-  error: {
-    color: "#B91C1C",
-    fontSize: 13,
+  dayLabelActive: {
+    color: "rgba(255,255,255,0.55)",
+  },
+  dayLabelFaded: {
+    color: "#D3D3D8",
+  },
+  dayNum: {
+    fontSize: 17,
     fontWeight: "600",
+    color: COLORS.textPrimary,
   },
-  success: {
-    color: "#047857",
-    fontSize: 13,
-    fontWeight: "600",
+  dayNumActive: {
+    color: COLORS.bg,
   },
-  input: {
-    borderWidth: 1,
-    borderColor: "#D1D5DB",
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-    color: "#111827",
-    backgroundColor: "#FFFFFF",
-    textAlignVertical: "top",
+  dayNumFaded: {
+    color: "#C7C7CC",
+    fontWeight: "500",
   },
-  buttonPrimary: {
-    backgroundColor: "#111827",
-    borderRadius: 10,
-    paddingVertical: 11,
-    paddingHorizontal: 14,
+  dayDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 5,
+    backgroundColor: COLORS.textSecondary,
+  },
+  dayDotActive: {
+    backgroundColor: "rgba(255,255,255,0.55)",
+  },
+  heroSection: {
+    alignItems: "center",
+    paddingTop: 8,
+    paddingBottom: 24,
+  },
+  heroRingWrap: {
+    width: 180,
+    height: 180,
     alignItems: "center",
     justifyContent: "center",
   },
-  buttonPrimaryText: {
-    color: "#FFFFFF",
+  heroRingCenter: {
+    position: "absolute",
+    alignItems: "center",
+  },
+  heroRingNumber: {
+    fontSize: 42,
+    fontWeight: "700",
+    color: COLORS.textPrimary,
+    letterSpacing: -1.5,
+    lineHeight: 42,
+  },
+  heroRingLabel: {
+    marginTop: 6,
     fontSize: 14,
-    fontWeight: "700",
+    color: COLORS.textSecondary,
   },
-  headerRow: {
+  metricsRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 8,
-  },
-  headerActions: {
-    flexDirection: "row",
-    gap: 8,
-  },
-  iconButton: {
-    backgroundColor: "#E5E7EB",
-    borderRadius: 9,
-    width: 34,
-    height: 34,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  iconButtonText: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  disabledButton: {
-    opacity: 0.5,
-  },
-  coachCard: {
-    backgroundColor: "#F9FAFB",
-    borderRadius: 12,
-    padding: 14,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  chevron: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#9CA3AF",
-  },
-  linkText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#6B7280",
+    gap: 12,
+    marginBottom: 24,
   },
   metricCard: {
-    borderRadius: 10,
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    padding: 10,
+    flex: 1,
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    padding: 16,
     gap: 8,
   },
-  metricHeader: {
+  metricTopRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    gap: 8,
   },
   metricLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+    letterSpacing: 0.5,
+    color: COLORS.textSecondary,
+  },
+  metricMainValue: {
+    fontSize: 24,
+    fontWeight: "700",
+    letterSpacing: -0.5,
+    color: COLORS.textPrimary,
+    lineHeight: 24,
+  },
+  metricUnit: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    fontWeight: "500",
+  },
+  metricSubValue: {
+    fontSize: 13,
+    color: COLORS.textTertiary,
+    fontWeight: "500",
+  },
+  weightMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  weightDelta: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  weightDeltaGood: {
+    color: COLORS.steps,
+  },
+  weightDeltaBad: {
+    color: COLORS.error,
+  },
+  coachCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 24,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  coachBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: COLORS.textPrimary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  coachTextWrap: {
+    flex: 1,
+  },
+  coachTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: COLORS.textPrimary,
+    lineHeight: 16,
+  },
+  coachSub: {
+    marginTop: 2,
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    fontWeight: "500",
+  },
+  coachChevron: {
+    color: COLORS.textTertiary,
+    fontSize: 18,
+    fontWeight: "500",
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: COLORS.textPrimary,
+    letterSpacing: -0.3,
+    marginBottom: 12,
+  },
+  trendTabsRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 16,
+  },
+  trendTab: {
+    borderRadius: 999,
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+  },
+  trendTabActive: {
+    backgroundColor: COLORS.textPrimary,
+  },
+  trendTabText: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    fontWeight: "700",
+  },
+  trendTabTextActive: {
+    color: COLORS.bg,
+  },
+  trendCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    paddingTop: 20,
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    marginBottom: 24,
+  },
+  trendSummaryRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "baseline",
+    marginBottom: 16,
+    gap: 12,
+  },
+  trendSummaryMain: {
+    fontSize: 24,
+    fontWeight: "700",
+    color: COLORS.textPrimary,
+    letterSpacing: -0.5,
+  },
+  trendSummarySub: {
+    marginTop: 2,
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    fontWeight: "500",
+  },
+  trendChangeText: {
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  trendDaysRow: {
+    marginTop: -6,
+    paddingHorizontal: 8,
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  trendDayLabel: {
+    fontSize: 12,
+    color: COLORS.textTertiary,
+    fontWeight: "600",
+  },
+  sectionHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+  sectionLink: {
+    fontSize: 15,
+    color: COLORS.textSecondary,
+    fontWeight: "500",
+  },
+  mealsWrap: {
+    marginBottom: 12,
+  },
+  mealRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    gap: 12,
+  },
+  mealThumb: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: COLORS.surface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  mealInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  mealTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: COLORS.textPrimary,
+  },
+  mealMeta: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    fontWeight: "500",
+  },
+  mealCalories: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: COLORS.textPrimary,
+  },
+  emptyText: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    marginBottom: 8,
+  },
+  blockingErrorCard: {
+    marginTop: 24,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 16,
+    padding: 18,
+    gap: 10,
+    backgroundColor: COLORS.surface,
+  },
+  blockingErrorTitle: {
+    fontSize: 20,
+    color: COLORS.textPrimary,
+    fontWeight: "700",
+  },
+  blockingErrorBody: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+  },
+  commandCollapsedWrap: {
+    position: "absolute",
+    left: 12,
+    right: 12,
+    bottom: 0,
+  },
+  commandCollapsed: {
+    borderRadius: 20,
+    backgroundColor: COLORS.bg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    minHeight: 64,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingLeft: 18,
+    paddingRight: 8,
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 16,
+    elevation: 2,
+  },
+  commandLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flex: 1,
+  },
+  commandHint: {
+    fontSize: 15,
+    color: COLORS.textTertiary,
+    fontWeight: "500",
+  },
+  commandMicButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: COLORS.textPrimary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modalRoot: {
+    flex: 1,
+    justifyContent: "flex-end",
+  },
+  modalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.22)",
+  },
+  sheetWrap: {
+    backgroundColor: COLORS.bg,
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 28,
+    minHeight: 260,
+  },
+  sheetContent: {
+    gap: 12,
+  },
+  sheetContentCentered: {
+    minHeight: 160,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+  },
+  sheetHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  sheetTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: COLORS.textPrimary,
+  },
+  sheetCloseButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: COLORS.surface,
+  },
+  sheetCloseText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: COLORS.textSecondary,
+  },
+  commandInput: {
+    minHeight: 98,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: COLORS.textPrimary,
+    fontSize: 15,
+    textAlignVertical: "top",
+  },
+  quickAddLabel: {
     fontSize: 12,
     fontWeight: "700",
-    color: "#374151",
-    textTransform: "uppercase",
+    letterSpacing: 0.4,
+    color: COLORS.textSecondary,
   },
-  metricValue: {
+  quickAddList: {
+    gap: 8,
+  },
+  quickAddChip: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  quickAddChipText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: COLORS.textPrimary,
+  },
+  quickAddChipMeta: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    fontWeight: "600",
+  },
+  sheetActionsRow: {
+    marginTop: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  bigMicButton: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: COLORS.textPrimary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sendButton: {
+    flex: 1,
+    borderRadius: 12,
+    backgroundColor: COLORS.textPrimary,
+    minHeight: 52,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sendButtonDisabled: {
+    opacity: 0.4,
+  },
+  sendButtonText: {
+    color: COLORS.bg,
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  processingTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: COLORS.textPrimary,
+  },
+  processingBody: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+  },
+  recordingPill: {
+    borderRadius: 999,
+    backgroundColor: "rgba(255,59,48,0.12)",
+    color: COLORS.error,
+    fontSize: 13,
+    fontWeight: "700",
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+  },
+  recordingTime: {
+    fontSize: 32,
+    fontWeight: "800",
+    color: COLORS.textPrimary,
+    letterSpacing: -0.8,
+  },
+  recordingActions: {
+    marginTop: 8,
+    flexDirection: "row",
+    gap: 10,
+  },
+  interpretingHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  voiceTranscriptInput: {
+    minHeight: 90,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: COLORS.textPrimary,
+    fontSize: 15,
+    textAlignVertical: "top",
+  },
+  interpretingActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  primaryActionButton: {
+    borderRadius: 12,
+    backgroundColor: COLORS.textPrimary,
+    paddingHorizontal: 14,
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  primaryActionText: {
+    color: COLORS.bg,
     fontSize: 14,
     fontWeight: "700",
-    color: "#111827",
   },
-  progressTrack: {
-    height: 6,
-    borderRadius: 999,
-    overflow: "hidden",
-    backgroundColor: "#E5E7EB",
-  },
-  progressFill: {
-    height: "100%",
-    borderRadius: 999,
-  },
-  twoCol: {
-    flexDirection: "row",
-    gap: 8,
-  },
-  miniCard: {
-    flex: 1,
-    borderRadius: 10,
-    backgroundColor: "#FFFFFF",
+  secondaryActionButton: {
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
-    padding: 10,
-    gap: 6,
-  },
-  tabRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  tabChip: {
-    borderRadius: 999,
-    backgroundColor: "#E5E7EB",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  tabChipActive: {
-    backgroundColor: "#111827",
-  },
-  tabText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#111827",
-  },
-  tabTextActive: {
-    color: "#FFFFFF",
-  },
-  trendRow: {
-    flexDirection: "row",
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+    paddingHorizontal: 14,
+    minHeight: 44,
     alignItems: "center",
-    gap: 8,
+    justifyContent: "center",
   },
-  trendDay: {
-    width: 34,
-    fontSize: 12,
-    color: "#4B5563",
+  secondaryActionText: {
+    color: COLORS.textPrimary,
+    fontSize: 14,
     fontWeight: "600",
   },
-  trendBarTrack: {
-    flex: 1,
-    height: 8,
-    borderRadius: 999,
-    backgroundColor: "#E5E7EB",
-    overflow: "hidden",
-  },
-  trendBarFill: {
-    height: "100%",
-  },
-  trendValue: {
-    minWidth: 74,
-    textAlign: "right",
-    fontSize: 12,
-    color: "#111827",
-    fontWeight: "600",
-  },
-  listRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
+  tertiaryActionButton: {
+    minHeight: 40,
+    justifyContent: "center",
     alignItems: "center",
-    gap: 8,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 10,
-    padding: 10,
-  },
-  listMain: {
-    flex: 1,
-    gap: 4,
-  },
-  listTitle: {
-    fontSize: 13,
-    color: "#111827",
-    fontWeight: "700",
-  },
-  listValue: {
-    fontSize: 12,
-    color: "#111827",
-    fontWeight: "700",
-  },
-  chips: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  chip: {
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    backgroundColor: "#E5E7EB",
-  },
-  chipText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#111827",
-  },
-  eventCard: {
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 10,
-    padding: 10,
-    gap: 4,
-  },
-  eventHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 8,
-  },
-  badge: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#111827",
-    backgroundColor: "#E5E7EB",
     paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 999,
+    alignSelf: "center",
   },
-  timestamp: {
-    fontSize: 11,
-    color: "#6B7280",
-  },
-  eventText: {
-    fontSize: 13,
-    color: "#111827",
+  tertiaryActionText: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
     fontWeight: "600",
   },
-  eventSystemText: {
-    fontSize: 12,
-    color: "#374151",
+  errorTitle: {
+    fontSize: 22,
+    fontWeight: "700",
+    color: COLORS.textPrimary,
+  },
+  errorBody: {
+    marginTop: -2,
+    fontSize: 14,
+    color: COLORS.textSecondary,
+  },
+  errorDetail: {
+    fontSize: 13,
+    color: COLORS.error,
+    fontWeight: "600",
+  },
+  toastWrap: {
+    position: "absolute",
+    bottom: 136,
+    alignSelf: "center",
+    backgroundColor: COLORS.textPrimary,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  toastText: {
+    fontSize: 13,
+    color: COLORS.bg,
+    fontWeight: "700",
   },
 });
