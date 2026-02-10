@@ -350,9 +350,9 @@ function MiniStepsRing({ current, goal }: { current: number; goal: number }) {
 
 function WeightSparkline() {
   return (
-    <Svg width={44} height={24} viewBox="0 0 44 24" fill="none">
-      <Path d="M2 6L9 8L16 5L23 9L30 11L37 15L42 18" stroke={COLORS.weight} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
-      <SvgCircle cx={42} cy={18} r={2.2} fill={COLORS.weight} />
+    <Svg width={44} height={40} viewBox="0 0 44 40" fill="none">
+      <Path d="M2 12L8 14L15 11L22 16L29 18L36 22L42 26" stroke={COLORS.weight} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
+      <SvgCircle cx={42} cy={26} r={2.4} fill={COLORS.weight} />
     </Svg>
   );
 }
@@ -1334,7 +1334,9 @@ export default function DashboardScreen() {
                   <MiniStepsRing current={todaySteps} goal={todayStepsGoal} />
                 </View>
                 <Text style={styles.metricMainValue}>{todaySteps.toLocaleString()}</Text>
-                <Text style={styles.metricSubValue}>of {todayStepsGoal.toLocaleString()}</Text>
+                <View style={styles.metricSubRow}>
+                  <Text style={styles.metricSubValue}>of {todayStepsGoal.toLocaleString()}</Text>
+                </View>
               </View>
 
               <View style={styles.metricCard}>
@@ -1342,11 +1344,13 @@ export default function DashboardScreen() {
                   <Text style={styles.metricLabel}>WEIGHT</Text>
                   <WeightSparkline />
                 </View>
-                <Text style={styles.metricMainValue}>
-                  {recentWeight == null ? "--" : recentWeight.toFixed(1)}
-                  <Text style={styles.metricUnit}> kg</Text>
-                </Text>
-                <View style={styles.weightMetaRow}>
+                <View style={styles.metricValueRow}>
+                  <Text style={styles.metricMainValue}>
+                    {recentWeight == null ? "--" : recentWeight.toFixed(1)}
+                  </Text>
+                  <Text style={styles.metricUnit}>kg</Text>
+                </View>
+                <View style={styles.metricSubRow}>
                   <Text style={styles.metricSubValue}>goal: {DEFAULT_WEIGHT_GOAL} kg</Text>
                   {weightDelta != null ? (
                     <Text style={[styles.weightDelta, weightDelta <= 0 ? styles.weightDeltaGood : styles.weightDeltaBad]}>
@@ -1665,6 +1669,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    minHeight: 40,
   },
   metricLabel: {
     fontSize: 13,
@@ -1677,22 +1682,30 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     letterSpacing: -0.5,
     color: COLORS.textPrimary,
-    lineHeight: 24,
+    lineHeight: 30,
+  },
+  metricValueRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 4,
   },
   metricUnit: {
     fontSize: 14,
     color: COLORS.textSecondary,
     fontWeight: "500",
+    lineHeight: 22,
+    marginBottom: 2,
   },
   metricSubValue: {
     fontSize: 13,
     color: COLORS.textTertiary,
     fontWeight: "500",
   },
-  weightMetaRow: {
+  metricSubRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    minHeight: 20,
   },
   weightDelta: {
     fontSize: 12,
