@@ -71,11 +71,31 @@ await page.getByTestId("cc-send").click();
 await page.getByTestId("cc-sheet-cc_submitting_typed").waitFor({ timeout: 4000 });
 await shot("04-cc-submitting-typed");
 
-await page.getByTestId("cc-sheet-cc_auto_saving").waitFor({ timeout: 5000 });
+await Promise.race([
+  page.getByTestId("cc-sheet-cc_review_meal").waitFor({ timeout: 6000 }),
+  page.getByTestId("cc-sheet-cc_review_workout").waitFor({ timeout: 6000 }),
+]);
+await shot("05-cc-review-state");
+
+await page.getByTestId("cc-review-save").click();
+await Promise.race([
+  page.getByTestId("cc-sheet-cc_saving").waitFor({ timeout: 5000 }),
+  page.getByTestId("cc-sheet-cc_auto_saving").waitFor({ timeout: 5000 }),
+]);
 await shot("05-cc-auto-saving");
 
 await page.getByTestId("cc-collapsed-open").waitFor({ timeout: 7000 });
 await shot("06-home-after-typed-save");
+
+await reloadWithFlags("hold_typed_submit");
+await openExpandedEmpty();
+await page.getByTestId("cc-input-text").fill("Bench press 80kg for 10 reps");
+await page.getByTestId("cc-send").click();
+await page.getByTestId("cc-sheet-cc_submitting_typed").waitFor({ timeout: 4000 });
+await page.getByTestId("cc-sheet-cc_review_workout").waitFor({ timeout: 6000 });
+await shot("06b-cc-review-workout");
+await page.getByTestId("cc-review-save").click();
+await page.getByTestId("cc-collapsed-open").waitFor({ timeout: 7000 });
 
 await openExpandedAny();
 await page.getByTestId("cc-quick-add-0").click();
@@ -118,6 +138,11 @@ await reloadWithFlags("save_fail");
 await openExpandedEmpty();
 await page.getByTestId("cc-input-text").fill("I had oats for breakfast");
 await page.getByTestId("cc-send").click();
+await Promise.race([
+  page.getByTestId("cc-sheet-cc_review_meal").waitFor({ timeout: 6000 }),
+  page.getByTestId("cc-sheet-cc_review_workout").waitFor({ timeout: 6000 }),
+]);
+await page.getByTestId("cc-review-save").click();
 await page.getByTestId("cc-sheet-cc_error").waitFor({ timeout: 6000 });
 await shot("14-cc-error-save");
 

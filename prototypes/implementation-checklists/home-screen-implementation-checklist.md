@@ -2,7 +2,7 @@
 
 - Last updated: 2026-02-10
 - Scope: Home screen + embedded Command Center behavior on Home
-- Status: In execution (Home implementation complete for v1; analytics + iOS QA + asset-source parity pending)
+- Status: In execution (Home implementation in progress for v2 review-state parity; analytics + iOS QA + asset-source parity pending)
 - Canonical references:
   - `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/interaction-specs/home-interaction-spec.md`
   - `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/interaction-specs/command-center-interaction-spec.md`
@@ -54,15 +54,16 @@
 - [x] Enforce send disabled for empty/whitespace input.
 - [x] Persist typed draft while in expanded states and across typed-interpret failure.
 
-## 5) Typed flow (no review screen)
+## 5) Typed flow (interpret -> review -> save)
 
 - [x] `tap_send_typed` transitions `cc_expanded_typing` -> `cc_submitting_typed`.
 - [x] Call typed interpretation service from `cc_submitting_typed`.
-- [x] On interpret success, transition to `cc_auto_saving` directly (no review state).
+- [x] On meal/workout interpret success, transition to `cc_review_meal`/`cc_review_workout`.
+- [x] Keep explicit user confirmation before save from review states.
 - [x] On interpret failure, transition to `cc_error` with `typed_interpret_failure` subtype.
 - [x] Preserve typed text for `Retry typed` and `Edit text` actions.
 
-## 6) Voice flow (record -> interpret-with-edit -> autosave)
+## 6) Voice flow (record -> interpret-with-edit -> review -> save)
 
 - [x] Wire mic entry from collapsed and expanded states to `cc_recording`.
 - [x] On first voice use, request mic permission; denied path goes to `cc_error` subtype `mic_permission_denied`.
@@ -70,13 +71,14 @@
 - [x] While interpreting, support `Edit text` that restarts interpretation.
 - [x] While interpreting, support `Retry voice` to return to fresh recording.
 - [x] While interpreting, support `Discard` to close command center.
-- [x] On voice interpret success, transition to `cc_auto_saving`.
+- [x] On meal/workout interpret success, transition to `cc_review_meal`/`cc_review_workout`.
+- [x] `tap_save_review` transitions review states to `cc_saving`.
 - [x] On voice interpret failure, transition to `cc_error` subtype `voice_interpret_failure`.
 
 ## 7) Save + quick add + refresh behavior
 
 - [x] Implement `cc_quick_add_saving` from quick-add row taps.
-- [ ] Successful `cc_auto_saving` and `cc_quick_add_saving` both:
+- [ ] Successful `cc_saving` and `cc_quick_add_saving` both:
   - [x] close overlays to `cc_collapsed`
   - [x] trigger Home data refresh
   - [x] show success toast
@@ -127,7 +129,7 @@
   - `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/interaction-specs/diagrams/command-center-voice-interpret-flow.png`
   - `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/interaction-specs/diagrams/command-center-error-flow.png`
 - [x] Confirm no screen includes emoji meal thumbnails.
-- [x] Confirm no typed path enters manual review screens.
+- [x] Confirm meal/workout typed and voice paths enter review states before save.
 - [x] Confirm Home refresh always follows successful command-center save.
 
 ## 11) Definition of done
@@ -143,16 +145,18 @@
 - Completed in code:
   - Home layout and major visual sections in `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/app/(tabs)/dashboard.tsx`
   - Home data states (`home_loading`, `home_ready`, `home_refreshing`, blocking-error branch) and trend/day interactions
-  - Command center states (`cc_collapsed`, `cc_expanded_empty`, `cc_expanded_typing`, `cc_submitting_typed`, `cc_recording`, `cc_interpreting_voice`, `cc_auto_saving`, `cc_quick_add_saving`, `cc_error`)
-  - Typed and voice paths both save via direct auto-save (no manual review state)
+  - Command center states (`cc_collapsed`, `cc_expanded_empty`, `cc_expanded_typing`, `cc_submitting_typed`, `cc_recording`, `cc_interpreting_voice`, `cc_review_meal`, `cc_review_workout`, `cc_saving`, `cc_quick_add_saving`, `cc_error`)
+  - Typed and voice meal/workout paths route through explicit review screens before save
   - Error copy/CTA mapping wired to locked subtype contract
 - Captured implementation screenshots:
   - `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/output/playwright/home-states/01-home-collapsed.png`
   - `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/output/playwright/home-states/02-cc-expanded-empty.png`
   - `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/output/playwright/home-states/03-cc-expanded-typing.png`
   - `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/output/playwright/home-states/04-cc-submitting-typed.png`
+  - `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/output/playwright/home-states/05-cc-review-state.png`
   - `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/output/playwright/home-states/05-cc-auto-saving.png`
   - `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/output/playwright/home-states/06-home-after-typed-save.png`
+  - `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/output/playwright/home-states/06b-cc-review-workout.png`
   - `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/output/playwright/home-states/07-cc-quick-add-saving.png`
   - `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/output/playwright/home-states/08-home-after-quick-add.png`
   - `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/output/playwright/home-states/09-cc-recording.png`

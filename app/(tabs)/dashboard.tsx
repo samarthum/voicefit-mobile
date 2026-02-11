@@ -38,6 +38,9 @@ type CommandState =
   | "cc_submitting_typed"
   | "cc_recording"
   | "cc_interpreting_voice"
+  | "cc_review_meal"
+  | "cc_review_workout"
+  | "cc_saving"
   | "cc_auto_saving"
   | "cc_quick_add_saving"
   | "cc_error";
@@ -81,6 +84,49 @@ type SaveAction =
       kind: "quick_add";
       item: QuickAddItem;
     };
+
+interface MealReviewIngredient {
+  id: string;
+  name: string;
+  quantity: string;
+  calories: number;
+}
+
+interface MealReviewDraft {
+  kind: "meal";
+  interpreted: Extract<InterpretEntryResponse, { intent: "meal" }>;
+  transcript: string;
+  source: EntrySource;
+  confidence: number;
+  eatenAtLabel: string;
+  ingredients: MealReviewIngredient[];
+  macros: {
+    protein: number;
+    carbs: number;
+    fat: number;
+  };
+}
+
+interface WorkoutReviewSet {
+  id: string;
+  setNumber: number;
+  weightKg: string;
+  reps: string;
+  notes: string;
+}
+
+interface WorkoutReviewDraft {
+  kind: "workout";
+  interpreted: Extract<InterpretEntryResponse, { intent: "workout_set" }>;
+  transcript: string;
+  source: EntrySource;
+  confidence: number;
+  exerciseTypeLabel: string;
+  sessionLabel: string;
+  sets: WorkoutReviewSet[];
+}
+
+type ReviewDraft = MealReviewDraft | WorkoutReviewDraft;
 
 const COLORS = {
   bg: "#FFFFFF",
@@ -151,6 +197,118 @@ function formatRecordingDuration(totalSeconds: number) {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+function formatClockTime(value: Date) {
+  return value.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+}
+
+function confidenceLabel(confidence: number) {
+  if (confidence >= 0.9) return "High confidence";
+  if (confidence >= 0.75) return "Medium confidence";
+  return "Low confidence";
+}
+
+function parsePositiveNumber(value: string) {
+  const num = Number(value.trim());
+  if (!Number.isFinite(num) || num <= 0) return null;
+  return num;
+}
+
+function mealIngredientQuantity(name: string) {
+  const lower = name.toLowerCase();
+  if (lower.includes("chicken")) return "150g";
+  if (lower.includes("rice")) return "200g";
+  if (lower.includes("salad") || lower.includes("greens")) return "90g";
+  if (lower.includes("oat")) return "80g";
+  if (lower.includes("salmon")) return "140g";
+  return "1 serving";
+}
+
+function splitMealIngredients(description: string) {
+  const cleaned = description
+    .replace(/&/g, " and ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const parts = cleaned
+    .split(/,| and /i)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length === 0) return [description.trim() || "Meal"];
+  return parts.slice(0, 4);
+}
+
+function buildMealReviewDraft(
+  interpreted: Extract<InterpretEntryResponse, { intent: "meal" }>,
+  transcript: string,
+  source: EntrySource
+): MealReviewDraft {
+  const totalCalories = Math.max(80, interpreted.payload.calories);
+  const ingredientNames = splitMealIngredients(interpreted.payload.description);
+  const ingredientCount = ingredientNames.length;
+  const perIngredient = Math.max(20, Math.floor(totalCalories / ingredientCount));
+  const remainder = totalCalories - perIngredient * ingredientCount;
+
+  const ingredients: MealReviewIngredient[] = ingredientNames.map((name, index) => ({
+    id: `${name}-${index}`,
+    name: name.charAt(0).toUpperCase() + name.slice(1),
+    quantity: mealIngredientQuantity(name),
+    calories: perIngredient + (index === ingredientCount - 1 ? remainder : 0),
+  }));
+
+  const protein = Math.round((totalCalories * 0.32) / 4);
+  const carbs = Math.round((totalCalories * 0.46) / 4);
+  const fat = Math.max(1, Math.round((totalCalories * 0.22) / 9));
+
+  return {
+    kind: "meal",
+    interpreted,
+    transcript,
+    source,
+    confidence: interpreted.payload.confidence,
+    eatenAtLabel: formatClockTime(new Date()),
+    ingredients,
+    macros: { protein, carbs, fat },
+  };
+}
+
+function parseWorkoutSetsFromTranscript(transcript: string) {
+  const matches = [...transcript.matchAll(/(\d+(?:\.\d+)?)\s*(?:kg|kgs?|kilograms?)\s*(?:for|x)\s*(\d+)/gi)];
+  return matches.slice(0, 8).map((match, index) => ({
+    id: `set-${index + 1}`,
+    setNumber: index + 1,
+    weightKg: match[1],
+    reps: match[2],
+    notes: "",
+  }));
+}
+
+function buildWorkoutReviewDraft(
+  interpreted: Extract<InterpretEntryResponse, { intent: "workout_set" }>,
+  transcript: string,
+  source: EntrySource
+): WorkoutReviewDraft {
+  const parsedSets = parseWorkoutSetsFromTranscript(transcript);
+  const fallbackSet: WorkoutReviewSet = {
+    id: "set-1",
+    setNumber: 1,
+    weightKg: interpreted.payload.weightKg == null ? "" : String(interpreted.payload.weightKg),
+    reps: interpreted.payload.reps == null ? "" : String(interpreted.payload.reps),
+    notes: interpreted.payload.notes ?? "",
+  };
+
+  const sets = parsedSets.length ? parsedSets : [fallbackSet];
+
+  return {
+    kind: "workout",
+    interpreted,
+    transcript,
+    source,
+    confidence: interpreted.payload.confidence,
+    exerciseTypeLabel: interpreted.payload.exerciseType === "resistance" ? "BARBELL" : "CARDIO",
+    sessionLabel: interpreted.payload.exerciseType === "resistance" ? "Morning Push" : "Cardio Session",
+    sets,
+  };
 }
 
 function getErrorMessage(error: unknown) {
@@ -269,6 +427,20 @@ function PlusGlyph({ color = COLORS.textSecondary }: { color?: string }) {
     <Svg width={12} height={12} viewBox="0 0 12 12" fill="none">
       <Path d="M6 1V11" stroke={color} strokeWidth={2} strokeLinecap="round" />
       <Path d="M1 6H11" stroke={color} strokeWidth={2} strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+function CheckGlyph({ color = "#FFFFFF" }: { color?: string }) {
+  return (
+    <Svg width={16} height={16} viewBox="0 0 16 16" fill="none">
+      <Path
+        d="M13.2 3.8L6.2 12.2L2.8 8.8"
+        stroke={color}
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </Svg>
   );
 }
@@ -599,6 +771,7 @@ export default function DashboardScreen() {
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [isInterpretingVoice, setIsInterpretingVoice] = useState(false);
+  const [reviewDraft, setReviewDraft] = useState<ReviewDraft | null>(null);
 
   const [commandToast, setCommandToast] = useState<string | null>(null);
   const [commandErrorSubtype, setCommandErrorSubtype] = useState<CommandErrorSubtype>(null);
@@ -755,6 +928,7 @@ export default function DashboardScreen() {
     setCommandErrorSubtype(null);
     setCommandErrorDetail(null);
     setIsInterpretingVoice(false);
+    setReviewDraft(null);
   };
 
   const openCommandCenter = () => {
@@ -783,7 +957,7 @@ export default function DashboardScreen() {
     pendingSaveRef.current = action;
     setCommandErrorSubtype(null);
     setCommandErrorDetail(null);
-    setCommandState(action.kind === "quick_add" ? "cc_quick_add_saving" : "cc_auto_saving");
+    setCommandState(action.kind === "quick_add" ? "cc_quick_add_saving" : "cc_saving");
 
     try {
       if (isWebPreview) {
@@ -898,6 +1072,31 @@ export default function DashboardScreen() {
     }
   };
 
+  const routeInterpretedEntry = async (
+    interpreted: InterpretEntryResponse,
+    transcript: string,
+    source: EntrySource
+  ) => {
+    if (interpreted.intent === "meal") {
+      setReviewDraft(buildMealReviewDraft(interpreted, transcript, source));
+      setCommandState("cc_review_meal");
+      return;
+    }
+
+    if (interpreted.intent === "workout_set") {
+      setReviewDraft(buildWorkoutReviewDraft(interpreted, transcript, source));
+      setCommandState("cc_review_workout");
+      return;
+    }
+
+    await runSaveAction({
+      kind: "entry",
+      interpreted,
+      transcript,
+      source,
+    });
+  };
+
   const interpretEntry = async (transcript: string, source: EntrySource) => {
     if (isWebPreview) {
       if (source === "text" && hasWebPreviewFlag("typed_fail")) {
@@ -968,12 +1167,7 @@ export default function DashboardScreen() {
         await new Promise((resolve) => setTimeout(resolve, 900));
       }
       const interpreted = await interpretEntry(transcript, "text");
-      await runSaveAction({
-        kind: "entry",
-        interpreted,
-        transcript,
-        source: "text",
-      });
+      await routeInterpretedEntry(interpreted, transcript, "text");
     } catch (error) {
       setCommandError("typed_interpret_failure", getErrorMessage(error));
     }
@@ -993,12 +1187,7 @@ export default function DashboardScreen() {
 
     try {
       const interpreted = await interpretEntry(transcript, "voice");
-      await runSaveAction({
-        kind: "entry",
-        interpreted,
-        transcript,
-        source: "voice",
-      });
+      await routeInterpretedEntry(interpreted, transcript, "voice");
     } catch (error) {
       setCommandError("voice_interpret_failure", getErrorMessage(error));
     } finally {
@@ -1108,6 +1297,83 @@ export default function DashboardScreen() {
     } finally {
       setIsInterpretingVoice(false);
     }
+  };
+
+  const updateWorkoutSet = (
+    setIndex: number,
+    nextPatch: Partial<Pick<WorkoutReviewSet, "weightKg" | "reps" | "notes">>
+  ) => {
+    setReviewDraft((prev) => {
+      if (!prev || prev.kind !== "workout") return prev;
+      const nextSets = prev.sets.map((set, index) =>
+        index === setIndex ? { ...set, ...nextPatch } : set
+      );
+      return { ...prev, sets: nextSets };
+    });
+  };
+
+  const addWorkoutSet = () => {
+    setReviewDraft((prev) => {
+      if (!prev || prev.kind !== "workout") return prev;
+      const nextIndex = prev.sets.length + 1;
+      return {
+        ...prev,
+        sets: [
+          ...prev.sets,
+          {
+            id: `set-${nextIndex}`,
+            setNumber: nextIndex,
+            weightKg: "",
+            reps: "",
+            notes: "",
+          },
+        ],
+      };
+    });
+  };
+
+  const saveReviewedEntry = async () => {
+    if (!reviewDraft) return;
+
+    if (reviewDraft.kind === "workout") {
+      const firstFilledSet = reviewDraft.sets.find(
+        (set) => set.weightKg.trim() || set.reps.trim() || set.notes.trim()
+      );
+      const sourceSet = firstFilledSet ?? reviewDraft.sets[0];
+
+      const nextPayload = {
+        ...reviewDraft.interpreted.payload,
+        weightKg: parsePositiveNumber(sourceSet.weightKg),
+        reps: parsePositiveNumber(sourceSet.reps),
+        notes: sourceSet.notes.trim() || reviewDraft.interpreted.payload.notes,
+      };
+
+      await runSaveAction({
+        kind: "entry",
+        interpreted: {
+          ...reviewDraft.interpreted,
+          payload: nextPayload,
+        },
+        transcript: reviewDraft.transcript,
+        source: reviewDraft.source,
+      });
+      return;
+    }
+
+    await runSaveAction({
+      kind: "entry",
+      interpreted: reviewDraft.interpreted,
+      transcript: reviewDraft.transcript,
+      source: reviewDraft.source,
+    });
+  };
+
+  const editReviewTranscript = () => {
+    if (!reviewDraft) return;
+    setCommandText(reviewDraft.transcript);
+    setVoiceTranscript(reviewDraft.transcript);
+    setReviewDraft(null);
+    setCommandState(reviewDraft.transcript.trim() ? "cc_expanded_typing" : "cc_expanded_empty");
   };
 
   const handleErrorPrimary = async () => {
@@ -1340,14 +1606,16 @@ export default function DashboardScreen() {
       return (
         <View style={styles.sheetContent}>
           <View style={styles.interpretingHeader}>
-            <Text style={styles.sheetTitle}>Interpreting...</Text>
-            <View style={styles.interpretingHeaderRight}>
-              {isInterpretingVoice ? <ActivityIndicator color={COLORS.black} /> : null}
-              <Pressable style={styles.sheetCloseCircle} onPress={closeCommandCenter} testID="cc-interpreting-discard">
-                <CloseGlyph />
-              </Pressable>
+            <View style={styles.interpretingHeaderSide} />
+            <View style={styles.interpretingTitleRow}>
+              {isInterpretingVoice ? <ActivityIndicator color={COLORS.black} size="small" /> : null}
+              <Text style={styles.sheetTitle}>Interpreting...</Text>
             </View>
+            <Pressable style={styles.sheetCloseCircle} onPress={closeCommandCenter} testID="cc-interpreting-close">
+              <CloseGlyph />
+            </Pressable>
           </View>
+          <View style={styles.interpretingDivider} />
 
           <TextInput
             style={styles.voiceTranscriptInput}
@@ -1372,7 +1640,7 @@ export default function DashboardScreen() {
             <Pressable style={styles.secondaryActionButton} onPress={() => void startRecording()} testID="cc-interpreting-retry-voice">
               <Text style={styles.secondaryActionText}>Retry voice</Text>
             </Pressable>
-            <Pressable style={styles.primaryActionButton} onPress={closeCommandCenter}>
+            <Pressable style={styles.primaryActionButton} onPress={closeCommandCenter} testID="cc-interpreting-discard">
               <Text style={styles.primaryActionText}>Discard</Text>
             </Pressable>
           </View>
@@ -1380,7 +1648,235 @@ export default function DashboardScreen() {
       );
     }
 
-    if (commandState === "cc_auto_saving" || commandState === "cc_quick_add_saving") {
+    if (commandState === "cc_review_meal" && reviewDraft?.kind === "meal") {
+      const meal = reviewDraft.interpreted.payload;
+      const confidence = confidenceLabel(reviewDraft.confidence);
+      return (
+        <ScrollView
+          style={styles.reviewScroll}
+          contentContainerStyle={styles.reviewContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.reviewHeader}>
+            <Text style={styles.sheetTitle}>Review Meal</Text>
+            <Pressable style={styles.sheetCloseCircle} onPress={closeCommandCenter} testID="cc-review-close">
+              <CloseGlyph />
+            </Pressable>
+          </View>
+
+          <View style={styles.reviewTranscriptCard}>
+            <Text style={styles.reviewTranscriptLabel}>YOU SAID</Text>
+            <Text style={styles.reviewTranscriptText}>{reviewDraft.transcript}</Text>
+            <Pressable
+              style={styles.reviewTranscriptEditWrap}
+              onPress={editReviewTranscript}
+              testID="cc-review-edit-transcript"
+            >
+              <Text style={styles.reviewTranscriptEdit}>Edit</Text>
+            </Pressable>
+          </View>
+
+          <View style={styles.reviewConfidencePill}>
+            <View style={styles.reviewConfidenceDot} />
+            <Text style={styles.reviewConfidenceText}>{confidence}</Text>
+          </View>
+
+          <View style={styles.mealReviewCard}>
+            <View style={styles.mealReviewHeader}>
+              <Text style={styles.mealReviewTitle}>{meal.description}</Text>
+              <View style={styles.mealTypeBadge}>
+                <Text style={styles.mealTypeBadgeText}>{meal.mealType.toUpperCase()}</Text>
+              </View>
+            </View>
+
+            <View style={styles.mealCaloriesHero}>
+              <Text style={styles.mealCaloriesValue}>{meal.calories}</Text>
+              <Text style={styles.mealCaloriesLabel}>calories</Text>
+            </View>
+
+            <View style={styles.mealMacrosRow}>
+              <View style={styles.mealMacroCell}>
+                <Text style={styles.mealMacroValue}>{reviewDraft.macros.protein}g</Text>
+                <Text style={styles.mealMacroLabel}>PROTEIN</Text>
+              </View>
+              <View style={styles.mealMacroCell}>
+                <Text style={styles.mealMacroValue}>{reviewDraft.macros.carbs}g</Text>
+                <Text style={styles.mealMacroLabel}>CARBS</Text>
+              </View>
+              <View style={styles.mealMacroCell}>
+                <Text style={styles.mealMacroValue}>{reviewDraft.macros.fat}g</Text>
+                <Text style={styles.mealMacroLabel}>FAT</Text>
+              </View>
+            </View>
+
+            <View style={styles.mealIngredientsSection}>
+              <View style={styles.mealIngredientsHeader}>
+                <Text style={styles.mealIngredientsTitle}>INGREDIENTS</Text>
+                <Text style={styles.mealIngredientsAction}>+ Add Item</Text>
+              </View>
+              {reviewDraft.ingredients.map((ingredient) => (
+                <View key={ingredient.id} style={styles.mealIngredientRow}>
+                  <View style={styles.mealIngredientLeft}>
+                    <Text style={styles.mealIngredientName}>{ingredient.name}</Text>
+                    <View style={styles.mealIngredientQtyChip}>
+                      <Text style={styles.mealIngredientQty}>{ingredient.quantity}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.mealIngredientRight}>
+                    <Text style={styles.mealIngredientCal}>{ingredient.calories} cal</Text>
+                    <Text style={styles.mealIngredientChevron}>›</Text>
+                  </View>
+                </View>
+              ))}
+
+              <View style={styles.mealTimeRow}>
+                <Text style={styles.mealTimeLabel}>Eaten at</Text>
+                <View style={styles.mealTimeValueWrap}>
+                  <Text style={styles.mealTimeValue}>{reviewDraft.eatenAtLabel}</Text>
+                  <Text style={styles.mealIngredientChevron}>›</Text>
+                </View>
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.reviewActions}>
+            <Pressable style={styles.reviewSecondaryButton} onPress={closeCommandCenter} testID="cc-review-discard">
+              <Text style={styles.reviewSecondaryText}>Discard</Text>
+            </Pressable>
+            <Pressable style={styles.reviewPrimaryButton} onPress={() => void saveReviewedEntry()} testID="cc-review-save">
+              <View style={styles.reviewPrimaryContent}>
+                <CheckGlyph />
+                <Text style={styles.reviewPrimaryText}>Save Meal</Text>
+              </View>
+            </Pressable>
+          </View>
+        </ScrollView>
+      );
+    }
+
+    if (commandState === "cc_review_workout" && reviewDraft?.kind === "workout") {
+      const workout = reviewDraft.interpreted.payload;
+      const confidence = confidenceLabel(reviewDraft.confidence);
+      return (
+        <ScrollView
+          style={styles.reviewScroll}
+          contentContainerStyle={styles.reviewContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.reviewHeader}>
+            <Text style={styles.sheetTitle}>Review Workout</Text>
+            <Pressable style={styles.sheetCloseCircle} onPress={closeCommandCenter} testID="cc-review-close">
+              <CloseGlyph />
+            </Pressable>
+          </View>
+
+          <View style={styles.reviewTranscriptCard}>
+            <Text style={styles.reviewTranscriptLabel}>YOU SAID</Text>
+            <Text style={styles.reviewTranscriptText}>{reviewDraft.transcript}</Text>
+            <Pressable
+              style={styles.reviewTranscriptEditWrap}
+              onPress={editReviewTranscript}
+              testID="cc-review-edit-transcript"
+            >
+              <Text style={styles.reviewTranscriptEdit}>Edit</Text>
+            </Pressable>
+          </View>
+
+          <View style={styles.reviewConfidencePill}>
+            <View style={styles.reviewConfidenceDot} />
+            <Text style={styles.reviewConfidenceText}>{confidence}</Text>
+          </View>
+
+          <View style={styles.workoutReviewCard}>
+            <View style={styles.workoutHeaderWrap}>
+              <View style={styles.mealReviewHeader}>
+                <Text style={styles.mealReviewTitle}>{workout.exerciseName}</Text>
+                <View style={[styles.mealTypeBadge, styles.workoutTypeBadge]}>
+                  <Text style={[styles.mealTypeBadgeText, styles.workoutTypeBadgeText]}>
+                    {reviewDraft.exerciseTypeLabel}
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.workoutSetHeaderRow}>
+              <Text style={[styles.workoutSetHeaderText, styles.workoutSetHeaderSet]}>SET</Text>
+              <Text style={styles.workoutSetHeaderText}>KG</Text>
+              <Text style={styles.workoutSetHeaderText}>REPS</Text>
+              <Text style={styles.workoutSetHeaderText}>NOTES</Text>
+            </View>
+
+            {reviewDraft.sets.map((set, index) => (
+              <View key={set.id} style={styles.workoutSetRow}>
+                <View style={styles.workoutSetNumBadge}>
+                  <Text style={styles.workoutSetNumText}>{set.setNumber}</Text>
+                </View>
+                <TextInput
+                  style={styles.workoutSetInput}
+                  value={set.weightKg}
+                  onChangeText={(value) =>
+                    updateWorkoutSet(index, { weightKg: value.replace(/[^0-9.]/g, "") })
+                  }
+                  keyboardType="decimal-pad"
+                  placeholder="—"
+                  placeholderTextColor={COLORS.textTertiary}
+                  testID={`cc-review-workout-kg-${index}`}
+                />
+                <TextInput
+                  style={styles.workoutSetInput}
+                  value={set.reps}
+                  onChangeText={(value) =>
+                    updateWorkoutSet(index, { reps: value.replace(/[^0-9]/g, "") })
+                  }
+                  keyboardType="number-pad"
+                  placeholder="—"
+                  placeholderTextColor={COLORS.textTertiary}
+                  testID={`cc-review-workout-reps-${index}`}
+                />
+                <TextInput
+                  style={styles.workoutSetInput}
+                  value={set.notes}
+                  onChangeText={(value) => updateWorkoutSet(index, { notes: value })}
+                  placeholder="—"
+                  placeholderTextColor={COLORS.textTertiary}
+                  testID={`cc-review-workout-notes-${index}`}
+                />
+              </View>
+            ))}
+
+            <Pressable style={styles.workoutAddSetRow} onPress={addWorkoutSet} testID="cc-review-add-set">
+              <Text style={styles.workoutAddSetText}>+ Add Set</Text>
+            </Pressable>
+          </View>
+
+          <View style={styles.workoutSessionRow}>
+            <Text style={styles.workoutSessionLabel}>Add to session</Text>
+            <View style={styles.workoutSessionValueWrap}>
+              <Text style={styles.workoutSessionValue}>{reviewDraft.sessionLabel}</Text>
+              <Text style={styles.mealIngredientChevron}>›</Text>
+            </View>
+          </View>
+
+          <View style={styles.reviewActions}>
+            <Pressable style={styles.reviewSecondaryButton} onPress={closeCommandCenter} testID="cc-review-discard">
+              <Text style={styles.reviewSecondaryText}>Discard</Text>
+            </Pressable>
+            <Pressable style={styles.reviewPrimaryButton} onPress={() => void saveReviewedEntry()} testID="cc-review-save">
+              <View style={styles.reviewPrimaryContent}>
+                <CheckGlyph />
+                <Text style={styles.reviewPrimaryText}>Save Sets</Text>
+              </View>
+            </Pressable>
+          </View>
+        </ScrollView>
+      );
+    }
+
+    if (
+      commandState === "cc_saving" ||
+      commandState === "cc_auto_saving" ||
+      commandState === "cc_quick_add_saving"
+    ) {
       return (
         <View style={styles.sheetContentCentered}>
           <ActivityIndicator color={COLORS.black} />
@@ -2279,6 +2775,394 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  reviewScroll: {
+    maxHeight: 700,
+  },
+  reviewContent: {
+    paddingBottom: 8,
+  },
+  reviewHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 14,
+  },
+  reviewTranscriptCard: {
+    borderRadius: 14,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingTop: 11,
+    paddingHorizontal: 12,
+    paddingBottom: 12,
+    position: "relative",
+    marginBottom: 12,
+  },
+  reviewTranscriptLabel: {
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+    color: COLORS.textTertiary,
+    marginBottom: 6,
+  },
+  reviewTranscriptText: {
+    fontSize: 15,
+    lineHeight: 22,
+    color: COLORS.textPrimary,
+    paddingRight: 44,
+  },
+  reviewTranscriptEditWrap: {
+    position: "absolute",
+    top: 10,
+    right: 12,
+  },
+  reviewTranscriptEdit: {
+    color: COLORS.weight,
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  reviewConfidencePill: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderRadius: 999,
+    backgroundColor: "rgba(52,199,89,0.12)",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    marginBottom: 12,
+  },
+  reviewConfidenceDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: COLORS.steps,
+  },
+  reviewConfidenceText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: COLORS.steps,
+  },
+  mealReviewCard: {
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.bg,
+    padding: 14,
+    marginBottom: 14,
+  },
+  mealReviewHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    marginBottom: 12,
+  },
+  mealReviewTitle: {
+    flex: 1,
+    fontSize: 17,
+    fontWeight: "700",
+    color: COLORS.textPrimary,
+    letterSpacing: -0.2,
+  },
+  mealTypeBadge: {
+    borderRadius: 999,
+    backgroundColor: "rgba(255,149,0,0.12)",
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+  },
+  mealTypeBadgeText: {
+    color: COLORS.calories,
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 0.4,
+  },
+  mealCaloriesHero: {
+    alignItems: "center",
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  mealCaloriesValue: {
+    fontSize: 52,
+    fontWeight: "800",
+    color: COLORS.calories,
+    letterSpacing: -1.8,
+    lineHeight: 54,
+  },
+  mealCaloriesLabel: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: COLORS.textSecondary,
+  },
+  mealMacrosRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 14,
+  },
+  mealMacroCell: {
+    flex: 1,
+    borderRadius: 11,
+    backgroundColor: COLORS.surface,
+    paddingVertical: 9,
+    alignItems: "center",
+  },
+  mealMacroValue: {
+    fontSize: 24,
+    fontWeight: "700",
+    color: COLORS.textPrimary,
+    letterSpacing: -0.4,
+  },
+  mealMacroLabel: {
+    marginTop: 1,
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 0.3,
+    color: COLORS.textTertiary,
+  },
+  mealIngredientsSection: {
+    marginTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    paddingTop: 14,
+  },
+  mealIngredientsHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  mealIngredientsTitle: {
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+    color: COLORS.textTertiary,
+  },
+  mealIngredientsAction: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: COLORS.weight,
+  },
+  mealIngredientRow: {
+    minHeight: 50,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(0,0,0,0.06)",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  mealIngredientLeft: {
+    flex: 1,
+    gap: 2,
+    paddingRight: 10,
+  },
+  mealIngredientName: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: COLORS.textPrimary,
+  },
+  mealIngredientQty: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    fontWeight: "500",
+  },
+  mealIngredientQtyChip: {
+    alignSelf: "flex-start",
+    marginTop: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    backgroundColor: COLORS.surface,
+  },
+  mealIngredientRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  mealIngredientCal: {
+    fontSize: 15,
+    color: COLORS.calories,
+    fontWeight: "700",
+  },
+  mealIngredientChevron: {
+    fontSize: 18,
+    color: COLORS.textTertiary,
+    lineHeight: 18,
+  },
+  mealTimeRow: {
+    marginTop: 14,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  mealTimeLabel: {
+    fontSize: 15,
+    color: COLORS.textSecondary,
+    fontWeight: "500",
+  },
+  mealTimeValueWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  mealTimeValue: {
+    fontSize: 15,
+    color: COLORS.textPrimary,
+    fontWeight: "600",
+  },
+  workoutReviewCard: {
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.bg,
+    overflow: "hidden",
+    marginBottom: 14,
+  },
+  workoutHeaderWrap: {
+    paddingHorizontal: 14,
+    paddingTop: 14,
+    paddingBottom: 10,
+  },
+  workoutTypeBadge: {
+    backgroundColor: "rgba(175,82,222,0.12)",
+  },
+  workoutTypeBadgeText: {
+    color: "#AF52DE",
+  },
+  workoutSetHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingTop: 10,
+    paddingBottom: 8,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+  workoutSetHeaderText: {
+    flex: 1,
+    textAlign: "center",
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 0.3,
+    color: COLORS.textTertiary,
+  },
+  workoutSetHeaderSet: {
+    flex: 0,
+    width: 38,
+    textAlign: "left",
+  },
+  workoutSetRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(0,0,0,0.04)",
+  },
+  workoutSetNumBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 6,
+    backgroundColor: COLORS.surface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  workoutSetNumText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: COLORS.textPrimary,
+  },
+  workoutSetInput: {
+    flex: 1,
+    height: 36,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: "transparent",
+    backgroundColor: COLORS.surface,
+    fontSize: 15,
+    fontWeight: "600",
+    color: COLORS.textPrimary,
+    textAlign: "center",
+    paddingHorizontal: 6,
+  },
+  workoutAddSetRow: {
+    borderTopWidth: 1,
+    borderTopColor: "rgba(0,0,0,0.04)",
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  workoutAddSetText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: COLORS.weight,
+  },
+  workoutSessionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    paddingVertical: 14,
+    marginBottom: 12,
+  },
+  workoutSessionLabel: {
+    fontSize: 15,
+    color: COLORS.textSecondary,
+    fontWeight: "500",
+  },
+  workoutSessionValueWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  workoutSessionValue: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: COLORS.textPrimary,
+  },
+  reviewActions: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  reviewSecondaryButton: {
+    flex: 1,
+    minHeight: 50,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.bg,
+  },
+  reviewSecondaryText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: COLORS.textSecondary,
+  },
+  reviewPrimaryButton: {
+    flex: 2,
+    minHeight: 52,
+    borderRadius: 14,
+    backgroundColor: COLORS.textPrimary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  reviewPrimaryContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  reviewPrimaryText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: COLORS.bg,
+    letterSpacing: -0.2,
+  },
   processingTitle: {
     fontSize: 18,
     fontWeight: "700",
@@ -2414,35 +3298,46 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginBottom: 12,
   },
-  interpretingHeaderRight: {
+  interpretingHeaderSide: {
+    width: 32,
+  },
+  interpretingTitleRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    justifyContent: "center",
+    gap: 10,
+    flex: 1,
+  },
+  interpretingDivider: {
+    height: 1,
+    backgroundColor: COLORS.border,
+    marginBottom: 12,
   },
   voiceTranscriptInput: {
     minHeight: 96,
     borderRadius: 16,
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderColor: COLORS.border,
-    backgroundColor: COLORS.bg,
+    backgroundColor: COLORS.surface,
     paddingHorizontal: 16,
     paddingVertical: 14,
     color: COLORS.textPrimary,
     fontSize: 16,
-    lineHeight: 24,
+    lineHeight: 25,
     textAlignVertical: "top",
-    marginBottom: 12,
+    marginBottom: 14,
   },
   interpretingActions: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
   },
   primaryActionButton: {
-    borderRadius: 12,
+    borderRadius: 13,
     backgroundColor: COLORS.textPrimary,
-    paddingHorizontal: 14,
-    minHeight: 44,
+    paddingHorizontal: 18,
+    minHeight: 42,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -2452,14 +3347,15 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   secondaryActionButton: {
-    borderRadius: 12,
+    borderRadius: 13,
     borderWidth: 1,
     borderColor: COLORS.border,
-    backgroundColor: COLORS.surface,
-    paddingHorizontal: 14,
-    minHeight: 44,
+    backgroundColor: COLORS.bg,
+    paddingHorizontal: 16,
+    minHeight: 42,
     alignItems: "center",
     justifyContent: "center",
+    flexShrink: 1,
   },
   secondaryActionText: {
     color: COLORS.textPrimary,

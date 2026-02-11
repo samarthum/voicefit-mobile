@@ -1,6 +1,6 @@
 # VoiceFit Mobile UI Source of Truth
 
-- Last updated: 2026-02-10
+- Last updated: 2026-02-11
 - Owner: Product + Design + Eng handoff doc for all agents
 - Rule: This document is the canonical UI index. Every locked screen must link prototype, design decisions, assets, and interaction spec here.
 
@@ -16,9 +16,9 @@
 - Home vs prototype comparison screenshots: `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/output/playwright/compare/`
 - Interaction diagram registry: `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/interaction-specs/diagrams/README.md`
 
-## Current implementation status (2026-02-10)
+## Current implementation status (2026-02-11)
 - Home: implemented in mobile codebase (UI + command center state flows + error subtype handling), with visual comparison pass complete against prototype.
-- Command Center on Home: implemented with typed, voice, quick-add, auto-save, and recoverable error paths.
+- Command Center on Home: implemented with typed/voice review flows, quick-add save flow, and recoverable error paths.
 - Pending on Home: analytics instrumentation, iOS device QA pass, and strict asset-source parity (`coach-badge-premium.svg` + extracted inventory files in app runtime).
 
 ## Locked premium constraints (global)
@@ -38,7 +38,7 @@
 | Settings | Pending lock | `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/settings.html` | Pending | Pending |
 | Coach Chat | Pending lock | `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/coach.html` | Pending | Pending |
 | Auth (Sign In/Up) | Pending lock | `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/sign-in.html`, `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/sign-up-email.html` | Pending | Pending |
-| Voice Flow (Recording/Review) | Pending lock | `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/voice-recording.html`, `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/voice-review-meal.html`, `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/voice-review-workout.html` | Pending | Pending |
+| Voice Flow (Recording/Review) | `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/design-decisions.md` (Voice Flow States) | `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/voice-recording.html`, `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/voice-review-meal.html`, `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/voice-review-workout.html` | `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/output/playwright/home-states/` | `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/interaction-specs/command-center-interaction-spec.md` |
 
 ## Update protocol
 1. Lock UI in prototype + design decisions first.

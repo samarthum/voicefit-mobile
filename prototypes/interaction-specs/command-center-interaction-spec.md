@@ -1,8 +1,8 @@
-# Command Center Interaction + State Spec (v2)
+# Command Center Interaction + State Spec (v3)
 
 - Last updated: 2026-02-10
 - Screen: Command Center (cross-screen persistent control)
-- Status: Draft v2.1 (fast-path typed + voice, controls/copy locked)
+- Status: Draft v3.0 (review-state parity with meal/workout prototypes)
 - Owner: Product + Design + Eng
 
 ## Source links
@@ -11,6 +11,8 @@
 - Home implementation checklist: `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/implementation-checklists/home-screen-implementation-checklist.md`
 - Expanded command center prototype: `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/log.html`
 - Voice recording prototype: `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/voice-recording.html`
+- Review meal prototype: `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/voice-review-meal.html`
+- Review workout prototype: `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/voice-review-workout.html`
 
 ## Rendered diagram artifacts
 - Panel/open-close states (PNG): `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/interaction-specs/diagrams/command-center-panel-states.png`
@@ -24,6 +26,8 @@
 - Expanded empty: `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/output/playwright/home-states/02-cc-expanded-empty.png`
 - Expanded typing: `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/output/playwright/home-states/03-cc-expanded-typing.png`
 - Submitting typed: `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/output/playwright/home-states/04-cc-submitting-typed.png`
+- Review state: `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/output/playwright/home-states/05-cc-review-state.png`
+- Review workout state: `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/output/playwright/home-states/06b-cc-review-workout.png`
 - Auto-saving: `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/output/playwright/home-states/05-cc-auto-saving.png`
 - Quick-add saving: `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/output/playwright/home-states/07-cc-quick-add-saving.png`
 - Recording: `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/output/playwright/home-states/09-cc-recording.png`
@@ -35,24 +39,23 @@
 - Error quick add: `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/output/playwright/home-states/16-cc-error-quick-add.png`
 
 ## 0) Terminology (clarification)
-- `review_meal` / `review_workout`: legacy confirmation states where user manually reviews parsed details before save.
-- `review_saving`: legacy save-in-progress from those review states.
-- Decision in v2: typed flow bypasses review; voice flow shows transcript while interpreting and allows edit/interrupt. Default path is direct save after successful interpretation.
+- `cc_review_meal`: review and edit parsed meal details before save.
+- `cc_review_workout`: review and edit parsed workout details before save.
+- `cc_saving`: save-in-progress after review confirmation.
 
 ## 1) Purpose and scope
 Define exact behavior of the persistent Command Center so typed, voice, and quick-add actions are deterministic across Home, Workouts, Settings, and future screens.
 
 Included in scope:
 - Collapsed and expanded command center behaviors.
-- Typed command flow (no review step).
-- Voice command flow (record -> interpreting with editable transcript -> direct save).
+- Typed command flow (interpret -> review -> save for meal/workout intents).
+- Voice command flow (record -> interpret -> review -> save).
 - Quick add from recent items.
 - Error handling and retry behavior.
 
 Out of scope:
 - Detailed schema of meal/workout entities after save.
 - Detailed behavior of destination screens after navigation.
-- Legacy manual review screens (`review_meal`, `review_workout`) except as optional fallback future mode.
 
 ## 2) State model
 
@@ -65,7 +68,9 @@ Out of scope:
 ### 2.2 Voice/save states
 - `cc_recording`: listening, timer + waveform active.
 - `cc_interpreting_voice`: recording stopped; transcript shown while interpretation runs; user can edit/interrupt.
-- `cc_auto_saving`: automatic save in progress after successful interpretation.
+- `cc_review_meal`: parsed meal review card with save/discard.
+- `cc_review_workout`: parsed workout review card with save/discard.
+- `cc_saving`: save in progress after review confirmation.
 - `cc_quick_add_saving`: quick-add row save in progress.
 - `cc_error`: recoverable error state.
 
@@ -81,7 +86,7 @@ Out of scope:
 | `type_text(non_empty)` | `cc_expanded_empty` | `cc_expanded_typing` | Trimmed text length > 0 | Enable send button. |
 | `type_text(empty)` | `cc_expanded_typing` | `cc_expanded_empty` | Trimmed text length == 0 | Disable send button. |
 | `tap_send_typed` | `cc_expanded_typing` | `cc_submitting_typed` | Non-empty text | Interpret typed input. |
-| `typed_interpret_success` | `cc_submitting_typed` | `cc_auto_saving` | Parse class = meal/workout | Create final payload and save directly (no review). |
+| `typed_interpret_success` | `cc_submitting_typed` | `cc_review_meal` or `cc_review_workout` | Parse class = meal/workout | Populate review card and wait for explicit save. |
 | `typed_interpret_failure` | `cc_submitting_typed` | `cc_error` | Parse failed | Preserve typed draft for retry/edit. |
 
 ### 3.2 Voice transitions
@@ -93,7 +98,7 @@ Out of scope:
 | `mic_permission_denied` | `cc_collapsed` or `cc_expanded_empty` or `cc_expanded_typing` | `cc_error` | OS denied | Show permission recovery action. |
 | `stop_recording` | `cc_recording` | `cc_interpreting_voice` | Transcript available | Start interpretation and show transcript text. |
 | `edit_transcript` | `cc_interpreting_voice` | `cc_interpreting_voice` | User edits transcript text | Cancel/restart interpretation with edited transcript. |
-| `voice_interpret_success` | `cc_interpreting_voice` | `cc_auto_saving` | Parse class = meal/workout | Save directly after successful interpretation. |
+| `voice_interpret_success` | `cc_interpreting_voice` | `cc_review_meal` or `cc_review_workout` | Parse class = meal/workout | Populate review card and wait for explicit save. |
 | `voice_interpret_failure` | `cc_interpreting_voice` | `cc_error` | Interpret failed | Keep last transcript for retry/edit. |
 | `tap_retry_recording` | `cc_interpreting_voice` | `cc_recording` | User chooses to re-record | Discard current transcript and restart capture. |
 | `tap_discard_interpreting` | `cc_interpreting_voice` | `cc_collapsed` | User exits flow | Dismiss sheet without saving. |
@@ -102,14 +107,15 @@ Out of scope:
 
 | Event | From | To | Guard/Condition | Side effects |
 |---|---|---|---|---|
-| `auto_save_success` | `cc_auto_saving` | `cc_collapsed` | Always | Dismiss overlays + trigger host refresh + success toast. |
-| `auto_save_failure` | `cc_auto_saving` | `cc_error` | API failure | Keep interpreted payload for retry. |
+| `tap_save_review` | `cc_review_meal` or `cc_review_workout` | `cc_saving` | Always | Create final payload and save. |
+| `save_success` | `cc_saving` | `cc_collapsed` | Always | Dismiss overlays + trigger host refresh + success toast. |
+| `save_failure` | `cc_saving` | `cc_error` | API failure | Keep interpreted payload for retry. |
 | `tap_quick_add_item` | `cc_expanded_empty` or `cc_expanded_typing` | `cc_quick_add_saving` | Item has valid template data | Save selected quick-add item directly. |
 | `quick_add_success` | `cc_quick_add_saving` | `cc_collapsed` | Always | Dismiss + refresh + success toast with undo window. |
 | `quick_add_failure` | `cc_quick_add_saving` | `cc_error` | API failure | Return actionable retry path. |
 | `tap_retry_typed` | `cc_error` | `cc_submitting_typed` | Error category = typed interpret | Retry typed interpretation with preserved draft. |
 | `tap_retry_recording_from_error` | `cc_error` | `cc_recording` | Error category = voice interpret | Start a fresh recording attempt. |
-| `tap_retry_save` | `cc_error` | `cc_auto_saving` or `cc_quick_add_saving` | Error category = save | Re-run prior save request. |
+| `tap_retry_save` | `cc_error` | `cc_saving` or `cc_quick_add_saving` | Error category = save | Re-run prior save request. |
 | `tap_edit_text_from_error` | `cc_error` | `cc_expanded_typing` | Error category in {typed interpret, voice interpret} | Open expanded sheet with draft/transcript prefilled for editing. |
 | `tap_use_typed_instead` | `cc_error` | `cc_expanded_empty` | Error category = mic permission | Open expanded sheet to continue with typing. |
 | `tap_open_settings` | `cc_error` | `cc_error` | Error category = mic permission | Open OS Settings app; keep error state when user returns. |
@@ -122,10 +128,12 @@ Out of scope:
 | `cc_collapsed` | Sparkle icon, placeholder text, mic button | Expanded sheet hidden | Persistent on all main screens. |
 | `cc_expanded_empty` | Sheet handle, title, close, textarea placeholder, quick-add list, mic button, disabled send | Underlying host screen interaction blocked | Textarea empty state. |
 | `cc_expanded_typing` | Same as expanded-empty + active send button | None | Typing allowed; keyboard state preserved. |
-| `cc_submitting_typed` | Expanded sheet with interpreting indicator + typed text | Inputs temporarily disabled | No manual review screen in default typed path. |
+| `cc_submitting_typed` | Expanded sheet with interpreting indicator + typed text | Inputs temporarily disabled | Pending typed interpretation. |
 | `cc_recording` | Timer, recording indicator, waveform, stop button | Host interaction blocked | Matches voice-recording prototype. |
 | `cc_interpreting_voice` | Transcript text block + interpreting indicator + `Edit text` + `Retry voice` + `Discard` actions | Background blocked | User can interrupt/edit while interpretation runs. |
-| `cc_auto_saving` | Compact saving state (spinner + summary) | Additional input disabled | Shared save state for typed/voice paths. |
+| `cc_review_meal` | Review Meal sheet with transcript, confidence chip, parsed meal card, ingredient list, discard/save actions | Background blocked | Matches `voice-review-meal.html`. |
+| `cc_review_workout` | Review Workout sheet with transcript, confidence chip, parsed workout card, discard/save actions | Background blocked | Matches `voice-review-workout.html`. |
+| `cc_saving` | Compact saving state (spinner + summary) | Additional input disabled | Shared save state for typed/voice review paths. |
 | `cc_quick_add_saving` | Quick-add row busy state (or global busy) | Additional taps blocked | Fast-path save state. |
 | `cc_error` | Error title/body + contextual retry + secondary action + discard | Non-applicable actions hidden | Copy and CTA labels are fixed by error subtype table below. |
 
@@ -163,7 +171,7 @@ Out of scope:
 | `mic_permission_denied` | `Open Settings` | `tap_open_settings` | `cc_error` |
 | `mic_permission_denied` | `Use typing instead` | `tap_use_typed_instead` | `cc_expanded_empty` |
 | `mic_permission_denied` | `Discard` | `tap_discard_error` | `cc_collapsed` |
-| `auto_save_failure` | `Retry save` | `tap_retry_save` | `cc_auto_saving` |
+| `auto_save_failure` | `Retry save` | `tap_retry_save` | `cc_saving` |
 | `auto_save_failure` | `Discard` | `tap_discard_error` | `cc_collapsed` |
 | `quick_add_failure` | `Retry save` | `tap_retry_save` | `cc_quick_add_saving` |
 | `quick_add_failure` | `Discard` | `tap_discard_error` | `cc_collapsed` |
@@ -176,6 +184,7 @@ Out of scope:
   - recoverable interpret error
 - Voice interpretation uses transcript currently shown in `cc_interpreting_voice`.
 - Any transcript edit invalidates current interpretation and restarts interpretation run.
+- Meal/workout interpretation success routes into explicit review states before save.
 
 ### 5.2 Save contracts
 - Save response must include enough metadata to trigger host query refresh.
@@ -213,7 +222,10 @@ flowchart LR
   A[cc_collapsed] -->|open| B[cc_expanded_empty]
   B -->|type| C[cc_expanded_typing]
   C -->|send typed| D[cc_submitting_typed]
-  D -->|interpret ok| E[cc_auto_saving]
+  D -->|interpreted meal| R1[cc_review_meal]
+  D -->|interpreted workout| R2[cc_review_workout]
+  R1 -->|save| E[cc_saving]
+  R2 -->|save| E
   B -->|quick add| H[cc_quick_add_saving]
   C -->|quick add| H
   E -->|save ok| A
@@ -233,8 +245,11 @@ flowchart LR
   E -->|edit_transcript| E
   E -->|tap_retry_recording| B
   E -->|tap_discard_interpreting| A
-  E -->|voice_interpret_success| F[cc_auto_saving]
-  F -->|auto_save_success + refresh| A
+  E -->|interpreted meal| R1[cc_review_meal]
+  E -->|interpreted workout| R2[cc_review_workout]
+  R1 -->|save| F[cc_saving]
+  R2 -->|save| F
+  F -->|save_success + refresh| A
 ```
 
 ### 7.4 Error and recovery flow
@@ -242,7 +257,7 @@ flowchart LR
 flowchart LR
   D[cc_submitting_typed] -->|typed fail| Z[cc_error]
   G[cc_interpreting_voice] -->|voice fail| Z
-  E[cc_auto_saving] -->|save fail| Z
+  E[cc_saving] -->|save fail| Z
   H[cc_quick_add_saving] -->|quick add fail| Z
   Z -->|retry typed| D
   Z -->|retry voice| B[cc_recording]
@@ -256,11 +271,11 @@ flowchart LR
 - Collapsed bar appears on all tab root screens.
 - Expanded sheet opens from both collapsed bar and add button.
 - Send remains disabled when textarea is empty/whitespace.
-- Typed send goes through interpret then direct save (no review screen).
-- Voice stop transitions to interpreting state with transcript visible.
+- Typed send goes through interpret then review state for meal/workout before save.
+- Voice stop transitions to interpreting state and then review state for meal/workout.
 - Editing transcript during interpreting restarts interpretation.
-- `cc_interpreting_voice` shows exactly `Edit text`, `Retry voice`, and `Discard` controls.
-- Voice and typed successful paths both auto-save and collapse on success.
+- `cc_review_meal` and `cc_review_workout` match their respective prototype layouts and CTA behavior.
+- Voice and typed successful paths both collapse only after explicit save from review.
 - Quick-add success closes overlays and refreshes host screen data.
 - Save/interpret failures enter recoverable error state with correct retry options.
 - Each error subtype uses the locked title/body/CTA set from Section 4.1.2.
