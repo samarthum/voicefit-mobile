@@ -22,9 +22,12 @@ import type { DashboardData, InterpretEntryResponse } from "@voicefit/contracts/
 import Svg, {
   Circle as SvgCircle,
   Defs,
+  Ellipse,
   Line,
   LinearGradient,
   Path,
+  RadialGradient,
+  Rect,
   Stop,
 } from "react-native-svg";
 import { apiFormRequest, apiRequest } from "../../lib/api-client";
@@ -448,12 +451,19 @@ function CheckGlyph({ color = "#FFFFFF" }: { color?: string }) {
 function CoachBadge() {
   return (
     <View style={styles.coachBadge}>
-      <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
+      <Svg width={44} height={44} viewBox="0 0 44 44" fill="none">
+        <SvgCircle cx={22} cy={22} r={22} fill="#1A1A1A" />
+        <SvgCircle cx={22} cy={22} r={14} stroke="url(#coachGlow)" strokeOpacity={0.35} />
         <Path
-          d="M12 3L14 9L20 12L14 15L12 21L10 15L4 12L10 9L12 3Z"
-          fill="#FFFFFF"
-          opacity={0.95}
+          d="M22 10L24 17.2L31 15.7L25.4 21L31 26.3L24 24.8L22 32L20 24.8L13 26.3L18.6 21L13 15.7L20 17.2L22 10Z"
+          fill="white"
         />
+        <Defs>
+          <LinearGradient id="coachGlow" x1={12} y1={10} x2={34} y2={34} gradientUnits="userSpaceOnUse">
+            <Stop stopColor="#FFFFFF" />
+            <Stop offset={1} stopColor="#8E8E93" />
+          </LinearGradient>
+        </Defs>
       </Svg>
     </View>
   );
@@ -465,11 +475,26 @@ function MealThumb({ description }: { description: string }) {
   if (lower.includes("salmon") || lower.includes("fish")) {
     return (
       <View style={styles.mealThumb}>
-        <Svg width={30} height={30} viewBox="0 0 30 30" fill="none">
-          <SvgCircle cx={15} cy={15} r={13} fill="#EFEFF0" />
-          <Path d="M8 17C11 12 16 11 22 14C18 19 13 20 8 17Z" fill="#FFB36B" stroke="#1A1A1A" strokeWidth={1} />
-          <Path d="M20 13L23 11" stroke="#1A1A1A" strokeWidth={1.2} strokeLinecap="round" />
-          <SvgCircle cx={14} cy={15} r={0.8} fill="#1A1A1A" />
+        <Svg width={32} height={32} viewBox="0 0 64 64" fill="none">
+          <Defs>
+            <LinearGradient id="mt_plateFill" x1={32} y1={16} x2={32} y2={52} gradientUnits="userSpaceOnUse">
+              <Stop stopColor="#FFFFFF" />
+              <Stop offset={1} stopColor="#EEF0F4" />
+            </LinearGradient>
+            <LinearGradient id="mt_salmonFill" x1={22} y1={25} x2={44} y2={39} gradientUnits="userSpaceOnUse">
+              <Stop stopColor="#FFA45B" />
+              <Stop offset={1} stopColor="#FF7E3E" />
+            </LinearGradient>
+          </Defs>
+          <Ellipse cx={32} cy={36} rx={22} ry={16} fill="url(#mt_plateFill)" stroke="#1A1A1A" strokeWidth={2.2} />
+          <Path d="M18 36C19.8 30.8 24.6 27 30.2 27H40.8C42.6 27 44 28.4 44 30.2C44 33.1 41.7 35.4 38.8 35.4H30.5C27.2 35.4 24.8 37.7 24 41" fill="url(#mt_salmonFill)" />
+          <Path d="M18 36C19.8 30.8 24.6 27 30.2 27H40.8C42.6 27 44 28.4 44 30.2C44 33.1 41.7 35.4 38.8 35.4H30.5C27.2 35.4 24.8 37.7 24 41" stroke="#1A1A1A" strokeWidth={1.8} strokeLinecap="round" />
+          <Ellipse cx={42} cy={39} rx={7} ry={5.5} fill="#FBFBFD" stroke="#DADDE4" strokeWidth={1.5} />
+          <SvgCircle cx={39.7} cy={37.8} r={0.9} fill="#D2D6DE" />
+          <SvgCircle cx={42.2} cy={40.3} r={0.9} fill="#D2D6DE" />
+          <SvgCircle cx={44.7} cy={37.8} r={0.9} fill="#D2D6DE" />
+          <SvgCircle cx={20} cy={30} r={2} fill="#34C759" />
+          <Path d="M19 30.3L20 28.2L21.1 30.3" stroke="#1A1A1A" strokeWidth={1} strokeLinecap="round" />
         </Svg>
       </View>
     );
@@ -478,11 +503,25 @@ function MealThumb({ description }: { description: string }) {
   if (lower.includes("oat") || lower.includes("breakfast")) {
     return (
       <View style={styles.mealThumb}>
-        <Svg width={30} height={30} viewBox="0 0 30 30" fill="none">
-          <SvgCircle cx={15} cy={15} r={13} fill="#EFEFF0" />
-          <Path d="M10 9H18C19.1 9 20 9.9 20 11V21H12C10.9 21 10 20.1 10 19V9Z" fill="#F7C778" stroke="#1A1A1A" strokeWidth={1} />
-          <Path d="M12 7H16" stroke="#1A1A1A" strokeWidth={1.2} strokeLinecap="round" />
-          <Path d="M11 13H19" stroke="#FFFFFF" strokeWidth={1.2} opacity={0.8} />
+        <Svg width={32} height={32} viewBox="0 0 64 64" fill="none">
+          <Defs>
+            <LinearGradient id="mt_jarGlass" x1={32} y1={11} x2={32} y2={54} gradientUnits="userSpaceOnUse">
+              <Stop stopColor="#FFFFFF" />
+              <Stop offset={1} stopColor="#EEF0F4" />
+            </LinearGradient>
+            <LinearGradient id="mt_oatFill" x1={32} y1={26} x2={32} y2={48} gradientUnits="userSpaceOnUse">
+              <Stop stopColor="#F9CF86" />
+              <Stop offset={1} stopColor="#E8B35D" />
+            </LinearGradient>
+          </Defs>
+          <Rect x={17} y={10} width={30} height={44} rx={10} fill="url(#mt_jarGlass)" stroke="#1A1A1A" strokeWidth={2.2} />
+          <Rect x={22} y={22} width={20} height={24} rx={6} fill="url(#mt_oatFill)" />
+          <Path d="M22 26H42" stroke="#E0A64F" strokeWidth={2} strokeLinecap="round" />
+          <Path d="M22 31H42" stroke="#E0A64F" strokeWidth={2} strokeLinecap="round" opacity={0.85} />
+          <Path d="M22 36H37" stroke="#E0A64F" strokeWidth={2} strokeLinecap="round" opacity={0.8} />
+          <Rect x={20} y={15} width={24} height={4} rx={2} fill="#DADDE4" />
+          <SvgCircle cx={45.5} cy={17.5} r={4.5} fill="#FF9500" />
+          <Path d="M45.5 15.4V19.6M43.4 17.5H47.6" stroke="white" strokeWidth={1.4} strokeLinecap="round" />
         </Svg>
       </View>
     );
@@ -490,12 +529,25 @@ function MealThumb({ description }: { description: string }) {
 
   return (
     <View style={styles.mealThumb}>
-      <Svg width={30} height={30} viewBox="0 0 30 30" fill="none">
-        <SvgCircle cx={15} cy={15} r={13} fill="#EFEFF0" />
-        <Path d="M8 15H22C21 19 18 21 15 21C12 21 9 19 8 15Z" fill="#D7DEE0" stroke="#1A1A1A" strokeWidth={1} />
-        <Path d="M9 15C10 12 12 10 15 10C18 10 20 12 21 15" stroke="#1A1A1A" strokeWidth={1} />
-        <Path d="M12 12C12.7 11 13.3 10.5 14 10" stroke="#34C759" strokeWidth={1.4} strokeLinecap="round" />
-        <Path d="M15 11C15.8 10.3 16.6 10 17.5 10" stroke="#34C759" strokeWidth={1.4} strokeLinecap="round" />
+      <Svg width={32} height={32} viewBox="0 0 64 64" fill="none">
+        <Defs>
+          <LinearGradient id="mt_saladBowl" x1={32} y1={30} x2={32} y2={57} gradientUnits="userSpaceOnUse">
+            <Stop stopColor="#FFFFFF" />
+            <Stop offset={1} stopColor="#EDEEF2" />
+          </LinearGradient>
+          <RadialGradient id="mt_leafGlow" cx={0} cy={0} r={1} gradientUnits="userSpaceOnUse" gradientTransform="translate(32, 25) rotate(90) scale(16)">
+            <Stop stopColor="#8DE39D" />
+            <Stop offset={1} stopColor="#34C759" />
+          </RadialGradient>
+        </Defs>
+        <Path d="M12 36C12 48.15 20.4 56 32 56C43.6 56 52 48.15 52 36V34H12V36Z" fill="url(#mt_saladBowl)" />
+        <Path d="M12 36C12 48.15 20.4 56 32 56C43.6 56 52 48.15 52 36V34H12V36Z" stroke="#1A1A1A" strokeWidth={2.2} />
+        <Path d="M17 34C17.4 26.7 23.6 21 31.2 21C39.5 21 46.3 27.8 46.3 36" fill="url(#mt_leafGlow)" />
+        <Path d="M17 34C17.4 26.7 23.6 21 31.2 21C39.5 21 46.3 27.8 46.3 36" stroke="#1A1A1A" strokeWidth={2.2} strokeLinecap="round" />
+        <SvgCircle cx={23} cy={30} r={3.2} fill="#FF6B60" />
+        <SvgCircle cx={39} cy={29} r={3.2} fill="#FF9500" />
+        <Ellipse cx={31.5} cy={28} rx={2.8} ry={3.5} fill="#9AE7B5" />
+        <Path d="M22 41H42" stroke="#D7D9DF" strokeWidth={1.8} strokeLinecap="round" />
       </Svg>
     </View>
   );
@@ -506,30 +558,75 @@ function QuickMealThumb({ description }: { description: string }) {
 
   if (lower.includes("salmon") || lower.includes("fish")) {
     return (
-      <Svg width={20} height={20} viewBox="0 0 20 20" fill="none">
-        <Path d="M3 12C5.2 8 8.9 7.4 13.8 9.8C10.8 14.2 7.2 15 3 12Z" fill="#FFB36B" stroke="#1A1A1A" strokeWidth={1} />
-        <Path d="M12.7 8.8L15.6 7.2" stroke="#1A1A1A" strokeWidth={1} strokeLinecap="round" />
-        <SvgCircle cx={8} cy={10.4} r={0.7} fill="#1A1A1A" />
+      <Svg width={20} height={20} viewBox="0 0 64 64" fill="none">
+        <Defs>
+          <LinearGradient id="qm_plateFill" x1={32} y1={16} x2={32} y2={52} gradientUnits="userSpaceOnUse">
+            <Stop stopColor="#FFFFFF" />
+            <Stop offset={1} stopColor="#EEF0F4" />
+          </LinearGradient>
+          <LinearGradient id="qm_salmonFill" x1={22} y1={25} x2={44} y2={39} gradientUnits="userSpaceOnUse">
+            <Stop stopColor="#FFA45B" />
+            <Stop offset={1} stopColor="#FF7E3E" />
+          </LinearGradient>
+        </Defs>
+        <Ellipse cx={32} cy={36} rx={22} ry={16} fill="url(#qm_plateFill)" stroke="#1A1A1A" strokeWidth={2.2} />
+        <Path d="M18 36C19.8 30.8 24.6 27 30.2 27H40.8C42.6 27 44 28.4 44 30.2C44 33.1 41.7 35.4 38.8 35.4H30.5C27.2 35.4 24.8 37.7 24 41" fill="url(#qm_salmonFill)" />
+        <Path d="M18 36C19.8 30.8 24.6 27 30.2 27H40.8C42.6 27 44 28.4 44 30.2C44 33.1 41.7 35.4 38.8 35.4H30.5C27.2 35.4 24.8 37.7 24 41" stroke="#1A1A1A" strokeWidth={1.8} strokeLinecap="round" />
+        <Ellipse cx={42} cy={39} rx={7} ry={5.5} fill="#FBFBFD" stroke="#DADDE4" strokeWidth={1.5} />
+        <SvgCircle cx={39.7} cy={37.8} r={0.9} fill="#D2D6DE" />
+        <SvgCircle cx={42.2} cy={40.3} r={0.9} fill="#D2D6DE" />
+        <SvgCircle cx={44.7} cy={37.8} r={0.9} fill="#D2D6DE" />
+        <SvgCircle cx={20} cy={30} r={2} fill="#34C759" />
+        <Path d="M19 30.3L20 28.2L21.1 30.3" stroke="#1A1A1A" strokeWidth={1} strokeLinecap="round" />
       </Svg>
     );
   }
 
   if (lower.includes("oat") || lower.includes("breakfast")) {
     return (
-      <Svg width={20} height={20} viewBox="0 0 20 20" fill="none">
-        <Path d="M5 2.5H12.5C13.3 2.5 14 3.2 14 4V15.3H6.2C5.5 15.3 5 14.8 5 14.1V2.5Z" fill="#F7C778" stroke="#1A1A1A" strokeWidth={1} />
-        <Path d="M6.8 1H10.7" stroke="#1A1A1A" strokeWidth={1} strokeLinecap="round" />
-        <Path d="M5.8 6.4H13.3" stroke="#FFFFFF" strokeWidth={1} opacity={0.8} />
+      <Svg width={20} height={20} viewBox="0 0 64 64" fill="none">
+        <Defs>
+          <LinearGradient id="qm_jarGlass" x1={32} y1={11} x2={32} y2={54} gradientUnits="userSpaceOnUse">
+            <Stop stopColor="#FFFFFF" />
+            <Stop offset={1} stopColor="#EEF0F4" />
+          </LinearGradient>
+          <LinearGradient id="qm_oatFill" x1={32} y1={26} x2={32} y2={48} gradientUnits="userSpaceOnUse">
+            <Stop stopColor="#F9CF86" />
+            <Stop offset={1} stopColor="#E8B35D" />
+          </LinearGradient>
+        </Defs>
+        <Rect x={17} y={10} width={30} height={44} rx={10} fill="url(#qm_jarGlass)" stroke="#1A1A1A" strokeWidth={2.2} />
+        <Rect x={22} y={22} width={20} height={24} rx={6} fill="url(#qm_oatFill)" />
+        <Path d="M22 26H42" stroke="#E0A64F" strokeWidth={2} strokeLinecap="round" />
+        <Path d="M22 31H42" stroke="#E0A64F" strokeWidth={2} strokeLinecap="round" opacity={0.85} />
+        <Path d="M22 36H37" stroke="#E0A64F" strokeWidth={2} strokeLinecap="round" opacity={0.8} />
+        <Rect x={20} y={15} width={24} height={4} rx={2} fill="#DADDE4" />
+        <SvgCircle cx={45.5} cy={17.5} r={4.5} fill="#FF9500" />
+        <Path d="M45.5 15.4V19.6M43.4 17.5H47.6" stroke="white" strokeWidth={1.4} strokeLinecap="round" />
       </Svg>
     );
   }
 
   return (
-    <Svg width={20} height={20} viewBox="0 0 20 20" fill="none">
-      <Path d="M3.2 10H16.8C16 13.2 13.8 15 10 15C6.2 15 4 13.2 3.2 10Z" fill="#D7DEE0" stroke="#1A1A1A" strokeWidth={1} />
-      <Path d="M4 10C5 7.3 7 5.7 10 5.7C13 5.7 15 7.3 16 10" stroke="#1A1A1A" strokeWidth={1} />
-      <Path d="M7.3 7.2C7.8 6.2 8.3 5.8 9.1 5.5" stroke="#34C759" strokeWidth={1.2} strokeLinecap="round" />
-      <Path d="M10.3 6.5C11.1 5.9 11.8 5.6 12.8 5.5" stroke="#34C759" strokeWidth={1.2} strokeLinecap="round" />
+    <Svg width={20} height={20} viewBox="0 0 64 64" fill="none">
+      <Defs>
+        <LinearGradient id="qm_saladBowl" x1={32} y1={30} x2={32} y2={57} gradientUnits="userSpaceOnUse">
+          <Stop stopColor="#FFFFFF" />
+          <Stop offset={1} stopColor="#EDEEF2" />
+        </LinearGradient>
+        <RadialGradient id="qm_leafGlow" cx={0} cy={0} r={1} gradientUnits="userSpaceOnUse" gradientTransform="translate(32, 25) rotate(90) scale(16)">
+          <Stop stopColor="#8DE39D" />
+          <Stop offset={1} stopColor="#34C759" />
+        </RadialGradient>
+      </Defs>
+      <Path d="M12 36C12 48.15 20.4 56 32 56C43.6 56 52 48.15 52 36V34H12V36Z" fill="url(#qm_saladBowl)" />
+      <Path d="M12 36C12 48.15 20.4 56 32 56C43.6 56 52 48.15 52 36V34H12V36Z" stroke="#1A1A1A" strokeWidth={2.2} />
+      <Path d="M17 34C17.4 26.7 23.6 21 31.2 21C39.5 21 46.3 27.8 46.3 36" fill="url(#qm_leafGlow)" />
+      <Path d="M17 34C17.4 26.7 23.6 21 31.2 21C39.5 21 46.3 27.8 46.3 36" stroke="#1A1A1A" strokeWidth={2.2} strokeLinecap="round" />
+      <SvgCircle cx={23} cy={30} r={3.2} fill="#FF6B60" />
+      <SvgCircle cx={39} cy={29} r={3.2} fill="#FF9500" />
+      <Ellipse cx={31.5} cy={28} rx={2.8} ry={3.5} fill="#9AE7B5" />
+      <Path d="M22 41H42" stroke="#D7D9DF" strokeWidth={1.8} strokeLinecap="round" />
     </Svg>
   );
 }
@@ -2385,8 +2482,6 @@ const styles = StyleSheet.create({
   coachBadge: {
     width: 44,
     height: 44,
-    borderRadius: 22,
-    backgroundColor: COLORS.textPrimary,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -3044,6 +3139,7 @@ const styles = StyleSheet.create({
   },
   workoutSetHeaderText: {
     flex: 1,
+    flexBasis: 0,
     textAlign: "center",
     fontSize: 11,
     fontWeight: "700",
@@ -3063,6 +3159,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderTopWidth: 1,
     borderTopColor: "rgba(0,0,0,0.04)",
+    overflow: "hidden",
   },
   workoutSetNumBadge: {
     width: 28,
@@ -3079,6 +3176,8 @@ const styles = StyleSheet.create({
   },
   workoutSetInput: {
     flex: 1,
+    flexBasis: 0,
+    minWidth: 0,
     height: 36,
     borderRadius: 8,
     borderWidth: 1.5,
