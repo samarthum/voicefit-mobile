@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Animated,
+  Easing,
   Keyboard,
   Linking,
   Modal,
@@ -148,7 +150,9 @@ const TREND_TABS: TrendMetric[] = ["calories", "steps", "weight"];
 const MIN_RECORDING_DURATION_MS = 1000;
 const DEFAULT_WEIGHT_GOAL = 70;
 const WEB_PREVIEW_FLAGS_KEY = "__vf_home_preview_flags";
-const WAVE_BARS = [12, 20, 32, 44, 28, 52, 36, 56, 40, 24, 48, 32, 52, 20, 36, 44, 28, 16, 24, 12];
+const WAVE_BAR_COUNT = 20;
+const WAVE_MIN = 8;
+const WAVE_MAX = 56;
 
 function toLocalDateString(value: Date) {
   const year = value.getFullYear();
@@ -443,6 +447,54 @@ function CheckGlyph({ color = "#FFFFFF" }: { color?: string }) {
         strokeLinejoin="round"
       />
     </Svg>
+  );
+}
+
+function AnimatedWaveform({ active }: { active: boolean }) {
+  const anims = useRef(
+    Array.from({ length: WAVE_BAR_COUNT }, () => new Animated.Value(WAVE_MIN + Math.random() * (WAVE_MAX - WAVE_MIN))),
+  ).current;
+  const isMounted = useRef(true);
+
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
+
+  const animate = useCallback(() => {
+    if (!isMounted.current) return;
+    const animations = anims.map((anim) =>
+      Animated.timing(anim, {
+        toValue: WAVE_MIN + Math.random() * (WAVE_MAX - WAVE_MIN),
+        duration: 300 + Math.random() * 200,
+        easing: Easing.inOut(Easing.sin),
+        useNativeDriver: false,
+      }),
+    );
+    Animated.parallel(animations).start(({ finished }) => {
+      if (finished && isMounted.current) animate();
+    });
+  }, [anims]);
+
+  useEffect(() => {
+    if (active) {
+      animate();
+    } else {
+      anims.forEach((anim) => anim.stopAnimation());
+    }
+  }, [active, animate, anims]);
+
+  return (
+    <View style={styles.waveform}>
+      {anims.map((anim, index) => (
+        <Animated.View
+          key={`wave-${index}`}
+          style={[styles.waveBar, { height: anim, opacity: index % 2 === 0 ? 0.9 : 0.55 }]}
+        />
+      ))}
+    </View>
   );
 }
 
@@ -1527,14 +1579,7 @@ export default function DashboardScreen() {
             )}
           </View>
 
-          <View style={styles.waveform}>
-            {WAVE_BARS.map((height, index) => (
-              <View
-                key={`wave-${index}`}
-                style={[styles.waveBar, { height, opacity: index % 2 === 0 ? 0.9 : 0.55 }]}
-              />
-            ))}
-          </View>
+          <AnimatedWaveform active={commandState === "cc_recording"} />
 
           <View style={styles.recordMicArea}>
             <Pressable style={styles.recordStopButton} onPress={() => void stopRecording()} testID="cc-recording-stop">
