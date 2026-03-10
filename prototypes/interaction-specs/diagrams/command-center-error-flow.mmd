@@ -1,0 +1,29 @@
+%%{init: {
+  "theme": "base",
+  "themeVariables": {
+    "fontSize": "24px",
+    "fontFamily": "-apple-system, SF Pro Display, system-ui, sans-serif",
+    "primaryColor": "#F6F7FB",
+    "primaryBorderColor": "#5B5FC7",
+    "primaryTextColor": "#1A1A1A",
+    "lineColor": "#4C4C55"
+  },
+  "flowchart": {
+    "curve": "basis",
+    "nodeSpacing": 90,
+    "rankSpacing": 90,
+    "padding": 20
+  }
+}}%%
+flowchart LR
+  D[cc_submitting_typed] -->|typed fail| Z[cc_error]
+  G[cc_interpreting_voice] -->|voice fail| Z
+  E[cc_auto_saving] -->|save fail| Z
+  H[cc_quick_add_saving] -->|quick add fail| Z
+
+  Z -->|retry typed| D
+  Z -->|retry voice| B[cc_recording]
+  Z -->|edit text| C[cc_expanded_typing]
+  Z -->|use typing| X[cc_expanded_empty]
+  Z -->|retry save| E
+  Z -->|discard| A[cc_collapsed]

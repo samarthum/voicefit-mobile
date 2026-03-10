@@ -1,0 +1,27 @@
+%%{init: {
+  "theme": "base",
+  "themeVariables": {
+    "fontSize": "22px",
+    "fontFamily": "-apple-system, SF Pro Display, system-ui, sans-serif",
+    "primaryColor": "#F6F7FB",
+    "primaryBorderColor": "#5B5FC7",
+    "primaryTextColor": "#1A1A1A",
+    "lineColor": "#4C4C55"
+  },
+  "flowchart": {
+    "curve": "basis",
+    "nodeSpacing": 90,
+    "rankSpacing": 90,
+    "padding": 20
+  }
+}}%%
+flowchart LR
+  A[cc_collapsed] -->|mic| B[cc_recording]
+  C[cc_expanded_empty] -->|mic| B
+  D[cc_expanded_typing] -->|mic| B
+  B -->|stop| E[cc_interpreting_voice]
+  E -->|edit text| E
+  E -->|retry voice| B
+  E -->|discard| A
+  E -->|interpret ok| F[cc_auto_saving]
+  F -->|save ok + refresh| A

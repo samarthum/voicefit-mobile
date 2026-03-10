@@ -1,0 +1,27 @@
+stateDiagram-v2
+  [*] --> cc_collapsed
+  cc_collapsed --> cc_expanded: tap_command_bar / tap_add_button
+  cc_collapsed --> cc_recording: tap_cc_mic
+
+  cc_expanded --> cc_collapsed: tap_close
+  cc_expanded --> cc_expanded: type_cc_text
+  cc_expanded --> cc_review_meal: tap_cc_send_typed + interpreted_as_meal
+  cc_expanded --> cc_review_workout: tap_cc_send_typed + interpreted_as_workout
+  cc_expanded --> cc_error: typed_submit_failure
+  cc_expanded --> cc_recording: tap_cc_mic_big
+
+  cc_recording --> cc_review_meal: stop_recording + interpreted_as_meal
+  cc_recording --> cc_review_workout: stop_recording + interpreted_as_workout
+  cc_recording --> cc_error: transcription_or_interpret_failure
+
+  cc_review_meal --> cc_saving: tap_save
+  cc_review_workout --> cc_saving: tap_save
+  cc_review_meal --> cc_collapsed: tap_discard
+  cc_review_workout --> cc_collapsed: tap_discard
+
+  cc_saving --> cc_collapsed: save_success + refresh_home
+  cc_saving --> cc_error: save_failure
+
+  cc_error --> cc_recording: tap_retry_voice
+  cc_error --> cc_saving: tap_retry_save
+  cc_error --> cc_collapsed: tap_discard

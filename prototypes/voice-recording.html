@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VoiceFit — Voice Recording</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --bg: #FFFFFF; --surface: #F8F8F8; --border: #E8E8E8;
+    --text-primary: #1A1A1A; --text-secondary: #8E8E93; --text-tertiary: #AEAEB2;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
+    background: #E5E5E5; display: flex; justify-content: center; padding: 24px 0; min-height: 100vh;
+  }
+  .phone {
+    width: 390px; height: 844px; background: var(--bg);
+    border-radius: 40px; overflow: hidden; position: relative;
+    box-shadow: 0 25px 80px rgba(0,0,0,0.15);
+  }
+  .status-bar {
+    height: 54px; display: flex; align-items: flex-end; justify-content: space-between;
+    padding: 0 28px 8px; font-size: 15px; font-weight: 600; color: var(--text-primary);
+  }
+  .status-bar .right { display: flex; gap: 6px; align-items: center; }
+
+  /* Dimmed background content */
+  .bg-content {
+    opacity: 0.15; padding: 20px;
+  }
+  .bg-placeholder {
+    height: 200px; background: var(--surface); border-radius: 16px; margin-bottom: 16px;
+  }
+  .bg-placeholder.sm { height: 80px; }
+
+  /* Overlay */
+  .overlay {
+    position: absolute; inset: 0; z-index: 5;
+    background: rgba(0,0,0,0.4);
+    backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);
+  }
+
+  /* Bottom sheet */
+  .sheet {
+    position: absolute; bottom: 0; left: 0; right: 0; z-index: 10;
+    background: var(--bg); border-radius: 28px 28px 0 0;
+    padding: 12px 28px 48px;
+    display: flex; flex-direction: column; align-items: center;
+  }
+  .sheet-handle {
+    width: 36px; height: 5px; background: var(--border);
+    border-radius: 999px; margin-bottom: 20px;
+  }
+
+  /* Header */
+  .sheet-header {
+    width: 100%; display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 40px;
+  }
+  .sheet-title {
+    font-size: 18px; font-weight: 700; color: var(--text-primary); letter-spacing: -0.3px;
+  }
+  .sheet-close {
+    width: 32px; height: 32px; border-radius: 999px; background: var(--surface);
+    display: flex; align-items: center; justify-content: center;
+    border: none; cursor: pointer;
+  }
+  .sheet-timer {
+    font-size: 14px; font-weight: 600; color: #FF3B30;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .rec-dot {
+    width: 8px; height: 8px; border-radius: 999px; background: #FF3B30;
+    animation: rec-blink 1s ease-in-out infinite;
+  }
+  @keyframes rec-blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  /* Live transcript */
+  .live-transcript {
+    width: 100%; min-height: 60px; margin-bottom: 32px;
+    text-align: center; padding: 0 8px;
+  }
+  .transcript-text {
+    font-size: 20px; font-weight: 500; color: var(--text-primary);
+    line-height: 1.5; letter-spacing: -0.3px;
+  }
+  .transcript-cursor {
+    display: inline-block; width: 2px; height: 22px;
+    background: var(--text-primary); margin-left: 2px;
+    vertical-align: text-bottom;
+    animation: cursor-blink 0.8s ease-in-out infinite;
+  }
+  @keyframes cursor-blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+  }
+  .transcript-hint {
+    font-size: 16px; color: var(--text-tertiary); font-style: italic;
+  }
+
+  /* Waveform */
+  .waveform {
+    display: flex; align-items: center; justify-content: center;
+    gap: 3px; height: 60px; margin-bottom: 36px;
+    width: 100%;
+  }
+  .wave-bar {
+    width: 4px; border-radius: 999px; background: var(--text-primary);
+    animation: wave 1.2s ease-in-out infinite;
+  }
+  .wave-bar:nth-child(1)  { height: 12px; animation-delay: 0s; }
+  .wave-bar:nth-child(2)  { height: 20px; animation-delay: 0.05s; }
+  .wave-bar:nth-child(3)  { height: 32px; animation-delay: 0.1s; }
+  .wave-bar:nth-child(4)  { height: 44px; animation-delay: 0.15s; }
+  .wave-bar:nth-child(5)  { height: 28px; animation-delay: 0.2s; }
+  .wave-bar:nth-child(6)  { height: 52px; animation-delay: 0.25s; }
+  .wave-bar:nth-child(7)  { height: 36px; animation-delay: 0.3s; }
+  .wave-bar:nth-child(8)  { height: 56px; animation-delay: 0.35s; }
+  .wave-bar:nth-child(9)  { height: 40px; animation-delay: 0.4s; }
+  .wave-bar:nth-child(10) { height: 24px; animation-delay: 0.45s; }
+  .wave-bar:nth-child(11) { height: 48px; animation-delay: 0.5s; }
+  .wave-bar:nth-child(12) { height: 32px; animation-delay: 0.55s; }
+  .wave-bar:nth-child(13) { height: 52px; animation-delay: 0.6s; }
+  .wave-bar:nth-child(14) { height: 20px; animation-delay: 0.65s; }
+  .wave-bar:nth-child(15) { height: 36px; animation-delay: 0.7s; }
+  .wave-bar:nth-child(16) { height: 44px; animation-delay: 0.75s; }
+  .wave-bar:nth-child(17) { height: 28px; animation-delay: 0.8s; }
+  .wave-bar:nth-child(18) { height: 16px; animation-delay: 0.85s; }
+  .wave-bar:nth-child(19) { height: 24px; animation-delay: 0.9s; }
+  .wave-bar:nth-child(20) { height: 12px; animation-delay: 0.95s; }
+
+  @keyframes wave {
+    0%, 100% { transform: scaleY(0.4); opacity: 0.4; }
+    50% { transform: scaleY(1); opacity: 1; }
+  }
+
+  /* Mic button */
+  .mic-area {
+    display: flex; flex-direction: column; align-items: center; gap: 16px;
+    margin-bottom: 8px;
+  }
+  .mic-btn {
+    width: 80px; height: 80px; border-radius: 999px;
+    background: #FF3B30; border: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+  }
+  .mic-btn::before {
+    content: ''; position: absolute; inset: -8px; border-radius: 999px;
+    border: 2.5px solid rgba(255,59,48,0.15);
+    animation: mic-pulse 1.5s ease-in-out infinite;
+  }
+  .mic-btn::after {
+    content: ''; position: absolute; inset: -18px; border-radius: 999px;
+    border: 2px solid rgba(255,59,48,0.08);
+    animation: mic-pulse 1.5s ease-in-out infinite 0.3s;
+  }
+  @keyframes mic-pulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.08); opacity: 0; }
+  }
+
+  /* Stop icon (square) */
+  .stop-icon {
+    width: 24px; height: 24px; border-radius: 5px;
+    background: #FFFFFF;
+  }
+
+  .mic-label {
+    font-size: 14px; font-weight: 500; color: var(--text-secondary);
+  }
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="status-bar">
+    <span>9:41</span>
+    <div class="right">
+      <svg width="17" height="12" fill="none"><rect x="0" y="3" width="3" height="9" rx="1" fill="#1A1A1A"/><rect x="4.5" y="2" width="3" height="10" rx="1" fill="#1A1A1A"/><rect x="9" y="0" width="3" height="12" rx="1" fill="#1A1A1A"/><rect x="13" y="0" width="3.5" height="12" rx="1" fill="#1A1A1A"/></svg>
+      <svg width="16" height="12" fill="none"><path d="M8 2.4C10.6 2.4 12.9 3.4 14.6 5L16 3.5C13.9 1.3 11.1 0 8 0S2.1 1.3 0 3.5L1.4 5C3.1 3.4 5.4 2.4 8 2.4z" fill="#1A1A1A"/><path d="M8 6.8c1.7 0 3.2.7 4.3 1.8L13.7 7c-1.5-1.5-3.5-2.4-5.7-2.4S4.3 5.5 2.8 7l1.4 1.5C5.3 7.5 6.6 6.8 8 6.8z" fill="#1A1A1A"/><circle cx="8" cy="11" r="1.5" fill="#1A1A1A"/></svg>
+      <svg width="27" height="12" fill="none"><rect x="0" y="1" width="22" height="10" rx="3" stroke="#1A1A1A" stroke-width="1"/><rect x="23" y="4" width="2.5" height="4" rx="1" fill="#1A1A1A" opacity="0.4"/><rect x="2" y="3" width="15" height="6" rx="1.5" fill="#1A1A1A"/></svg>
+    </div>
+  </div>
+
+  <!-- Dimmed background (home screen peek) -->
+  <div class="bg-content">
+    <div class="bg-placeholder"></div>
+    <div class="bg-placeholder sm"></div>
+    <div class="bg-placeholder sm"></div>
+  </div>
+
+  <!-- Overlay -->
+  <div class="overlay"></div>
+
+  <!-- Recording Bottom Sheet -->
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+
+    <!-- Header -->
+    <div class="sheet-header">
+      <div class="sheet-timer">
+        <div class="rec-dot"></div>
+        0:04
+      </div>
+      <span class="sheet-title">Listening</span>
+      <button class="sheet-close">
+        <svg width="12" height="12" fill="none" stroke="#1A1A1A" stroke-width="2" stroke-linecap="round"><path d="M1 1l10 10M11 1L1 11"/></svg>
+      </button>
+    </div>
+
+    <!-- Live transcript -->
+    <div class="live-transcript">
+      <span class="transcript-text">I had a chicken salad with rice for lunch, about 500 calories</span><span class="transcript-cursor"></span>
+    </div>
+
+    <!-- Waveform -->
+    <div class="waveform">
+      <div class="wave-bar"></div>
+      <div class="wave-bar"></div>
+      <div class="wave-bar"></div>
+      <div class="wave-bar"></div>
+      <div class="wave-bar"></div>
+      <div class="wave-bar"></div>
+      <div class="wave-bar"></div>
+      <div class="wave-bar"></div>
+      <div class="wave-bar"></div>
+      <div class="wave-bar"></div>
+      <div class="wave-bar"></div>
+      <div class="wave-bar"></div>
+      <div class="wave-bar"></div>
+      <div class="wave-bar"></div>
+      <div class="wave-bar"></div>
+      <div class="wave-bar"></div>
+      <div class="wave-bar"></div>
+      <div class="wave-bar"></div>
+      <div class="wave-bar"></div>
+      <div class="wave-bar"></div>
+    </div>
+
+    <!-- Stop mic button -->
+    <div class="mic-area">
+      <button class="mic-btn">
+        <div class="stop-icon"></div>
+      </button>
+      <span class="mic-label">Tap to stop</span>
+    </div>
+  </div>
+</div>
+</body>
+</html>

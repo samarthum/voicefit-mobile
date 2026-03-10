@@ -1,0 +1,34 @@
+%%{init: {
+  "theme": "base",
+  "themeVariables": {
+    "fontSize": "28px",
+    "fontFamily": "-apple-system, SF Pro Display, system-ui, sans-serif",
+    "primaryColor": "#F6F7FB",
+    "primaryBorderColor": "#5B5FC7",
+    "primaryTextColor": "#1A1A1A",
+    "lineColor": "#4C4C55"
+  },
+  "flowchart": {
+    "curve": "basis",
+    "nodeSpacing": 90,
+    "rankSpacing": 90,
+    "padding": 16
+  }
+}}%%
+flowchart TD
+  A[Home Open] --> B{Load Success?}
+  B -->|Yes| C[Render Home Ready]
+  B -->|No| D[Blocking Error + Retry]
+  D --> E[Tap Retry]
+  E --> A
+  C --> F[Tap Day]
+  F --> G[Load Selected Day]
+  G --> B
+  C --> H[Tap Command Center]
+  H --> I[Expanded or Recording]
+  I --> J{Voice or Typed Submit Success?}
+  J -->|Yes| K[Save Entry]
+  K --> L[Refresh Home Data]
+  L --> C
+  J -->|No| M[Recoverable Error]
+  M --> I

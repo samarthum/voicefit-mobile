@@ -1,0 +1,38 @@
+%%{init: {
+  "theme": "base",
+  "themeVariables": {
+    "fontSize": "28px",
+    "fontFamily": "-apple-system, SF Pro Display, system-ui, sans-serif",
+    "primaryColor": "#F6F7FB",
+    "primaryBorderColor": "#5B5FC7",
+    "primaryTextColor": "#1A1A1A",
+    "lineColor": "#4C4C55"
+  },
+  "flowchart": {
+    "curve": "basis",
+    "nodeSpacing": 80,
+    "rankSpacing": 90,
+    "padding": 16
+  }
+}}%%
+flowchart LR
+  A[cc_collapsed]
+  B[cc_expanded]
+  C[cc_recording]
+  D[cc_review_meal]
+  E[cc_review_workout]
+  F[cc_saving]
+
+  A -->|open bar/add| B
+  A -->|mic| C
+  B -->|big mic| C
+  B -->|send typed meal| D
+  B -->|send typed workout| E
+  C -->|voice meal| D
+  C -->|voice workout| E
+  D -->|save| F
+  E -->|save| F
+  F -->|save ok + refresh| A
+  B -->|close| A
+  D -->|discard| A
+  E -->|discard| A

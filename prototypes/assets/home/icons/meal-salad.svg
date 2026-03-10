@@ -1,0 +1,24 @@
+<svg width="32" height="32" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="saladBowl" x1="32" y1="30" x2="32" y2="57" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#EDEEF2"/>
+    </linearGradient>
+    <radialGradient id="leafGlow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(32 25) rotate(90) scale(16)">
+      <stop stop-color="#8DE39D"/>
+      <stop offset="1" stop-color="#34C759"/>
+    </radialGradient>
+  </defs>
+
+  <path d="M12 36C12 48.15 20.4 56 32 56C43.6 56 52 48.15 52 36V34H12V36Z" fill="url(#saladBowl)"/>
+  <path d="M12 36C12 48.15 20.4 56 32 56C43.6 56 52 48.15 52 36V34H12V36Z" stroke="#1A1A1A" stroke-width="2.2"/>
+
+  <path d="M17 34C17.4 26.7 23.6 21 31.2 21C39.5 21 46.3 27.8 46.3 36" fill="url(#leafGlow)"/>
+  <path d="M17 34C17.4 26.7 23.6 21 31.2 21C39.5 21 46.3 27.8 46.3 36" stroke="#1A1A1A" stroke-width="2.2" stroke-linecap="round"/>
+
+  <circle cx="23" cy="30" r="3.2" fill="#FF6B60"/>
+  <circle cx="39" cy="29" r="3.2" fill="#FF9500"/>
+  <ellipse cx="31.5" cy="28" rx="2.8" ry="3.5" fill="#9AE7B5"/>
+
+  <path d="M22 41H42" stroke="#D7D9DF" stroke-width="1.8" stroke-linecap="round"/>
+</svg>

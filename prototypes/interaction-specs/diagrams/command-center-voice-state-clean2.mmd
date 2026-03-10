@@ -1,0 +1,35 @@
+%%{init: {"flowchart": {"curve": "stepAfter"}} }%%
+flowchart TB
+  A[cc_collapsed]
+  B[cc_expanded]
+  C[cc_recording]
+  D[cc_review_meal]
+  E[cc_review_workout]
+  F[cc_saving]
+  G[cc_error]
+
+  A -->|open bar/add| B
+  A -->|mic| C
+
+  B -->|close| A
+  B -->|type| B
+  B -->|big mic| C
+  B -->|send typed meal| D
+  B -->|send typed workout| E
+  B -->|typed fail| G
+
+  C -->|voice meal| D
+  C -->|voice workout| E
+  C -->|voice fail| G
+
+  D -->|save| F
+  E -->|save| F
+  D -->|discard| A
+  E -->|discard| A
+
+  F -->|save ok + refresh| A
+  F -->|save fail| G
+
+  G -->|retry voice| C
+  G -->|retry save| F
+  G -->|discard| A

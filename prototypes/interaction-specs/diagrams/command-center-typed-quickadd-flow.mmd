@@ -1,0 +1,29 @@
+%%{init: {
+  "theme": "base",
+  "themeVariables": {
+    "fontSize": "22px",
+    "fontFamily": "-apple-system, SF Pro Display, system-ui, sans-serif",
+    "primaryColor": "#F6F7FB",
+    "primaryBorderColor": "#5B5FC7",
+    "primaryTextColor": "#1A1A1A",
+    "lineColor": "#4C4C55"
+  },
+  "flowchart": {
+    "curve": "basis",
+    "nodeSpacing": 90,
+    "rankSpacing": 90,
+    "padding": 20
+  }
+}}%%
+flowchart LR
+  A[cc_collapsed] -->|open| B[cc_expanded_empty]
+  B -->|type| C[cc_expanded_typing]
+  C -->|send typed| D[cc_submitting_typed]
+  D -->|interpret ok| E[cc_auto_saving]
+  B -->|quick add| F[cc_quick_add_saving]
+  C -->|quick add| F
+  E -->|save ok + refresh| A
+  F -->|save ok + refresh| A
+  C -->|clear text| B
+  B -->|close| A
+  C -->|close| A

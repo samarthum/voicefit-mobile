@@ -1,0 +1,21 @@
+%%{init: {
+  "theme": "base",
+  "themeVariables": {
+    "fontSize": "22px",
+    "fontFamily": "-apple-system, SF Pro Display, system-ui, sans-serif",
+    "primaryColor": "#F6F7FB",
+    "primaryBorderColor": "#5B5FC7",
+    "primaryTextColor": "#1A1A1A",
+    "lineColor": "#4C4C55"
+  },
+  "state": {
+    "fontSize": 20
+  }
+}}%%
+stateDiagram-v2
+  [*] --> cc_collapsed
+  cc_collapsed --> cc_expanded_empty: tap_command_bar / tap_add_button
+  cc_expanded_empty --> cc_collapsed: tap_close
+  cc_expanded_empty --> cc_expanded_typing: type_text(non_empty)
+  cc_expanded_typing --> cc_expanded_empty: type_text(empty)
+  cc_expanded_typing --> cc_collapsed: tap_close

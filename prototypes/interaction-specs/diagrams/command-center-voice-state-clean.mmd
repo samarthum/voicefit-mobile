@@ -1,0 +1,45 @@
+flowchart LR
+  subgraph Entry
+    A[cc_collapsed]
+    B[cc_expanded]
+  end
+
+  subgraph Capture
+    C[cc_recording]
+  end
+
+  subgraph Review
+    D[cc_review_meal]
+    E[cc_review_workout]
+  end
+
+  subgraph Commit
+    F[cc_saving]
+    G[cc_error]
+  end
+
+  A -->|tap_command_bar / tap_add_button| B
+  A -->|tap_cc_mic| C
+
+  B -->|tap_close| A
+  B -->|type_cc_text| B
+  B -->|tap_cc_mic_big| C
+  B -->|tap_cc_send_typed + interpreted_as_meal| D
+  B -->|tap_cc_send_typed + interpreted_as_workout| E
+  B -->|typed_submit_failure| G
+
+  C -->|stop_recording + interpreted_as_meal| D
+  C -->|stop_recording + interpreted_as_workout| E
+  C -->|transcription_or_interpret_failure| G
+
+  D -->|tap_save| F
+  E -->|tap_save| F
+  D -->|tap_discard| A
+  E -->|tap_discard| A
+
+  F -->|save_success + refresh_home| A
+  F -->|save_failure| G
+
+  G -->|tap_retry_voice| C
+  G -->|tap_retry_save| F
+  G -->|tap_discard| A

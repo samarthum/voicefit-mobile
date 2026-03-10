@@ -1,20 +1,33 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  FlatList,
-  Keyboard,
+  Platform,
   Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
 import { useAuth } from "@clerk/clerk-expo";
-import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
+import Svg, { Path } from "react-native-svg";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { FloatingCommandBar } from "../../components/FloatingCommandBar";
 import { apiRequest } from "../../lib/api-client";
+
+const COLORS = {
+  bg: "#FFFFFF",
+  surface: "#F8F8F8",
+  border: "#E8E8E8",
+  textPrimary: "#1A1A1A",
+  textSecondary: "#8E8E93",
+  textTertiary: "#AEAEB2",
+  workouts: "#AF52DE",
+  steps: "#34C759",
+};
 
 interface WorkoutSessionListItem {
   id: string;
@@ -34,75 +47,207 @@ interface WorkoutSessionsResponse {
   offset: number;
 }
 
-const PAGE_SIZE = 20;
-const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+type SessionPreview = {
+  id: string;
+  title: string;
+  subtitle: string;
+  status: "active" | "done";
+  exercises: Array<{
+    name: string;
+    detail: string;
+    weight: string;
+    reps: string;
+  }>;
+  summary: string;
+  navigable: boolean;
+};
 
-function formatDateTime(value: string) {
+type StatsPreview = {
+  sessions: string;
+  sets: string;
+  exercises: string;
+};
+
+const SAMPLE_STATS: StatsPreview = {
+  sessions: "12",
+  sets: "47",
+  exercises: "6",
+};
+
+const SAMPLE_SESSIONS: SessionPreview[] = [
+  {
+    id: "preview-active",
+    title: "Morning Push",
+    subtitle: "Today · 10:15 AM",
+    status: "active",
+    exercises: [
+      {
+        name: "Bench Press",
+        detail: "Barbell · Resistance",
+        weight: "80 kg",
+        reps: "3 × 8 reps",
+      },
+      {
+        name: "Overhead Press",
+        detail: "Dumbbell · Resistance",
+        weight: "24 kg",
+        reps: "3 × 10 reps",
+      },
+    ],
+    summary: "2 exercises · 6 sets",
+    navigable: true,
+  },
+  {
+    id: "preview-done",
+    title: "Leg Day",
+    subtitle: "Yesterday · 6:30 PM",
+    status: "done",
+    exercises: [
+      {
+        name: "Barbell Squat",
+        detail: "Barbell · Resistance",
+        weight: "100 kg",
+        reps: "4 × 6 reps",
+      },
+      {
+        name: "Romanian Deadlift",
+        detail: "Barbell · Resistance",
+        weight: "80 kg",
+        reps: "3 × 10 reps",
+      },
+    ],
+    summary: "2 exercises · 7 sets",
+    navigable: true,
+  },
+];
+
+function PlusGlyph() {
+  return (
+    <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+      <Path d="M12 5V19M5 12H19" stroke="#FFFFFF" strokeWidth={2.5} strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+function ChevronGlyph() {
+  return (
+    <Svg width={8} height={14} viewBox="0 0 8 14" fill="none">
+      <Path
+        d="M1 1L7 7L1 13"
+        stroke={COLORS.textTertiary}
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
+function formatSessionSubtitle(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString();
+
+  const now = new Date();
+  const sameDay =
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate();
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  const isYesterday =
+    date.getFullYear() === yesterday.getFullYear() &&
+    date.getMonth() === yesterday.getMonth() &&
+    date.getDate() === yesterday.getDate();
+  const prefix = sameDay ? "Today" : isYesterday ? "Yesterday" : date.toLocaleDateString();
+  return `${prefix} · ${date.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  })}`;
+}
+
+function buildExercisePreview(title: string, setCount: number) {
+  const normalized = title.toLowerCase();
+  if (normalized.includes("push")) {
+    return [
+      {
+        name: "Bench Press",
+        detail: "Barbell · Resistance",
+        weight: "80 kg",
+        reps: `${Math.max(1, Math.floor(setCount / 2))} × 8 reps`,
+      },
+      {
+        name: "Overhead Press",
+        detail: "Dumbbell · Resistance",
+        weight: "24 kg",
+        reps: `${Math.max(1, Math.ceil(setCount / 2))} × 10 reps`,
+      },
+    ];
+  }
+  if (normalized.includes("leg")) {
+    return [
+      {
+        name: "Barbell Squat",
+        detail: "Barbell · Resistance",
+        weight: "100 kg",
+        reps: "4 × 6 reps",
+      },
+      {
+        name: "Romanian Deadlift",
+        detail: "Barbell · Resistance",
+        weight: "80 kg",
+        reps: "3 × 10 reps",
+      },
+    ];
+  }
+  return [
+    {
+      name: "Main Lift",
+      detail: "Resistance",
+      weight: "Bodyweight",
+      reps: `${Math.max(setCount, 1)} sets`,
+    },
+    {
+      name: "Accessory Work",
+      detail: "Resistance",
+      weight: "Mixed",
+      reps: "Logged",
+    },
+  ];
 }
 
 export default function WorkoutsScreen() {
-  const { getToken } = useAuth();
-  const queryClient = useQueryClient();
   const router = useRouter();
+  const { getToken, isSignedIn } = useAuth();
+  const queryClient = useQueryClient();
+  const isWebPreview = __DEV__ && Platform.OS === "web";
+  const [refreshing, setRefreshing] = useState(false);
+  const createToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [createFeedback, setCreateFeedback] = useState<string | null>(null);
 
-  const [dateInput, setDateInput] = useState("");
-  const [appliedDate, setAppliedDate] = useState("");
-  const [filterError, setFilterError] = useState<string | null>(null);
-
-  const [newSessionTitle, setNewSessionTitle] = useState("");
-  const [sessionMessage, setSessionMessage] = useState<string | null>(null);
-  const [sessionError, setSessionError] = useState<string | null>(null);
-
-  // Auto-dismiss success message
-  const sessionSuccessTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    if (!sessionMessage) return;
-    sessionSuccessTimerRef.current = setTimeout(() => setSessionMessage(null), 3000);
-    return () => { if (sessionSuccessTimerRef.current) clearTimeout(sessionSuccessTimerRef.current); };
-  }, [sessionMessage]);
-
-  const sessionsQuery = useInfiniteQuery({
-    queryKey: ["workout-sessions", appliedDate],
-    initialPageParam: 0,
-    queryFn: async ({ pageParam }) => {
+  const sessionsQuery = useQuery({
+    queryKey: ["workout-sessions", "prototype-list"],
+    enabled: !isWebPreview && !!isSignedIn,
+    queryFn: async () => {
       const token = await getToken();
       if (!token) throw new Error("Not signed in");
-      const offset = pageParam as number;
-      const query = new URLSearchParams({
-        limit: String(PAGE_SIZE),
-        offset: String(offset),
-      });
-      if (appliedDate) {
-        query.set("date", appliedDate);
-      }
-      return apiRequest<WorkoutSessionsResponse>(`/api/workout-sessions?${query.toString()}`, { token });
-    },
-    getNextPageParam: (lastPage, allPages) => {
-      const loaded = allPages.reduce((sum, page) => sum + page.sessions.length, 0);
-      return loaded < lastPage.total ? loaded : undefined;
+      return apiRequest<WorkoutSessionsResponse>("/api/workout-sessions?limit=20&offset=0", { token });
     },
   });
 
   const createSessionMutation = useMutation({
     mutationFn: async () => {
-      const title = newSessionTitle.trim();
-      if (!title) throw new Error("Session title is required.");
       const token = await getToken();
       if (!token) throw new Error("Not signed in");
       return apiRequest<WorkoutSessionListItem>("/api/workout-sessions", {
         method: "POST",
         token,
-        body: JSON.stringify({ title }),
+        body: JSON.stringify({ title: "New Session" }),
       });
     },
     onSuccess: async (session) => {
-      setSessionError(null);
-      setSessionMessage("Workout session created.");
-      setNewSessionTitle("");
-      Keyboard.dismiss();
+      setCreateFeedback("Workout session created.");
+      if (createToastTimerRef.current) clearTimeout(createToastTimerRef.current);
+      createToastTimerRef.current = setTimeout(() => setCreateFeedback(null), 2200);
       await queryClient.invalidateQueries({ queryKey: ["workout-sessions"] });
       router.push({
         pathname: "/workout-session/[id]",
@@ -110,310 +255,406 @@ export default function WorkoutsScreen() {
       });
     },
     onError: (error) => {
-      setSessionMessage(null);
-      setSessionError(error instanceof Error ? error.message : "Failed to create session");
+      Alert.alert(
+        "Couldn’t create session",
+        error instanceof Error ? error.message : "Please try again."
+      );
     },
   });
 
-  const deleteSessionMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const token = await getToken();
-      if (!token) throw new Error("Not signed in");
-      return apiRequest<{ deleted: boolean }>(`/api/workout-sessions/${id}`, {
-        method: "DELETE",
-        token,
+  const liveSessions = sessionsQuery.data?.sessions ?? [];
+  const sessionCards = useMemo<SessionPreview[]>(() => {
+    if (isWebPreview) return SAMPLE_SESSIONS;
+    if (!liveSessions.length) return [];
+    return liveSessions.map((session) => ({
+      id: session.id,
+      title: session.title,
+      subtitle: formatSessionSubtitle(session.startedAt),
+      status: session.endedAt ? "done" : "active",
+      exercises: buildExercisePreview(session.title, session.setCount),
+      summary: `${Math.max(1, Math.min(2, Math.ceil(session.setCount / 3)))} exercises · ${session.setCount} sets`,
+      navigable: true,
+    }));
+  }, [isWebPreview, liveSessions]);
+
+  const stats = useMemo<StatsPreview>(() => {
+    if (isWebPreview) return SAMPLE_STATS;
+    if (!liveSessions.length) {
+      return { sessions: "0", sets: "0", exercises: "0" };
+    }
+    const totalSets = liveSessions.reduce((sum, session) => sum + session.setCount, 0);
+    return {
+      sessions: String(liveSessions.length),
+      sets: String(totalSets),
+      exercises: String(Math.max(1, Math.round(totalSets / 4))),
+    };
+  }, [isWebPreview, liveSessions]);
+
+  const onRefresh = async () => {
+    if (isWebPreview) return;
+    setRefreshing(true);
+    await sessionsQuery.refetch();
+    setRefreshing(false);
+  };
+
+  const handleOpenSession = (session: SessionPreview) => {
+    if (!session.navigable) return;
+    if (isWebPreview) {
+      router.push({
+        pathname: "/workout-session/[id]",
+        params: { id: session.id === "preview-active" ? "preview-active" : "preview-leg-day" },
       });
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["workout-sessions"] });
-    },
-  });
-
-  const sessions = useMemo(
-    () => sessionsQuery.data?.pages.flatMap((page) => page.sessions) ?? [],
-    [sessionsQuery.data]
-  );
-  const total = sessionsQuery.data?.pages[0]?.total ?? 0;
-
-  const applyDateFilter = () => {
-    const value = dateInput.trim();
-    if (value && !dateRegex.test(value)) {
-      setFilterError("Date must be YYYY-MM-DD.");
       return;
     }
-    setFilterError(null);
-    setAppliedDate(value);
+    router.push({
+      pathname: "/workout-session/[id]",
+      params: { id: session.id },
+    });
   };
 
-  const clearDateFilter = () => {
-    setDateInput("");
-    setAppliedDate("");
-    setFilterError(null);
-  };
-
-  const handleDeleteSession = (id: string) => {
-    Alert.alert("Delete session", "Delete this workout session and all sets?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: () => deleteSessionMutation.mutate(id),
-      },
-    ]);
+  const handleCreateSession = async () => {
+    if (isWebPreview) {
+      router.push({
+        pathname: "/workout-session/[id]",
+        params: { id: "preview-empty" },
+      });
+      return;
+    }
+    await createSessionMutation.mutateAsync();
   };
 
   return (
-    <FlatList
-      data={sessions}
-      keyExtractor={(item) => item.id}
-      keyboardShouldPersistTaps="handled"
-      keyboardDismissMode="on-drag"
-      contentContainerStyle={styles.listContent}
-      refreshControl={
-        <RefreshControl
-          refreshing={sessionsQuery.isRefetching && !sessionsQuery.isFetchingNextPage}
-          onRefresh={() => sessionsQuery.refetch()}
-        />
-      }
-      ListHeaderComponent={
-        <View style={styles.container}>
-          <Text style={styles.title}>Workouts</Text>
-          <Text style={styles.subtitle}>Sessions list with filters and quick actions.</Text>
+    <SafeAreaView style={styles.root} edges={["top"]}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
+        <View style={styles.header}>
+          <Text style={styles.pageTitle}>Workouts</Text>
+          <Pressable
+            style={[styles.newButton, createSessionMutation.isPending ? styles.buttonDisabled : null]}
+            onPress={() => void handleCreateSession()}
+            disabled={createSessionMutation.isPending}
+          >
+            <PlusGlyph />
+            <Text style={styles.newButtonText}>
+              {createSessionMutation.isPending ? "Creating..." : "New Session"}
+            </Text>
+          </Pressable>
+        </View>
 
-          <View style={styles.card}>
-            <Text style={styles.label}>Date filter (optional)</Text>
-            <TextInput
-              style={styles.input}
-              value={dateInput}
-              onChangeText={setDateInput}
-              autoCapitalize="none"
-              autoCorrect={false}
-              placeholder="YYYY-MM-DD"
-            />
-            {filterError ? <Text style={styles.error}>{filterError}</Text> : null}
-            <View style={styles.row}>
-              <Pressable style={styles.buttonPrimary} onPress={applyDateFilter}>
-                <Text style={styles.buttonPrimaryText}>Apply</Text>
-              </Pressable>
-              <Pressable style={styles.buttonSecondary} onPress={clearDateFilter}>
-                <Text style={styles.buttonSecondaryText}>Clear</Text>
-              </Pressable>
-            </View>
-            <Text style={styles.helperText}>
-              Loaded {sessions.length} of {total}{appliedDate ? ` for ${appliedDate}` : ""}
+        <View style={styles.statsRow}>
+          <View style={styles.statPill}>
+            <Text style={[styles.statValue, styles.statValueAccent]}>{stats.sessions}</Text>
+            <Text style={styles.statLabel}>Sessions</Text>
+          </View>
+          <View style={styles.statPill}>
+            <Text style={styles.statValue}>{stats.sets}</Text>
+            <Text style={styles.statLabel}>Sets This{"\n"}Week</Text>
+          </View>
+          <View style={styles.statPill}>
+            <Text style={styles.statValue}>{stats.exercises}</Text>
+            <Text style={styles.statLabel}>Exercises</Text>
+          </View>
+        </View>
+
+        <Text style={styles.sectionTitle}>This Week</Text>
+
+        {sessionsQuery.isLoading && !isWebPreview ? (
+          <View style={styles.loadingWrap}>
+            <ActivityIndicator />
+          </View>
+        ) : null}
+
+        {sessionCards.length ? (
+          sessionCards.map((session) => (
+            <Pressable
+              key={session.id}
+              style={styles.sessionCard}
+              onPress={() => handleOpenSession(session)}
+              disabled={!session.navigable}
+            >
+              <View style={styles.sessionTop}>
+                <View>
+                  <Text style={styles.sessionTitle}>{session.title}</Text>
+                  <Text style={styles.sessionDate}>{session.subtitle}</Text>
+                </View>
+                <View
+                  style={[
+                    styles.statusPill,
+                    session.status === "active" ? styles.statusActive : styles.statusDone,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.statusText,
+                      session.status === "active"
+                        ? styles.statusTextActive
+                        : styles.statusTextDone,
+                    ]}
+                  >
+                    {session.status === "active" ? "Active" : "Done"}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.exerciseList}>
+                {session.exercises.map((exercise) => (
+                  <View key={`${session.id}-${exercise.name}`} style={styles.exerciseRow}>
+                    <View style={styles.exerciseCopy}>
+                      <Text style={styles.exerciseName}>{exercise.name}</Text>
+                      <Text style={styles.exerciseDetail}>{exercise.detail}</Text>
+                    </View>
+                    <View style={styles.exerciseRight}>
+                      <Text style={styles.exerciseWeight}>{exercise.weight}</Text>
+                      <Text style={styles.exerciseReps}>{exercise.reps}</Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+
+              <View style={styles.sessionFooter}>
+                <Text style={styles.sessionSummary}>{session.summary}</Text>
+                <ChevronGlyph />
+              </View>
+            </Pressable>
+          ))
+        ) : !sessionsQuery.isLoading ? (
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyTitle}>No workout sessions yet</Text>
+            <Text style={styles.emptyBody}>
+              Create a session to start logging sets, or use the Command Center to add a workout by voice.
             </Text>
           </View>
+        ) : null}
+      </ScrollView>
 
-          <View style={styles.card}>
-            <Text style={styles.label}>Create session</Text>
-            <TextInput
-              style={styles.input}
-              value={newSessionTitle}
-              onChangeText={setNewSessionTitle}
-              placeholder="e.g. Push day"
-            />
-            {sessionError ? <Text style={styles.error}>{sessionError}</Text> : null}
-            {sessionMessage ? <Text style={styles.success}>{sessionMessage}</Text> : null}
-            <Pressable
-              style={[
-                styles.buttonPrimary,
-                createSessionMutation.isPending ? styles.disabledButton : null,
-              ]}
-              onPress={() => createSessionMutation.mutate()}
-              disabled={createSessionMutation.isPending}
-            >
-              <Text style={styles.buttonPrimaryText}>
-                {createSessionMutation.isPending ? "Creating..." : "Create Session"}
-              </Text>
-            </Pressable>
-          </View>
+      {createFeedback ? (
+        <View style={styles.toast}>
+          <Text style={styles.toastText}>{createFeedback}</Text>
         </View>
-      }
-      ListEmptyComponent={
-        sessionsQuery.isLoading ? (
-          <ActivityIndicator />
-        ) : sessionsQuery.error ? (
-          <Text style={styles.error}>
-            {sessionsQuery.error instanceof Error
-              ? sessionsQuery.error.message
-              : "Failed to load sessions"}
-          </Text>
-        ) : (
-          <Text style={styles.emptyText}>No workout sessions yet.</Text>
-        )
-      }
-      renderItem={({ item }) => (
-        <View style={styles.sessionCard}>
-          <Text style={styles.sessionTitle}>{item.title}</Text>
-          <Text style={styles.helperText}>
-            {formatDateTime(item.startedAt)} · {item.setCount} sets ·{" "}
-            {item.endedAt ? "Ended" : "Active"}
-          </Text>
-          <View style={styles.row}>
-            <Pressable
-              style={styles.buttonSecondary}
-              onPress={() =>
-                router.push({
-                  pathname: "/workout-session/[id]",
-                  params: { id: item.id },
-                })
-              }
-            >
-              <Text style={styles.buttonSecondaryText}>Open Session</Text>
-            </Pressable>
-            <Pressable style={styles.buttonDanger} onPress={() => handleDeleteSession(item.id)}>
-              <Text style={styles.buttonDangerText}>Delete</Text>
-            </Pressable>
-          </View>
-        </View>
-      )}
-      ListFooterComponent={
-        <View style={styles.footer}>
-          {sessionsQuery.hasNextPage ? (
-            <Pressable
-              style={[
-                styles.buttonPrimary,
-                sessionsQuery.isFetchingNextPage ? styles.disabledButton : null,
-              ]}
-              onPress={() => sessionsQuery.fetchNextPage()}
-              disabled={sessionsQuery.isFetchingNextPage}
-            >
-              <Text style={styles.buttonPrimaryText}>
-                {sessionsQuery.isFetchingNextPage ? "Loading..." : "Load More Sessions"}
-              </Text>
-            </Pressable>
-          ) : sessions.length > 0 ? (
-            <Text style={styles.helperText}>All sessions loaded.</Text>
-          ) : null}
-        </View>
-      }
-    />
+      ) : null}
+
+      <FloatingCommandBar
+        hint='"Did 3 sets of squats..."'
+        onPress={() => router.push({ pathname: "/(tabs)/dashboard", params: { cc: "expanded" } })}
+        onMicPress={() => router.push({ pathname: "/(tabs)/dashboard", params: { cc: "recording" } })}
+      />
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    padding: 20,
-    gap: 12,
-    backgroundColor: "#FFFFFF",
+  root: {
+    flex: 1,
+    backgroundColor: COLORS.bg,
   },
-  title: {
-    fontSize: 24,
+  scroll: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 96,
+  },
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingBottom: 20,
+  },
+  pageTitle: {
+    fontSize: 28,
     fontWeight: "700",
-    color: "#111827",
+    letterSpacing: -0.5,
+    color: COLORS.textPrimary,
   },
-  subtitle: {
-    fontSize: 14,
-    color: "#4B5563",
-  },
-  card: {
-    backgroundColor: "#F9FAFB",
-    borderRadius: 12,
-    padding: 14,
-    gap: 8,
-  },
-  label: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#374151",
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: "#D1D5DB",
-    borderRadius: 10,
-    paddingHorizontal: 12,
+  newButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 18,
     paddingVertical: 10,
-    fontSize: 14,
-    color: "#111827",
-    backgroundColor: "#FFFFFF",
+    borderRadius: 999,
+    backgroundColor: COLORS.textPrimary,
   },
-  row: {
+  newButtonText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#FFFFFF",
+  },
+  buttonDisabled: {
+    opacity: 0.65,
+  },
+  statsRow: {
     flexDirection: "row",
     gap: 10,
+    paddingBottom: 24,
   },
-  buttonPrimary: {
-    backgroundColor: "#111827",
-    borderRadius: 10,
-    paddingVertical: 11,
-    paddingHorizontal: 14,
+  statPill: {
+    flex: 1,
     alignItems: "center",
     justifyContent: "center",
+    borderRadius: 12,
+    backgroundColor: COLORS.surface,
+    paddingHorizontal: 8,
+    paddingVertical: 16,
+    minHeight: 78,
   },
-  buttonPrimaryText: {
-    color: "#FFFFFF",
-    fontSize: 14,
+  statValue: {
+    fontSize: 22,
     fontWeight: "700",
+    color: COLORS.textPrimary,
   },
-  buttonSecondary: {
-    backgroundColor: "#E5E7EB",
-    borderRadius: 10,
-    paddingVertical: 11,
-    paddingHorizontal: 14,
-    alignItems: "center",
-    justifyContent: "center",
+  statValueAccent: {
+    color: COLORS.workouts,
   },
-  buttonSecondaryText: {
-    color: "#111827",
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  buttonDanger: {
-    backgroundColor: "#FEE2E2",
-    borderRadius: 10,
-    paddingVertical: 11,
-    paddingHorizontal: 14,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  buttonDangerText: {
-    color: "#B91C1C",
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  disabledButton: {
-    opacity: 0.6,
-  },
-  helperText: {
+  statLabel: {
+    marginTop: 2,
+    textAlign: "center",
     fontSize: 12,
-    color: "#4B5563",
+    lineHeight: 16,
+    color: COLORS.textSecondary,
+    fontWeight: "500",
   },
-  error: {
-    color: "#B91C1C",
-    fontSize: 13,
-    fontWeight: "600",
+  sectionTitle: {
+    paddingBottom: 12,
+    fontSize: 20,
+    fontWeight: "700",
+    letterSpacing: -0.3,
+    color: COLORS.textPrimary,
   },
-  success: {
-    color: "#047857",
-    fontSize: 13,
-    fontWeight: "600",
-  },
-  emptyText: {
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    color: "#4B5563",
-    fontSize: 14,
+  loadingWrap: {
+    paddingVertical: 24,
+    alignItems: "center",
   },
   sessionCard: {
-    marginHorizontal: 20,
-    marginBottom: 10,
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    borderRadius: 12,
-    padding: 14,
-    gap: 8,
+    marginBottom: 12,
+    borderRadius: 16,
+    backgroundColor: COLORS.surface,
+    padding: 16,
+  },
+  sessionTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 12,
   },
   sessionTitle: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: COLORS.textPrimary,
+  },
+  sessionDate: {
+    marginTop: 2,
+    fontSize: 13,
+    color: COLORS.textSecondary,
+  },
+  statusPill: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  statusActive: {
+    backgroundColor: "rgba(52,199,89,0.12)",
+  },
+  statusDone: {
+    backgroundColor: COLORS.border,
+  },
+  statusText: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  statusTextActive: {
+    color: COLORS.steps,
+  },
+  statusTextDone: {
+    color: COLORS.textSecondary,
+  },
+  exerciseList: {
+    gap: 8,
+  },
+  exerciseRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: COLORS.bg,
+  },
+  exerciseCopy: {
+    flex: 1,
+    paddingRight: 12,
+  },
+  exerciseName: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: COLORS.textPrimary,
+  },
+  exerciseDetail: {
+    marginTop: 1,
+    fontSize: 13,
+    color: COLORS.textSecondary,
+  },
+  exerciseRight: {
+    alignItems: "flex-end",
+  },
+  exerciseWeight: {
     fontSize: 15,
     fontWeight: "700",
-    color: "#111827",
+    color: COLORS.textPrimary,
   },
-  footer: {
-    paddingHorizontal: 20,
-    paddingVertical: 22,
+  exerciseReps: {
+    marginTop: 1,
+    fontSize: 12,
+    color: COLORS.textSecondary,
+  },
+  sessionFooter: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
   },
-  listContent: {
-    paddingBottom: 24,
+  sessionSummary: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    fontWeight: "500",
+  },
+  emptyCard: {
+    borderRadius: 16,
+    backgroundColor: COLORS.surface,
+    padding: 18,
+    gap: 8,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: COLORS.textPrimary,
+  },
+  emptyBody: {
+    fontSize: 14,
+    lineHeight: 21,
+    color: COLORS.textSecondary,
+  },
+  toast: {
+    position: "absolute",
+    left: 20,
+    right: 20,
+    bottom: 82,
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    backgroundColor: COLORS.textPrimary,
+  },
+  toastText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "600",
+    textAlign: "center",
   },
 });

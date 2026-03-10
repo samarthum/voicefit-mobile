@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VoiceFit — Sign Up with Email</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --bg: #FFFFFF; --surface: #F8F8F8; --border: #E8E8E8;
+    --text-primary: #1A1A1A; --text-secondary: #8E8E93; --text-tertiary: #AEAEB2;
+    --accent: #007AFF; --error: #FF3B30;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
+    background: #E5E5E5; display: flex; justify-content: center; padding: 24px 0; min-height: 100vh;
+  }
+  .phone {
+    width: 390px; height: 844px; background: var(--bg);
+    border-radius: 40px; overflow: hidden; position: relative;
+    box-shadow: 0 25px 80px rgba(0,0,0,0.15);
+    display: flex; flex-direction: column;
+  }
+  .status-bar {
+    height: 54px; display: flex; align-items: flex-end; justify-content: space-between;
+    padding: 0 28px 8px; font-size: 15px; font-weight: 600; color: var(--text-primary);
+    flex-shrink: 0;
+  }
+  .status-bar .right { display: flex; gap: 6px; align-items: center; }
+
+  /* Nav header */
+  .nav-header {
+    display: flex; align-items: center; padding: 8px 20px 8px;
+    flex-shrink: 0;
+  }
+  .back-btn {
+    width: 36px; height: 36px; border-radius: 999px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; background: none; border: none;
+  }
+
+  /* Content */
+  .content {
+    flex: 1; padding: 24px 28px 0; overflow-y: auto;
+  }
+  .page-title {
+    font-size: 32px; font-weight: 800; color: var(--text-primary);
+    letter-spacing: -0.8px; margin-bottom: 8px;
+  }
+  .page-subtitle {
+    font-size: 16px; color: var(--text-secondary); line-height: 1.5;
+    margin-bottom: 36px;
+  }
+
+  /* Form */
+  .field { margin-bottom: 20px; }
+  .field-label {
+    font-size: 14px; font-weight: 600; color: var(--text-primary);
+    margin-bottom: 8px; display: block;
+  }
+  .field-input-wrap {
+    display: flex; align-items: center;
+    background: var(--surface); border-radius: 12px;
+    border: 1.5px solid transparent;
+    padding: 0 16px; height: 52px;
+    transition: border-color 0.15s ease;
+  }
+  .field-input-wrap:focus-within {
+    border-color: var(--text-primary);
+    background: var(--bg);
+  }
+  .field-input {
+    flex: 1; border: none; background: transparent; outline: none;
+    font-size: 16px; font-family: inherit; color: var(--text-primary);
+  }
+  .field-input::placeholder { color: var(--text-tertiary); }
+  .field-toggle {
+    background: none; border: none; cursor: pointer; padding: 4px;
+    display: flex; align-items: center;
+  }
+  .field-hint {
+    font-size: 12px; color: var(--text-tertiary); margin-top: 6px;
+  }
+
+  /* Tabs (Sign In / Sign Up toggle) */
+  .auth-tabs {
+    display: flex; gap: 0; margin-bottom: 32px;
+    background: var(--surface); border-radius: 12px; padding: 4px;
+  }
+  .auth-tab {
+    flex: 1; text-align: center; padding: 10px 0;
+    font-size: 15px; font-weight: 600; border-radius: 10px;
+    cursor: pointer; border: none; font-family: inherit;
+    transition: all 0.2s ease;
+  }
+  .auth-tab.active {
+    background: var(--bg); color: var(--text-primary);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  .auth-tab:not(.active) {
+    background: transparent; color: var(--text-secondary);
+  }
+
+  /* Submit */
+  .submit-btn {
+    width: 100%; height: 54px; border-radius: 14px; border: none;
+    background: var(--text-primary); color: #FFFFFF;
+    font-size: 17px; font-weight: 600; cursor: pointer;
+    font-family: inherit; letter-spacing: -0.2px;
+    margin-top: 8px;
+    transition: opacity 0.15s ease;
+  }
+  .submit-btn:active { opacity: 0.85; }
+
+  /* Forgot password */
+  .forgot-link {
+    display: block; text-align: right; margin-top: -12px; margin-bottom: 20px;
+    font-size: 14px; font-weight: 500; color: var(--accent);
+    text-decoration: none; cursor: pointer;
+  }
+
+  /* Bottom area */
+  .bottom-area {
+    padding: 16px 28px 48px; flex-shrink: 0; text-align: center;
+  }
+  .switch-text {
+    font-size: 15px; color: var(--text-secondary);
+  }
+  .switch-link {
+    color: var(--text-primary); font-weight: 600;
+    text-decoration: none; cursor: pointer;
+  }
+
+  /* Home indicator */
+  .home-indicator {
+    width: 134px; height: 5px; background: var(--text-primary);
+    border-radius: 999px; margin: 0 auto 8px; opacity: 0.15;
+  }
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="status-bar">
+    <span>9:41</span>
+    <div class="right">
+      <svg width="17" height="12" fill="none"><rect x="0" y="3" width="3" height="9" rx="1" fill="#1A1A1A"/><rect x="4.5" y="2" width="3" height="10" rx="1" fill="#1A1A1A"/><rect x="9" y="0" width="3" height="12" rx="1" fill="#1A1A1A"/><rect x="13" y="0" width="3.5" height="12" rx="1" fill="#1A1A1A"/></svg>
+      <svg width="16" height="12" fill="none"><path d="M8 2.4C10.6 2.4 12.9 3.4 14.6 5L16 3.5C13.9 1.3 11.1 0 8 0S2.1 1.3 0 3.5L1.4 5C3.1 3.4 5.4 2.4 8 2.4z" fill="#1A1A1A"/><path d="M8 6.8c1.7 0 3.2.7 4.3 1.8L13.7 7c-1.5-1.5-3.5-2.4-5.7-2.4S4.3 5.5 2.8 7l1.4 1.5C5.3 7.5 6.6 6.8 8 6.8z" fill="#1A1A1A"/><circle cx="8" cy="11" r="1.5" fill="#1A1A1A"/></svg>
+      <svg width="27" height="12" fill="none"><rect x="0" y="1" width="22" height="10" rx="3" stroke="#1A1A1A" stroke-width="1"/><rect x="23" y="4" width="2.5" height="4" rx="1" fill="#1A1A1A" opacity="0.4"/><rect x="2" y="3" width="15" height="6" rx="1.5" fill="#1A1A1A"/></svg>
+    </div>
+  </div>
+
+  <!-- Nav header -->
+  <div class="nav-header">
+    <button class="back-btn">
+      <svg width="10" height="18" fill="none" stroke="#1A1A1A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 1L1 9l8 8"/></svg>
+    </button>
+  </div>
+
+  <!-- Content -->
+  <div class="content">
+    <div class="page-title">Create account</div>
+    <div class="page-subtitle">Start tracking your meals and workouts with just your voice.</div>
+
+    <!-- Sign In / Sign Up toggle -->
+    <div class="auth-tabs">
+      <button class="auth-tab">Sign In</button>
+      <button class="auth-tab active">Sign Up</button>
+    </div>
+
+    <!-- Full Name -->
+    <div class="field">
+      <label class="field-label">Full name</label>
+      <div class="field-input-wrap">
+        <input class="field-input" type="text" placeholder="John Doe">
+      </div>
+    </div>
+
+    <!-- Email -->
+    <div class="field">
+      <label class="field-label">Email</label>
+      <div class="field-input-wrap">
+        <input class="field-input" type="email" placeholder="john@example.com">
+      </div>
+    </div>
+
+    <!-- Password -->
+    <div class="field">
+      <label class="field-label">Password</label>
+      <div class="field-input-wrap">
+        <input class="field-input" type="password" placeholder="Create a password" value="mypassword1">
+        <button class="field-toggle">
+          <svg width="20" height="20" fill="none" stroke="#AEAEB2" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M1 10s3.5-7 9-7 9 7 9 7-3.5 7-9 7-9-7-9-7z"/>
+            <circle cx="10" cy="10" r="3"/>
+          </svg>
+        </button>
+      </div>
+      <div class="field-hint">Must be at least 8 characters</div>
+    </div>
+
+    <!-- Submit -->
+    <button class="submit-btn">Create Account</button>
+  </div>
+
+  <!-- Bottom -->
+  <div class="bottom-area">
+    <span class="switch-text">Already have an account? <a class="switch-link" href="#">Sign in</a></span>
+  </div>
+
+  <div class="home-indicator"></div>
+</div>
+</body>
+</html>

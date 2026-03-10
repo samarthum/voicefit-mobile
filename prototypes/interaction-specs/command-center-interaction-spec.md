@@ -1,8 +1,8 @@
 # Command Center Interaction + State Spec (v3)
 
-- Last updated: 2026-02-10
+- Last updated: 2026-02-14
 - Screen: Command Center (cross-screen persistent control)
-- Status: Draft v3.0 (review-state parity with meal/workout prototypes)
+- Status: Draft v3.1 (review-state parity with meal/workout prototypes + handoff sync)
 - Owner: Product + Design + Eng
 
 ## Source links
@@ -284,3 +284,13 @@ flowchart LR
 ## 9) Open decisions to resolve in v3
 - Confirm if low-confidence interpretation should optionally re-enable legacy review screens.
 - Confirm undo behavior and timeout for quick-add and auto-save toasts.
+
+## 10) Handoff snapshot (2026-02-14)
+- Baseline on `main`: commit `417380f` (`Implement command center review-state parity on Home`).
+- Local in-progress UI polish (not yet committed): `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/app/(tabs)/dashboard.tsx` review-workout table overflow containment.
+- Canonical handoff summary: `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/handoffs/home-handoff-2026-02-14.md`
+- Prototype parity checkpoints:
+  - Expanded input sheet: `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/log.html`
+  - Recording sheet: `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/voice-recording.html`
+  - Review meal sheet: `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/voice-review-meal.html`
+  - Review workout sheet: `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/voice-review-workout.html`

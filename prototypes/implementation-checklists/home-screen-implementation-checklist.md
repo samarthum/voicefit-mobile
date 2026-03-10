@@ -1,8 +1,8 @@
 # Home Screen Implementation Checklist
 
-- Last updated: 2026-02-10
+- Last updated: 2026-02-14
 - Scope: Home screen + embedded Command Center behavior on Home
-- Status: In execution (Home implementation in progress for v2 review-state parity; analytics + iOS QA + asset-source parity pending)
+- Status: In execution (Home and Command Center parity largely complete; analytics + iOS QA + asset-source parity pending)
 - Canonical references:
   - `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/interaction-specs/home-interaction-spec.md`
   - `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/interaction-specs/command-center-interaction-spec.md`
@@ -45,6 +45,7 @@
   - `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/assets/home/icons`
   - `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/assets/home/illustrations`
 - [x] Verify sizing and padding match locked prototype spacing.
+- [x] Home recent-meal rows and Command Center quick-add rows now render premium meal glyphs instead of generic placeholders.
 
 ## 4) Command Center panel states on Home
 
@@ -140,7 +141,7 @@
 - [ ] QA checklist passes on iOS target device sizes.
 - [x] Specs and checklist remain in sync after implementation PR.
 
-## 12) Current execution snapshot (2026-02-10)
+## 12) Current execution snapshot (2026-02-14)
 
 - Completed in code:
   - Home layout and major visual sections in `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/app/(tabs)/dashboard.tsx`
@@ -167,3 +168,41 @@
   - `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/output/playwright/home-states/14-cc-error-save.png`
   - `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/output/playwright/home-states/15-cc-error-mic-permission.png`
   - `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/output/playwright/home-states/16-cc-error-quick-add.png`
+
+## 13) Agent handoff snapshot (2026-02-14 13:09 IST)
+
+- Repo root: `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile`
+- Branch: `main`
+- Latest pushed baseline commit: `417380f` (`Implement command center review-state parity on Home`)
+- Local uncommitted change:
+  - `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/app/(tabs)/dashboard.tsx`
+  - Scope: `Review Workout` sheet x-axis overflow polish (`workoutSetHeaderText`, `workoutSetRow`, `workoutSetInput` style constraints).
+- Most relevant verification artifacts:
+  - `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/output/playwright/home-states/06b-cc-review-workout.png`
+  - `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/output/playwright/home-states/09-cc-recording.png`
+  - `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/output/playwright/home-states/10-cc-interpreting-voice.png`
+  - `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/output/playwright/home-states/05-cc-review-state.png`
+- Immediate next tasks for the next agent:
+  - Finalize/commit pending local workout overflow polish if approved.
+  - Complete analytics instrumentation listed in section 9.
+  - Run iOS device QA pass and log deltas.
+  - Close premium asset-source parity remaining in section 3.
+
+## 14) Home parity refresh (2026-03-10)
+
+- Browser-driven verification re-run against:
+  - `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/home.html`
+  - `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/log.html`
+  - `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/voice-recording.html`
+  - `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/voice-review-meal.html`
+  - `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/voice-review-workout.html`
+- Fresh web captures regenerated in:
+  - `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/output/playwright/home-states/`
+- Capture tooling update:
+  - `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/scripts/capture-home-states.mjs` now accepts `HOME_CAPTURE_BASE_URL` and defaults to `http://localhost:8081/dashboard`.
+- Verified in browser from Home:
+  - `Ask Coach` route opens `/coach`
+  - `See All` opens `/meals`
+  - `Workouts` tab opens `/workouts`
+  - `Settings` tab opens `/settings`
+  - Add button, collapsed command bar, mic entry, trend-tab switching, and day switching all work

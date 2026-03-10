@@ -1,0 +1,844 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VoiceFit — Exercise Picker</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --bg: #FFFFFF; --surface: #F8F8F8; --border: #E8E8E8;
+    --text-primary: #1A1A1A; --text-secondary: #8E8E93; --text-tertiary: #AEAEB2;
+    --accent: #007AFF; --green: #34C759; --orange: #FF9500; --purple: #AF52DE;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
+    background: #E5E5E5; display: flex; justify-content: center; padding: 24px 0; min-height: 100vh;
+  }
+  .phone {
+    width: 390px; height: 844px; background: var(--bg);
+    border-radius: 40px; overflow: hidden; position: relative;
+    box-shadow: 0 25px 80px rgba(0,0,0,0.15);
+  }
+  .status-bar {
+    height: 54px; display: flex; align-items: flex-end; justify-content: space-between;
+    padding: 0 28px 8px; font-size: 15px; font-weight: 600; color: var(--text-primary);
+  }
+  .status-bar .right { display: flex; gap: 6px; align-items: center; }
+
+  /* Header */
+  .picker-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 20px 12px;
+  }
+  .close-btn {
+    width: 32px; height: 32px; border-radius: 999px; background: var(--surface);
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+    border: none;
+  }
+  .picker-title {
+    font-size: 18px; font-weight: 700; color: var(--text-primary); letter-spacing: -0.3px;
+  }
+  .create-btn {
+    font-size: 15px; font-weight: 600; color: var(--accent); cursor: pointer;
+    background: none; border: none; font-family: inherit;
+  }
+
+  /* Search */
+  .search-wrap {
+    padding: 0 20px 12px;
+  }
+  .search-bar {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--surface); border-radius: 12px; padding: 0 14px;
+    height: 44px;
+  }
+  .search-bar svg { flex-shrink: 0; opacity: 0.4; }
+  .search-input {
+    flex: 1; border: none; background: transparent; outline: none;
+    font-size: 16px; font-family: inherit; color: var(--text-primary);
+  }
+  .search-input::placeholder { color: var(--text-tertiary); }
+
+  /* Filter chips */
+  .filter-wrap {
+    padding: 0 0 12px;
+    overflow-x: auto; -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .filter-wrap::-webkit-scrollbar { display: none; }
+  .filter-row {
+    display: flex; gap: 8px; padding: 0 20px;
+    white-space: nowrap;
+  }
+  .filter-chip {
+    padding: 7px 16px; border-radius: 999px; border: 1.5px solid var(--border);
+    background: transparent; font-size: 14px; font-weight: 500;
+    color: var(--text-secondary); cursor: pointer; font-family: inherit;
+    white-space: nowrap; flex-shrink: 0;
+    transition: all 0.15s ease;
+  }
+  .filter-chip.active {
+    background: var(--text-primary); color: #FFFFFF; border-color: var(--text-primary);
+  }
+
+  /* Scrollable list */
+  .exercise-list {
+    height: calc(100% - 54px - 56px - 56px - 48px - 88px);
+    overflow-y: auto; -webkit-overflow-scrolling: touch;
+    padding-bottom: 8px;
+  }
+  .exercise-list::-webkit-scrollbar { display: none; }
+
+  /* Section headers */
+  .section-header {
+    padding: 16px 20px 8px;
+    font-size: 13px; font-weight: 600; color: var(--text-secondary);
+    text-transform: uppercase; letter-spacing: 0.5px;
+    background: var(--bg);
+    position: sticky; top: 0; z-index: 2;
+  }
+
+  /* Exercise row */
+  .exercise-row {
+    display: flex; align-items: center; gap: 14px;
+    padding: 12px 20px; cursor: pointer;
+    min-height: 56px;
+    transition: background 0.1s ease;
+    border-bottom: 1px solid rgba(0,0,0,0.04);
+  }
+  .exercise-row:active { background: var(--surface); }
+
+  .exercise-icon {
+    width: 42px; height: 42px; border-radius: 10px;
+    background: var(--surface); display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .exercise-icon.chest { background: rgba(255,59,48,0.08); }
+  .exercise-icon.chest svg { stroke: #FF3B30; }
+  .exercise-icon.back { background: rgba(0,122,255,0.08); }
+  .exercise-icon.back svg { stroke: #007AFF; }
+  .exercise-icon.shoulders { background: rgba(175,82,222,0.08); }
+  .exercise-icon.shoulders svg { stroke: #AF52DE; }
+  .exercise-icon.legs { background: rgba(52,199,89,0.08); }
+  .exercise-icon.legs svg { stroke: #34C759; }
+  .exercise-icon.arms { background: rgba(255,149,0,0.08); }
+  .exercise-icon.arms svg { stroke: #FF9500; }
+  .exercise-icon.core { background: rgba(255,204,0,0.08); }
+  .exercise-icon.core svg { stroke: #FFCC00; }
+  .exercise-icon.compound { background: rgba(88,86,214,0.08); }
+  .exercise-icon.compound svg { stroke: #5856D6; }
+
+  .exercise-info { flex: 1; min-width: 0; }
+  .exercise-name {
+    font-size: 16px; font-weight: 600; color: var(--text-primary);
+    letter-spacing: -0.2px;
+  }
+  .exercise-meta {
+    font-size: 13px; color: var(--text-secondary); margin-top: 2px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .equip-tag {
+    font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 4px;
+    background: var(--surface); color: var(--text-secondary);
+    text-transform: uppercase; letter-spacing: 0.3px;
+  }
+
+  .exercise-add {
+    width: 28px; height: 28px; border-radius: 999px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--surface);
+  }
+
+  /* Recent tag */
+  .recent-badge {
+    font-size: 11px; font-weight: 500; color: var(--green);
+  }
+
+  /* Floating voice bar */
+  .voice-bar {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    background: var(--bg);
+    border-top: 1px solid var(--border);
+    padding: 10px 16px 34px;
+    display: flex; align-items: center; gap: 12px;
+    z-index: 10;
+  }
+  .voice-bar-left {
+    flex: 1; display: flex; align-items: center; gap: 10px; min-width: 0;
+  }
+  .voice-bar-sparkle { flex-shrink: 0; opacity: 0.4; }
+  .voice-bar-hint {
+    font-size: 14px; color: var(--text-tertiary);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .voice-bar-mic {
+    width: 44px; height: 44px; border-radius: 999px; background: var(--text-primary);
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    cursor: pointer; position: relative;
+  }
+  .voice-bar-mic::before {
+    content: ''; position: absolute; inset: -4px; border-radius: 999px;
+    border: 2px solid rgba(26,26,26,0.08); animation: vb-pulse 2.5s ease-in-out infinite;
+  }
+  @keyframes vb-pulse {
+    0%, 100% { transform: scale(1); opacity: 0.6; }
+    50% { transform: scale(1.08); opacity: 0; }
+  }
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="status-bar">
+    <span>9:41</span>
+    <div class="right">
+      <svg width="17" height="12" fill="none"><rect x="0" y="3" width="3" height="9" rx="1" fill="#1A1A1A"/><rect x="4.5" y="2" width="3" height="10" rx="1" fill="#1A1A1A"/><rect x="9" y="0" width="3" height="12" rx="1" fill="#1A1A1A"/><rect x="13" y="0" width="3.5" height="12" rx="1" fill="#1A1A1A"/></svg>
+      <svg width="16" height="12" fill="none"><path d="M8 2.4C10.6 2.4 12.9 3.4 14.6 5L16 3.5C13.9 1.3 11.1 0 8 0S2.1 1.3 0 3.5L1.4 5C3.1 3.4 5.4 2.4 8 2.4z" fill="#1A1A1A"/><path d="M8 6.8c1.7 0 3.2.7 4.3 1.8L13.7 7c-1.5-1.5-3.5-2.4-5.7-2.4S4.3 5.5 2.8 7l1.4 1.5C5.3 7.5 6.6 6.8 8 6.8z" fill="#1A1A1A"/><circle cx="8" cy="11" r="1.5" fill="#1A1A1A"/></svg>
+      <svg width="27" height="12" fill="none"><rect x="0" y="1" width="22" height="10" rx="3" stroke="#1A1A1A" stroke-width="1"/><rect x="23" y="4" width="2.5" height="4" rx="1" fill="#1A1A1A" opacity="0.4"/><rect x="2" y="3" width="15" height="6" rx="1.5" fill="#1A1A1A"/></svg>
+    </div>
+  </div>
+
+  <!-- Header -->
+  <div class="picker-header">
+    <button class="close-btn">
+      <svg width="14" height="14" fill="none" stroke="#1A1A1A" stroke-width="2" stroke-linecap="round"><path d="M1 1l12 12M13 1L1 13"/></svg>
+    </button>
+    <span class="picker-title">Add Exercise</span>
+    <button class="create-btn">Create</button>
+  </div>
+
+  <!-- Search -->
+  <div class="search-wrap">
+    <div class="search-bar">
+      <svg width="18" height="18" fill="none" stroke="#1A1A1A" stroke-width="2" stroke-linecap="round"><circle cx="8" cy="8" r="6.5"/><path d="M13 13l4 4"/></svg>
+      <input class="search-input" type="text" placeholder="Search exercises...">
+    </div>
+  </div>
+
+  <!-- Filter Chips -->
+  <div class="filter-wrap">
+    <div class="filter-row">
+      <button class="filter-chip active">All</button>
+      <button class="filter-chip">Chest</button>
+      <button class="filter-chip">Back</button>
+      <button class="filter-chip">Shoulders</button>
+      <button class="filter-chip">Legs</button>
+      <button class="filter-chip">Arms</button>
+      <button class="filter-chip">Core</button>
+      <button class="filter-chip">Compound</button>
+    </div>
+  </div>
+
+  <!-- Exercise List -->
+  <div class="exercise-list">
+
+    <!-- Recent Section -->
+    <div class="section-header">Recent</div>
+
+    <div class="exercise-row">
+      <div class="exercise-icon chest">
+        <svg width="20" height="20" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14h12M2 10h16M6 6h8"/></svg>
+      </div>
+      <div class="exercise-info">
+        <div class="exercise-name">Bench Press</div>
+        <div class="exercise-meta">
+          <span class="equip-tag">Barbell</span>
+          <span>Chest</span>
+          <span class="recent-badge">2 days ago</span>
+        </div>
+      </div>
+      <div class="exercise-add">
+        <svg width="14" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M7 1v12M1 7h12"/></svg>
+      </div>
+    </div>
+
+    <div class="exercise-row">
+      <div class="exercise-icon legs">
+        <svg width="20" height="20" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v12M13 4v12M4 8h12"/></svg>
+      </div>
+      <div class="exercise-info">
+        <div class="exercise-name">Squat</div>
+        <div class="exercise-meta">
+          <span class="equip-tag">Barbell</span>
+          <span>Legs</span>
+          <span class="recent-badge">2 days ago</span>
+        </div>
+      </div>
+      <div class="exercise-add">
+        <svg width="14" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M7 1v12M1 7h12"/></svg>
+      </div>
+    </div>
+
+    <div class="exercise-row">
+      <div class="exercise-icon shoulders">
+        <svg width="20" height="20" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4v8M6 8l4-4 4 4M4 16h12"/></svg>
+      </div>
+      <div class="exercise-info">
+        <div class="exercise-name">Overhead Press</div>
+        <div class="exercise-meta">
+          <span class="equip-tag">Barbell</span>
+          <span>Shoulders</span>
+          <span class="recent-badge">4 days ago</span>
+        </div>
+      </div>
+      <div class="exercise-add">
+        <svg width="14" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M7 1v12M1 7h12"/></svg>
+      </div>
+    </div>
+
+    <!-- Chest Section -->
+    <div class="section-header">Chest</div>
+
+    <div class="exercise-row">
+      <div class="exercise-icon chest">
+        <svg width="20" height="20" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14h12M2 10h16M6 6h8"/></svg>
+      </div>
+      <div class="exercise-info">
+        <div class="exercise-name">Bench Press</div>
+        <div class="exercise-meta"><span class="equip-tag">Barbell</span><span>Chest</span></div>
+      </div>
+      <div class="exercise-add">
+        <svg width="14" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M7 1v12M1 7h12"/></svg>
+      </div>
+    </div>
+
+    <div class="exercise-row">
+      <div class="exercise-icon chest">
+        <svg width="20" height="20" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14h12M2 10h16M6 6h8"/></svg>
+      </div>
+      <div class="exercise-info">
+        <div class="exercise-name">Incline Bench Press</div>
+        <div class="exercise-meta"><span class="equip-tag">Barbell</span><span>Chest</span></div>
+      </div>
+      <div class="exercise-add">
+        <svg width="14" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M7 1v12M1 7h12"/></svg>
+      </div>
+    </div>
+
+    <div class="exercise-row">
+      <div class="exercise-icon chest">
+        <svg width="20" height="20" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14h12M2 10h16M6 6h8"/></svg>
+      </div>
+      <div class="exercise-info">
+        <div class="exercise-name">Decline Bench Press</div>
+        <div class="exercise-meta"><span class="equip-tag">Barbell</span><span>Chest</span></div>
+      </div>
+      <div class="exercise-add">
+        <svg width="14" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M7 1v12M1 7h12"/></svg>
+      </div>
+    </div>
+
+    <div class="exercise-row">
+      <div class="exercise-icon chest">
+        <svg width="20" height="20" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14h12M2 10h16M6 6h8"/></svg>
+      </div>
+      <div class="exercise-info">
+        <div class="exercise-name">Dumbbell Bench Press</div>
+        <div class="exercise-meta"><span class="equip-tag">Dumbbell</span><span>Chest</span></div>
+      </div>
+      <div class="exercise-add">
+        <svg width="14" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M7 1v12M1 7h12"/></svg>
+      </div>
+    </div>
+
+    <div class="exercise-row">
+      <div class="exercise-icon chest">
+        <svg width="20" height="20" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14h12M2 10h16M6 6h8"/></svg>
+      </div>
+      <div class="exercise-info">
+        <div class="exercise-name">Incline Dumbbell Press</div>
+        <div class="exercise-meta"><span class="equip-tag">Dumbbell</span><span>Chest</span></div>
+      </div>
+      <div class="exercise-add">
+        <svg width="14" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M7 1v12M1 7h12"/></svg>
+      </div>
+    </div>
+
+    <div class="exercise-row">
+      <div class="exercise-icon chest">
+        <svg width="20" height="20" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14h12M2 10h16M6 6h8"/></svg>
+      </div>
+      <div class="exercise-info">
+        <div class="exercise-name">Dumbbell Fly</div>
+        <div class="exercise-meta"><span class="equip-tag">Dumbbell</span><span>Chest</span></div>
+      </div>
+      <div class="exercise-add">
+        <svg width="14" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M7 1v12M1 7h12"/></svg>
+      </div>
+    </div>
+
+    <div class="exercise-row">
+      <div class="exercise-icon chest">
+        <svg width="20" height="20" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14h12M2 10h16M6 6h8"/></svg>
+      </div>
+      <div class="exercise-info">
+        <div class="exercise-name">Cable Fly</div>
+        <div class="exercise-meta"><span class="equip-tag">Cable</span><span>Chest</span></div>
+      </div>
+      <div class="exercise-add">
+        <svg width="14" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M7 1v12M1 7h12"/></svg>
+      </div>
+    </div>
+
+    <div class="exercise-row">
+      <div class="exercise-icon chest">
+        <svg width="20" height="20" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14h12M2 10h16M6 6h8"/></svg>
+      </div>
+      <div class="exercise-info">
+        <div class="exercise-name">Push-Up</div>
+        <div class="exercise-meta"><span class="equip-tag">Bodyweight</span><span>Chest</span></div>
+      </div>
+      <div class="exercise-add">
+        <svg width="14" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M7 1v12M1 7h12"/></svg>
+      </div>
+    </div>
+
+    <div class="exercise-row">
+      <div class="exercise-icon chest">
+        <svg width="20" height="20" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14h12M2 10h16M6 6h8"/></svg>
+      </div>
+      <div class="exercise-info">
+        <div class="exercise-name">Chest Dip</div>
+        <div class="exercise-meta"><span class="equip-tag">Bodyweight</span><span>Chest</span></div>
+      </div>
+      <div class="exercise-add">
+        <svg width="14" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M7 1v12M1 7h12"/></svg>
+      </div>
+    </div>
+
+    <div class="exercise-row">
+      <div class="exercise-icon chest">
+        <svg width="20" height="20" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14h12M2 10h16M6 6h8"/></svg>
+      </div>
+      <div class="exercise-info">
+        <div class="exercise-name">Floor Press</div>
+        <div class="exercise-meta"><span class="equip-tag">Barbell</span><span>Chest</span></div>
+      </div>
+      <div class="exercise-add">
+        <svg width="14" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M7 1v12M1 7h12"/></svg>
+      </div>
+    </div>
+
+    <!-- Back Section -->
+    <div class="section-header">Back</div>
+
+    <div class="exercise-row">
+      <div class="exercise-icon back">
+        <svg width="20" height="20" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4v12M6 8l4 4 4-4"/></svg>
+      </div>
+      <div class="exercise-info">
+        <div class="exercise-name">Deadlift</div>
+        <div class="exercise-meta"><span class="equip-tag">Barbell</span><span>Back</span></div>
+      </div>
+      <div class="exercise-add">
+        <svg width="14" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M7 1v12M1 7h12"/></svg>
+      </div>
+    </div>
+
+    <div class="exercise-row">
+      <div class="exercise-icon back">
+        <svg width="20" height="20" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4v12M6 8l4 4 4-4"/></svg>
+      </div>
+      <div class="exercise-info">
+        <div class="exercise-name">Barbell Row</div>
+        <div class="exercise-meta"><span class="equip-tag">Barbell</span><span>Back</span></div>
+      </div>
+      <div class="exercise-add">
+        <svg width="14" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M7 1v12M1 7h12"/></svg>
+      </div>
+    </div>
+
+    <div class="exercise-row">
+      <div class="exercise-icon back">
+        <svg width="20" height="20" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4v12M6 8l4 4 4-4"/></svg>
+      </div>
+      <div class="exercise-info">
+        <div class="exercise-name">Dumbbell Row</div>
+        <div class="exercise-meta"><span class="equip-tag">Dumbbell</span><span>Back</span></div>
+      </div>
+      <div class="exercise-add">
+        <svg width="14" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M7 1v12M1 7h12"/></svg>
+      </div>
+    </div>
+
+    <div class="exercise-row">
+      <div class="exercise-icon back">
+        <svg width="20" height="20" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4v12M6 8l4 4 4-4"/></svg>
+      </div>
+      <div class="exercise-info">
+        <div class="exercise-name">Pull-Up</div>
+        <div class="exercise-meta"><span class="equip-tag">Bodyweight</span><span>Back</span></div>
+      </div>
+      <div class="exercise-add">
+        <svg width="14" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M7 1v12M1 7h12"/></svg>
+      </div>
+    </div>
+
+    <div class="exercise-row">
+      <div class="exercise-icon back">
+        <svg width="20" height="20" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4v12M6 8l4 4 4-4"/></svg>
+      </div>
+      <div class="exercise-info">
+        <div class="exercise-name">Chin-Up</div>
+        <div class="exercise-meta"><span class="equip-tag">Bodyweight</span><span>Back</span></div>
+      </div>
+      <div class="exercise-add">
+        <svg width="14" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M7 1v12M1 7h12"/></svg>
+      </div>
+    </div>
+
+    <div class="exercise-row">
+      <div class="exercise-icon back">
+        <svg width="20" height="20" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4v12M6 8l4 4 4-4"/></svg>
+      </div>
+      <div class="exercise-info">
+        <div class="exercise-name">Lat Pulldown</div>
+        <div class="exercise-meta"><span class="equip-tag">Cable</span><span>Back</span></div>
+      </div>
+      <div class="exercise-add">
+        <svg width="14" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M7 1v12M1 7h12"/></svg>
+      </div>
+    </div>
+
+    <div class="exercise-row">
+      <div class="exercise-icon back">
+        <svg width="20" height="20" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4v12M6 8l4 4 4-4"/></svg>
+      </div>
+      <div class="exercise-info">
+        <div class="exercise-name">Seated Cable Row</div>
+        <div class="exercise-meta"><span class="equip-tag">Cable</span><span>Back</span></div>
+      </div>
+      <div class="exercise-add">
+        <svg width="14" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M7 1v12M1 7h12"/></svg>
+      </div>
+    </div>
+
+    <div class="exercise-row">
+      <div class="exercise-icon back">
+        <svg width="20" height="20" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4v12M6 8l4 4 4-4"/></svg>
+      </div>
+      <div class="exercise-info">
+        <div class="exercise-name">T-Bar Row</div>
+        <div class="exercise-meta"><span class="equip-tag">Barbell</span><span>Back</span></div>
+      </div>
+      <div class="exercise-add">
+        <svg width="14" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M7 1v12M1 7h12"/></svg>
+      </div>
+    </div>
+
+    <div class="exercise-row">
+      <div class="exercise-icon back">
+        <svg width="20" height="20" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4v12M6 8l4 4 4-4"/></svg>
+      </div>
+      <div class="exercise-info">
+        <div class="exercise-name">Face Pull</div>
+        <div class="exercise-meta"><span class="equip-tag">Cable</span><span>Back</span></div>
+      </div>
+      <div class="exercise-add">
+        <svg width="14" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M7 1v12M1 7h12"/></svg>
+      </div>
+    </div>
+
+    <!-- Shoulders Section -->
+    <div class="section-header">Shoulders</div>
+
+    <div class="exercise-row">
+      <div class="exercise-icon shoulders">
+        <svg width="20" height="20" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4v8M6 8l4-4 4 4M4 16h12"/></svg>
+      </div>
+      <div class="exercise-info">
+        <div class="exercise-name">Overhead Press</div>
+        <div class="exercise-meta"><span class="equip-tag">Barbell</span><span>Shoulders</span></div>
+      </div>
+      <div class="exercise-add">
+        <svg width="14" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M7 1v12M1 7h12"/></svg>
+      </div>
+    </div>
+
+    <div class="exercise-row">
+      <div class="exercise-icon shoulders">
+        <svg width="20" height="20" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4v8M6 8l4-4 4 4M4 16h12"/></svg>
+      </div>
+      <div class="exercise-info">
+        <div class="exercise-name">Dumbbell Shoulder Press</div>
+        <div class="exercise-meta"><span class="equip-tag">Dumbbell</span><span>Shoulders</span></div>
+      </div>
+      <div class="exercise-add">
+        <svg width="14" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M7 1v12M1 7h12"/></svg>
+      </div>
+    </div>
+
+    <div class="exercise-row">
+      <div class="exercise-icon shoulders">
+        <svg width="20" height="20" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4v8M6 8l4-4 4 4M4 16h12"/></svg>
+      </div>
+      <div class="exercise-info">
+        <div class="exercise-name">Arnold Press</div>
+        <div class="exercise-meta"><span class="equip-tag">Dumbbell</span><span>Shoulders</span></div>
+      </div>
+      <div class="exercise-add">
+        <svg width="14" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M7 1v12M1 7h12"/></svg>
+      </div>
+    </div>
+
+    <div class="exercise-row">
+      <div class="exercise-icon shoulders">
+        <svg width="20" height="20" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4v8M6 8l4-4 4 4M4 16h12"/></svg>
+      </div>
+      <div class="exercise-info">
+        <div class="exercise-name">Lateral Raise</div>
+        <div class="exercise-meta"><span class="equip-tag">Dumbbell</span><span>Shoulders</span></div>
+      </div>
+      <div class="exercise-add">
+        <svg width="14" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M7 1v12M1 7h12"/></svg>
+      </div>
+    </div>
+
+    <div class="exercise-row">
+      <div class="exercise-icon shoulders">
+        <svg width="20" height="20" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4v8M6 8l4-4 4 4M4 16h12"/></svg>
+      </div>
+      <div class="exercise-info">
+        <div class="exercise-name">Shrug</div>
+        <div class="exercise-meta"><span class="equip-tag">Barbell</span><span>Shoulders</span></div>
+      </div>
+      <div class="exercise-add">
+        <svg width="14" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M7 1v12M1 7h12"/></svg>
+      </div>
+    </div>
+
+    <!-- Legs Section -->
+    <div class="section-header">Legs</div>
+
+    <div class="exercise-row">
+      <div class="exercise-icon legs">
+        <svg width="20" height="20" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v12M13 4v12M4 8h12"/></svg>
+      </div>
+      <div class="exercise-info">
+        <div class="exercise-name">Squat</div>
+        <div class="exercise-meta"><span class="equip-tag">Barbell</span><span>Legs</span></div>
+      </div>
+      <div class="exercise-add">
+        <svg width="14" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M7 1v12M1 7h12"/></svg>
+      </div>
+    </div>
+
+    <div class="exercise-row">
+      <div class="exercise-icon legs">
+        <svg width="20" height="20" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v12M13 4v12M4 8h12"/></svg>
+      </div>
+      <div class="exercise-info">
+        <div class="exercise-name">Front Squat</div>
+        <div class="exercise-meta"><span class="equip-tag">Barbell</span><span>Legs</span></div>
+      </div>
+      <div class="exercise-add">
+        <svg width="14" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M7 1v12M1 7h12"/></svg>
+      </div>
+    </div>
+
+    <div class="exercise-row">
+      <div class="exercise-icon legs">
+        <svg width="20" height="20" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v12M13 4v12M4 8h12"/></svg>
+      </div>
+      <div class="exercise-info">
+        <div class="exercise-name">Leg Press</div>
+        <div class="exercise-meta"><span class="equip-tag">Machine</span><span>Legs</span></div>
+      </div>
+      <div class="exercise-add">
+        <svg width="14" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M7 1v12M1 7h12"/></svg>
+      </div>
+    </div>
+
+    <div class="exercise-row">
+      <div class="exercise-icon legs">
+        <svg width="20" height="20" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v12M13 4v12M4 8h12"/></svg>
+      </div>
+      <div class="exercise-info">
+        <div class="exercise-name">Romanian Deadlift</div>
+        <div class="exercise-meta"><span class="equip-tag">Barbell</span><span>Legs</span></div>
+      </div>
+      <div class="exercise-add">
+        <svg width="14" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M7 1v12M1 7h12"/></svg>
+      </div>
+    </div>
+
+    <div class="exercise-row">
+      <div class="exercise-icon legs">
+        <svg width="20" height="20" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v12M13 4v12M4 8h12"/></svg>
+      </div>
+      <div class="exercise-info">
+        <div class="exercise-name">Hip Thrust</div>
+        <div class="exercise-meta"><span class="equip-tag">Barbell</span><span>Legs</span></div>
+      </div>
+      <div class="exercise-add">
+        <svg width="14" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M7 1v12M1 7h12"/></svg>
+      </div>
+    </div>
+
+    <!-- Arms Section -->
+    <div class="section-header">Arms</div>
+
+    <div class="exercise-row">
+      <div class="exercise-icon arms">
+        <svg width="20" height="20" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 14c0-4 3-6 3-10M14 14c0-4-3-6-3-10"/></svg>
+      </div>
+      <div class="exercise-info">
+        <div class="exercise-name">Bicep Curl</div>
+        <div class="exercise-meta"><span class="equip-tag">Dumbbell</span><span>Arms</span></div>
+      </div>
+      <div class="exercise-add">
+        <svg width="14" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M7 1v12M1 7h12"/></svg>
+      </div>
+    </div>
+
+    <div class="exercise-row">
+      <div class="exercise-icon arms">
+        <svg width="20" height="20" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 14c0-4 3-6 3-10M14 14c0-4-3-6-3-10"/></svg>
+      </div>
+      <div class="exercise-info">
+        <div class="exercise-name">Hammer Curl</div>
+        <div class="exercise-meta"><span class="equip-tag">Dumbbell</span><span>Arms</span></div>
+      </div>
+      <div class="exercise-add">
+        <svg width="14" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M7 1v12M1 7h12"/></svg>
+      </div>
+    </div>
+
+    <div class="exercise-row">
+      <div class="exercise-icon arms">
+        <svg width="20" height="20" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 14c0-4 3-6 3-10M14 14c0-4-3-6-3-10"/></svg>
+      </div>
+      <div class="exercise-info">
+        <div class="exercise-name">Tricep Pushdown</div>
+        <div class="exercise-meta"><span class="equip-tag">Cable</span><span>Arms</span></div>
+      </div>
+      <div class="exercise-add">
+        <svg width="14" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M7 1v12M1 7h12"/></svg>
+      </div>
+    </div>
+
+    <div class="exercise-row">
+      <div class="exercise-icon arms">
+        <svg width="20" height="20" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 14c0-4 3-6 3-10M14 14c0-4-3-6-3-10"/></svg>
+      </div>
+      <div class="exercise-info">
+        <div class="exercise-name">Skull Crusher</div>
+        <div class="exercise-meta"><span class="equip-tag">Barbell</span><span>Arms</span></div>
+      </div>
+      <div class="exercise-add">
+        <svg width="14" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M7 1v12M1 7h12"/></svg>
+      </div>
+    </div>
+
+    <div class="exercise-row">
+      <div class="exercise-icon arms">
+        <svg width="20" height="20" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 14c0-4 3-6 3-10M14 14c0-4-3-6-3-10"/></svg>
+      </div>
+      <div class="exercise-info">
+        <div class="exercise-name">Dip</div>
+        <div class="exercise-meta"><span class="equip-tag">Bodyweight</span><span>Arms</span></div>
+      </div>
+      <div class="exercise-add">
+        <svg width="14" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M7 1v12M1 7h12"/></svg>
+      </div>
+    </div>
+
+    <!-- Core Section -->
+    <div class="section-header">Core</div>
+
+    <div class="exercise-row">
+      <div class="exercise-icon core">
+        <svg width="20" height="20" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10h12M4 6h12M4 14h12"/></svg>
+      </div>
+      <div class="exercise-info">
+        <div class="exercise-name">Plank</div>
+        <div class="exercise-meta"><span class="equip-tag">Bodyweight</span><span>Core</span></div>
+      </div>
+      <div class="exercise-add">
+        <svg width="14" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M7 1v12M1 7h12"/></svg>
+      </div>
+    </div>
+
+    <div class="exercise-row">
+      <div class="exercise-icon core">
+        <svg width="20" height="20" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10h12M4 6h12M4 14h12"/></svg>
+      </div>
+      <div class="exercise-info">
+        <div class="exercise-name">Russian Twist</div>
+        <div class="exercise-meta"><span class="equip-tag">Bodyweight</span><span>Core</span></div>
+      </div>
+      <div class="exercise-add">
+        <svg width="14" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M7 1v12M1 7h12"/></svg>
+      </div>
+    </div>
+
+    <div class="exercise-row">
+      <div class="exercise-icon core">
+        <svg width="20" height="20" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10h12M4 6h12M4 14h12"/></svg>
+      </div>
+      <div class="exercise-info">
+        <div class="exercise-name">Cable Crunch</div>
+        <div class="exercise-meta"><span class="equip-tag">Cable</span><span>Core</span></div>
+      </div>
+      <div class="exercise-add">
+        <svg width="14" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M7 1v12M1 7h12"/></svg>
+      </div>
+    </div>
+
+    <!-- Compound Section -->
+    <div class="section-header">Compound</div>
+
+    <div class="exercise-row">
+      <div class="exercise-icon compound">
+        <svg width="20" height="20" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4l4 6-4 6M10 4L6 10l4 6"/></svg>
+      </div>
+      <div class="exercise-info">
+        <div class="exercise-name">Kettlebell Swing</div>
+        <div class="exercise-meta"><span class="equip-tag">Kettlebell</span><span>Full Body</span></div>
+      </div>
+      <div class="exercise-add">
+        <svg width="14" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M7 1v12M1 7h12"/></svg>
+      </div>
+    </div>
+
+    <div class="exercise-row">
+      <div class="exercise-icon compound">
+        <svg width="20" height="20" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4l4 6-4 6M10 4L6 10l4 6"/></svg>
+      </div>
+      <div class="exercise-info">
+        <div class="exercise-name">Thruster</div>
+        <div class="exercise-meta"><span class="equip-tag">Barbell</span><span>Full Body</span></div>
+      </div>
+      <div class="exercise-add">
+        <svg width="14" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M7 1v12M1 7h12"/></svg>
+      </div>
+    </div>
+
+    <div class="exercise-row">
+      <div class="exercise-icon compound">
+        <svg width="20" height="20" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4l4 6-4 6M10 4L6 10l4 6"/></svg>
+      </div>
+      <div class="exercise-info">
+        <div class="exercise-name">Burpee</div>
+        <div class="exercise-meta"><span class="equip-tag">Bodyweight</span><span>Full Body</span></div>
+      </div>
+      <div class="exercise-add">
+        <svg width="14" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M7 1v12M1 7h12"/></svg>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Floating Voice Bar -->
+  <div class="voice-bar">
+    <div class="voice-bar-left">
+      <svg class="voice-bar-sparkle" width="16" height="16" fill="none" stroke="#AEAEB2" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 1v3M8 12v3M1 8h3M12 8h3M3 3l2 2M11 11l2 2M13 3l-2 2M5 11l-2 2"/></svg>
+      <span class="voice-bar-hint">"Add tricep pushdowns"</span>
+    </div>
+    <div class="voice-bar-mic">
+      <svg width="18" height="18" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="1" width="8" height="10" rx="4"/><path d="M2 9a7 7 0 0014 0"/><path d="M9 16v2"/></svg>
+    </div>
+  </div>
+</div>
+</body>
+</html>

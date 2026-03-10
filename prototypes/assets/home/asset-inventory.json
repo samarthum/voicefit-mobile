@@ -1,0 +1,84 @@
+{
+  "screen": "home",
+  "captured_at": "2026-02-10",
+  "version": 2,
+  "sources": {
+    "ui_index": "/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/spec-ui-source-of-truth.md",
+    "design_decisions": "/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/design-decisions.md",
+    "prototype_html": "/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/home.html"
+  },
+  "summary": {
+    "external_raster_images": 0,
+    "standalone_svg_assets": 19,
+    "external_fonts": 0,
+    "required_generated_assets": 0
+  },
+  "design_tokens": {
+    "colors": {
+      "bg": "#FFFFFF",
+      "surface": "#F8F8F8",
+      "border": "#E8E8E8",
+      "text_primary": "#1A1A1A",
+      "text_secondary": "#8E8E93",
+      "text_tertiary": "#AEAEB2",
+      "calories": "#FF9500",
+      "steps": "#34C759",
+      "weight": "#007AFF",
+      "workouts": "#AF52DE",
+      "error": "#FF3B30"
+    },
+    "radii": {
+      "card": 16,
+      "input": 12,
+      "pill": 999
+    },
+    "frame": {
+      "phone": {
+        "width": 390,
+        "height": 844
+      },
+      "status_bar_height": 54,
+      "tab_bar_height": 83
+    },
+    "font_stack": "-apple-system, BlinkMacSystemFont, SF Pro Display, SF Pro Text, Helvetica Neue, system-ui, sans-serif"
+  },
+  "paths": {
+    "icons_dir": "/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/assets/home/icons",
+    "illustrations_dir": "/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/assets/home/illustrations"
+  },
+  "assets": [
+    "status-cellular.svg",
+    "status-wifi.svg",
+    "status-battery.svg",
+    "icon-add-circle.svg",
+    "ring-calorie-180.svg",
+    "ring-steps-40.svg",
+    "sparkline-weight.svg",
+    "icon-coach-chevron.svg",
+    "chart-weekly-calories.svg",
+    "icon-command-sparkle.svg",
+    "icon-mic.svg",
+    "icon-tab-home.svg",
+    "icon-tab-workouts.svg",
+    "icon-tab-settings.svg",
+    "meal-salad.svg",
+    "meal-oats.svg",
+    "meal-salmon-rice.svg",
+    "coach-badge-premium.svg",
+    "coach-illustration-card.svg"
+  ],
+  "integration": {
+    "home_html_references": [
+      "./assets/home/illustrations/coach-badge-premium.svg",
+      "./assets/home/icons/meal-salad.svg",
+      "./assets/home/icons/meal-oats.svg",
+      "./assets/home/icons/meal-salmon-rice.svg"
+    ],
+    "emoji_meal_thumbs_removed": true
+  },
+  "premium_policy": {
+    "meal_emojis_allowed": false,
+    "coach_brand_illustration_required": true,
+    "standalone_svg_reuse_required": true
+  }
+}

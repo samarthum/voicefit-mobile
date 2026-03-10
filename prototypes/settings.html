@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VoiceFit — Settings</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --bg: #FFFFFF; --surface: #F8F8F8; --border: #E8E8E8;
+    --text-primary: #1A1A1A; --text-secondary: #8E8E93; --text-tertiary: #AEAEB2;
+    --error: #FF3B30;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
+    background: #E5E5E5; display: flex; justify-content: center; padding: 24px 0; min-height: 100vh;
+  }
+  .phone {
+    width: 390px; height: 844px; background: var(--surface);
+    border-radius: 40px; overflow: hidden; position: relative;
+    box-shadow: 0 25px 80px rgba(0,0,0,0.15);
+  }
+  .status-bar {
+    height: 54px; display: flex; align-items: flex-end; justify-content: space-between;
+    padding: 0 28px 8px; font-size: 15px; font-weight: 600; color: var(--text-primary);
+    background: var(--surface);
+  }
+  .status-bar .right { display: flex; gap: 6px; align-items: center; }
+  .screen {
+    height: calc(100% - 54px - 83px); overflow-y: auto; padding: 0 20px 24px;
+    -webkit-overflow-scrolling: touch; background: var(--surface);
+  }
+  .screen::-webkit-scrollbar { display: none; }
+
+  .page-title { font-size: 28px; font-weight: 700; color: var(--text-primary); padding: 8px 0 24px; letter-spacing: -0.5px; }
+
+  /* Settings Group */
+  .group-label {
+    font-size: 13px; font-weight: 600; color: var(--text-secondary);
+    text-transform: uppercase; letter-spacing: 0.5px;
+    padding: 0 0 8px;
+  }
+  .group-card {
+    background: var(--bg); border-radius: 16px; overflow: hidden; margin-bottom: 24px;
+  }
+  .setting-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 14px 16px; border-bottom: 1px solid var(--border);
+  }
+  .setting-row:last-child { border-bottom: none; }
+  .setting-left { display: flex; align-items: center; gap: 12px; }
+  .setting-icon {
+    width: 32px; height: 32px; border-radius: 8px; display: flex;
+    align-items: center; justify-content: center;
+  }
+  .setting-label { font-size: 16px; color: var(--text-primary); }
+  .setting-value {
+    font-size: 16px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px;
+  }
+
+  /* Input row */
+  .input-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    gap: 6px;
+  }
+  .input-row:last-child { border-bottom: none; }
+  .input-label { font-size: 16px; color: var(--text-primary); flex: 1; }
+  .input-field {
+    width: 120px; text-align: right; border: none; outline: none;
+    font-size: 16px; font-weight: 600; color: var(--text-primary);
+    font-family: inherit; background: transparent;
+  }
+  .input-field::placeholder { color: var(--text-tertiary); }
+
+  .save-btn {
+    width: 100%; padding: 14px; border-radius: 12px; border: none;
+    background: var(--text-primary); color: #FFFFFF; font-size: 16px;
+    font-weight: 600; cursor: pointer; font-family: inherit; margin-bottom: 24px;
+  }
+
+  /* Profile Section */
+  .profile-section {
+    display: flex; align-items: center; gap: 14px; padding-bottom: 24px;
+  }
+  .avatar {
+    width: 56px; height: 56px; border-radius: 999px; background: var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; font-weight: 700; color: var(--text-secondary);
+  }
+  .profile-name { font-size: 20px; font-weight: 700; color: var(--text-primary); }
+  .profile-email { font-size: 14px; color: var(--text-secondary); }
+
+  .danger-btn {
+    width: 100%; padding: 14px; border-radius: 12px; border: none;
+    background: var(--bg); color: var(--error); font-size: 16px;
+    font-weight: 600; cursor: pointer; font-family: inherit;
+  }
+
+  .version {
+    text-align: center; font-size: 12px; color: var(--text-tertiary);
+    padding: 24px 0;
+  }
+
+  .tab-bar {
+    position: absolute; bottom: 0; left: 0; right: 0; height: 83px;
+    background: var(--bg); border-top: 1px solid var(--border);
+    display: flex; justify-content: space-around; align-items: flex-start; padding-top: 10px;
+  }
+  .tab-item { display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; }
+  .tab-icon { width: 24px; height: 24px; }
+  .tab-label { font-size: 10px; font-weight: 500; }
+  .tab-item.active .tab-label { color: var(--text-primary); }
+  .tab-item:not(.active) .tab-label { color: var(--text-secondary); }
+
+  /* Command Center */
+  .command-center {
+    position: absolute;
+    bottom: 83px;
+    left: 12px;
+    right: 12px;
+    background: var(--bg);
+    border-radius: 20px;
+    padding: 8px 8px 8px 18px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow: 0 -2px 16px rgba(0,0,0,0.06), 0 0 0 1px var(--border);
+    z-index: 10;
+  }
+  .cc-left {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+  .cc-sparkle {
+    flex-shrink: 0;
+    opacity: 0.4;
+  }
+  .cc-hint {
+    font-size: 15px;
+    color: var(--text-tertiary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .cc-mic {
+    width: 48px;
+    height: 48px;
+    border-radius: 999px;
+    background: var(--text-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    cursor: pointer;
+    position: relative;
+  }
+  .cc-mic::before {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border-radius: 999px;
+    border: 2px solid rgba(26,26,26,0.08);
+    animation: cc-pulse 2.5s ease-in-out infinite;
+  }
+  @keyframes cc-pulse {
+    0%, 100% { transform: scale(1); opacity: 0.6; }
+    50% { transform: scale(1.08); opacity: 0; }
+  }
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="status-bar">
+    <span>9:41</span>
+    <div class="right">
+      <svg width="17" height="12" fill="none"><rect x="0" y="3" width="3" height="9" rx="1" fill="#1A1A1A"/><rect x="4.5" y="2" width="3" height="10" rx="1" fill="#1A1A1A"/><rect x="9" y="0" width="3" height="12" rx="1" fill="#1A1A1A"/><rect x="13" y="0" width="3.5" height="12" rx="1" fill="#1A1A1A"/></svg>
+      <svg width="16" height="12" fill="none"><path d="M8 2.4C10.6 2.4 12.9 3.4 14.6 5L16 3.5C13.9 1.3 11.1 0 8 0S2.1 1.3 0 3.5L1.4 5C3.1 3.4 5.4 2.4 8 2.4z" fill="#1A1A1A"/><path d="M8 6.8c1.7 0 3.2.7 4.3 1.8L13.7 7c-1.5-1.5-3.5-2.4-5.7-2.4S4.3 5.5 2.8 7l1.4 1.5C5.3 7.5 6.6 6.8 8 6.8z" fill="#1A1A1A"/><circle cx="8" cy="11" r="1.5" fill="#1A1A1A"/></svg>
+      <svg width="27" height="12" fill="none"><rect x="0" y="1" width="22" height="10" rx="3" stroke="#1A1A1A" stroke-width="1"/><rect x="23" y="4" width="2.5" height="4" rx="1" fill="#1A1A1A" opacity="0.4"/><rect x="2" y="3" width="15" height="6" rx="1.5" fill="#1A1A1A"/></svg>
+    </div>
+  </div>
+
+  <div class="screen">
+    <div class="page-title">Settings</div>
+
+    <!-- Profile -->
+    <div class="profile-section">
+      <div class="avatar">SM</div>
+      <div>
+        <div class="profile-name">Samarth</div>
+        <div class="profile-email">samarth@example.com</div>
+      </div>
+    </div>
+
+    <!-- Goals -->
+    <div class="group-label">Daily Goals</div>
+    <div class="group-card">
+      <div class="input-row">
+        <span class="input-label">Calorie Goal</span>
+        <input class="input-field" type="text" value="2,000" placeholder="2,000">
+        <span style="font-size:14px;color:var(--text-secondary);width:38px;text-align:left;">kcal</span>
+      </div>
+      <div class="input-row">
+        <span class="input-label">Step Goal</span>
+        <input class="input-field" type="text" value="10,000" placeholder="10,000">
+        <span style="font-size:14px;color:var(--text-secondary);width:38px;text-align:left;">steps</span>
+      </div>
+    </div>
+    <button class="save-btn">Save Goals</button>
+
+    <!-- General -->
+    <div class="group-label">General</div>
+    <div class="group-card">
+      <div class="setting-row">
+        <div class="setting-left">
+          <div class="setting-icon" style="background:rgba(0,122,255,0.12)">
+            <svg width="16" height="16" fill="none" stroke="#007AFF" stroke-width="1.8" stroke-linecap="round"><path d="M2 8h12M8 2v12"/></svg>
+          </div>
+          <span class="setting-label">Units</span>
+        </div>
+        <span class="setting-value">
+          Metric
+          <svg width="8" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M1 1l6 6-6 6"/></svg>
+        </span>
+      </div>
+      <div class="setting-row">
+        <div class="setting-left">
+          <div class="setting-icon" style="background:rgba(255,149,0,0.12)">
+            <svg width="16" height="16" fill="none" stroke="#FF9500" stroke-width="1.8" stroke-linecap="round"><circle cx="8" cy="8" r="6"/><path d="M8 5v3l2 1"/></svg>
+          </div>
+          <span class="setting-label">Timezone</span>
+        </div>
+        <span class="setting-value">
+          Auto
+          <svg width="8" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M1 1l6 6-6 6"/></svg>
+        </span>
+      </div>
+    </div>
+
+    <!-- Health Integration -->
+    <div class="group-label">Health Integration</div>
+    <div class="group-card">
+      <div class="setting-row">
+        <div class="setting-left">
+          <div class="setting-icon" style="background:rgba(255,59,48,0.12)">
+            <svg width="16" height="16" fill="none" stroke="#FF3B30" stroke-width="1.8" stroke-linecap="round"><path d="M8 3C5.5 0.5 1 3 1 6.5 1 12 8 15 8 15s7-3 7-8.5c0-3.5-4.5-6-7-3.5z"/></svg>
+          </div>
+          <span class="setting-label">Apple Health</span>
+        </div>
+        <span class="setting-value">
+          Coming Soon
+          <svg width="8" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M1 1l6 6-6 6"/></svg>
+        </span>
+      </div>
+      <div class="setting-row">
+        <div class="setting-left">
+          <div class="setting-icon" style="background:rgba(52,199,89,0.12)">
+            <svg width="16" height="16" fill="none" stroke="#34C759" stroke-width="1.8" stroke-linecap="round"><rect x="2" y="2" width="12" height="12" rx="2"/><path d="M5 8l2.5 2.5L11 6"/></svg>
+          </div>
+          <span class="setting-label">Health Connect</span>
+        </div>
+        <span class="setting-value">
+          Coming Soon
+          <svg width="8" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M1 1l6 6-6 6"/></svg>
+        </span>
+      </div>
+    </div>
+
+    <!-- About -->
+    <div class="group-label">About</div>
+    <div class="group-card">
+      <div class="setting-row">
+        <span class="setting-label">Version</span>
+        <span class="setting-value">1.0.0</span>
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">Privacy Policy</span>
+        <svg width="8" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M1 1l6 6-6 6"/></svg>
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">Terms of Service</span>
+        <svg width="8" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M1 1l6 6-6 6"/></svg>
+      </div>
+    </div>
+
+    <button class="danger-btn">Sign Out</button>
+
+    <div class="version">VoiceFit v1.0.0</div>
+
+    <div style="height:160px"></div>
+  </div>
+
+  <!-- Command Center -->
+  <div class="command-center">
+    <div class="cc-left">
+      <svg class="cc-sparkle" width="16" height="16" fill="none" stroke="#AEAEB2" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 1v3M8 12v3M1 8h3M12 8h3M3 3l2 2M11 11l2 2M13 3l-2 2M5 11l-2 2"/></svg>
+      <span class="cc-hint">"Had pasta for lunch..."</span>
+    </div>
+    <div class="cc-mic">
+      <svg width="20" height="20" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="1" width="8" height="11" rx="4"/><path d="M3 10a7 7 0 0014 0"/><path d="M10 17v3"/></svg>
+    </div>
+  </div>
+
+  <!-- Tab Bar (3 tabs) -->
+  <div class="tab-bar">
+    <div class="tab-item">
+      <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="#8E8E93" stroke-width="1.8"><path d="M3 12.5l9-9 9 9M5 11v8a1 1 0 001 1h4v-5h4v5h4a1 1 0 001-1v-8"/></svg>
+      <span class="tab-label">Home</span>
+    </div>
+    <div class="tab-item">
+      <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="#8E8E93" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2z"/><path d="M8 12h8M8 8h4"/></svg>
+      <span class="tab-label">Workouts</span>
+    </div>
+    <div class="tab-item active">
+      <svg class="tab-icon" viewBox="0 0 24 24" fill="#1A1A1A"><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/><circle cx="12" cy="12" r="3" fill="white"/><circle cx="12" cy="12" r="3" fill="none" stroke="#1A1A1A" stroke-width="1.8"/></svg>
+      <span class="tab-label">Settings</span>
+    </div>
+  </div>
+</div>
+</body>
+</html>

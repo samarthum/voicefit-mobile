@@ -1,8 +1,8 @@
 # Home Screen Interaction + State Spec (v2)
 
-- Last updated: 2026-02-11
+- Last updated: 2026-02-14
 - Screen: Home
-- Status: Draft v2.0 (review-state parity with Command Center v3)
+- Status: Draft v2.1 (review-state parity with Command Center v3 + handoff sync)
 - Owner: Product + Design + Eng
 
 ## Source links
@@ -253,3 +253,14 @@ flowchart LR
 - Voice meal/workout path requires explicit review save.
 - Save success refreshes Home and collapses command center.
 - Error copy and CTA mapping match command-center spec exactly.
+
+## 8) Handoff snapshot (2026-02-14)
+- Baseline on `main`: commit `417380f` (`Implement command center review-state parity on Home`).
+- In-progress local delta: `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/app/(tabs)/dashboard.tsx` contains review-workout overflow polish (column balancing + row clipping).
+- Canonical handoff summary: `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/handoffs/home-handoff-2026-02-14.md`
+- Primary validation set:
+  - `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/output/playwright/home-states/01-home-collapsed.png`
+  - `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/output/playwright/home-states/05-cc-review-state.png`
+  - `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/output/playwright/home-states/06b-cc-review-workout.png`
+  - `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/output/playwright/home-states/09-cc-recording.png`
+  - `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/output/playwright/home-states/10-cc-interpreting-voice.png`

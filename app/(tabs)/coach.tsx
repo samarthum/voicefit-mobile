@@ -1,16 +1,31 @@
 import { useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  FlatList,
+  Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
 import { useAuth } from "@clerk/clerk-expo";
-import type { AssistantChatMessage, AssistantChatResponse } from "@voicefit/contracts/types";
+import { useRouter } from "expo-router";
+import Svg, { Path } from "react-native-svg";
+import { SafeAreaView } from "react-native-safe-area-context";
+import type { AssistantChatResponse } from "@voicefit/contracts/types";
 import { apiRequest } from "../../lib/api-client";
+
+const COLORS = {
+  bg: "#FFFFFF",
+  surface: "#F8F8F8",
+  border: "#E8E8E8",
+  textPrimary: "#1A1A1A",
+  textSecondary: "#8E8E93",
+  textTertiary: "#AEAEB2",
+  coachPurple: "#AF52DE",
+  weight: "#007AFF",
+};
 
 const starterPrompts = [
   "Summarize my last 7 days",
@@ -19,19 +34,132 @@ const starterPrompts = [
   "How consistent were my workouts?",
 ];
 
-const createId = () => `chat-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+type CoachMessage = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  status?: "pending" | "error";
+  followups?: string[];
+};
+
+const SAMPLE_MESSAGES: CoachMessage[] = [
+  {
+    id: "sample-user-1",
+    role: "user",
+    content: "Summarize my last 7 days",
+  },
+  {
+    id: "sample-assistant-1",
+    role: "assistant",
+    content:
+      "Pretty solid week overall! You averaged about 2,180 cal/day, which is just slightly above your 2,100 goal, so nothing alarming.\n\nSteps were great at 8.2k avg, above your 8k target, and you logged 3 workouts which matches last week. The main flag is that your calories have been creeping up a bit compared to the week before.",
+    followups: ["What should I focus on next?", "Show my weight trend"],
+  },
+  {
+    id: "sample-user-2",
+    role: "user",
+    content: "How are my calories trending?",
+  },
+];
+
+const MOCK_RESPONSES: Record<string, { headline: string; highlights?: string[] }> = {
+  "Summarize my last 7 days": {
+    headline:
+      "Pretty solid week overall! You averaged about 2,180 cal/day, which is just slightly above your 2,100 goal.\n\nSteps were strong at 8.2k/day and you logged 3 workouts, which matches last week. The one thing to tighten is your late-evening snacking, because that's where most of the calorie drift came from.",
+    highlights: ["What should I focus on next?", "Show my weight trend"],
+  },
+  "How are my calories trending?": {
+    headline:
+      "Calories are up slightly versus the prior 7 days. You are averaging 1,651 kcal/day in the current window, about 3% lower than the previous week, so the trend is actually moving in the right direction after a brief spike mid-week.",
+    highlights: ["What changed mid-week?", "How does that compare to goal?"],
+  },
+  "Any changes in my weight this week?": {
+    headline:
+      "Weight is down 0.8 kg versus your recent average. The trend is moving toward your 70 kg goal, but the change is still within a normal weekly fluctuation band.",
+    highlights: ["Show the 30-day trend", "Any correlation with workouts?"],
+  },
+  "How consistent were my workouts?": {
+    headline:
+      "You logged 3 workouts in the last 7 days, which is consistent with your prior week. The cadence is solid; the main opportunity is reducing the gap between your second and third sessions.",
+    highlights: ["Which day did I miss?", "Summarize volume"],
+  },
+};
+
+const createId = () => `coach-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
 function getErrorMessage(error: unknown) {
   if (error instanceof Error && error.message.trim()) return error.message;
-  return "Failed to respond. Please try again.";
+  return "Coach couldn’t respond right now.";
+}
+
+function BackGlyph() {
+  return (
+    <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M15 5L8 12L15 19"
+        stroke={COLORS.textPrimary}
+        strokeWidth={2.2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
+function CoachSparkle() {
+  return (
+    <Svg width={12} height={12} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M12 2L14.2 8.2L20.4 10.4L14.2 12.6L12 18.8L9.8 12.6L3.6 10.4L9.8 8.2L12 2Z"
+        fill={COLORS.coachPurple}
+      />
+    </Svg>
+  );
+}
+
+function MicGlyph({ color = COLORS.textSecondary }: { color?: string }) {
+  return (
+    <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M12 3.5C10.067 3.5 8.5 5.067 8.5 7V12C8.5 13.933 10.067 15.5 12 15.5C13.933 15.5 15.5 13.933 15.5 12V7C15.5 5.067 13.933 3.5 12 3.5Z"
+        stroke={color}
+        strokeWidth={2}
+      />
+      <Path
+        d="M5.5 11.5C5.5 15.09 8.41 18 12 18C15.59 18 18.5 15.09 18.5 11.5"
+        stroke={color}
+        strokeWidth={2}
+        strokeLinecap="round"
+      />
+      <Path d="M12 18V21" stroke={color} strokeWidth={2} strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+function SendGlyph({ color }: { color: string }) {
+  return (
+    <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M4 12L20 4L16 12L20 20L4 12Z"
+        stroke={color}
+        strokeWidth={2}
+        strokeLinejoin="round"
+      />
+      <Path d="M16 12H8" stroke={color} strokeWidth={2} strokeLinecap="round" />
+    </Svg>
+  );
 }
 
 export default function CoachScreen() {
+  const router = useRouter();
   const { getToken } = useAuth();
-  const [messages, setMessages] = useState<AssistantChatMessage[]>([]);
+  const isWebPreview = __DEV__ && Platform.OS === "web";
+  const scrollRef = useRef<ScrollView>(null);
+  const [messages, setMessages] = useState<CoachMessage[]>(() =>
+    isWebPreview ? SAMPLE_MESSAGES : []
+  );
   const [draft, setDraft] = useState("");
   const [isSending, setIsSending] = useState(false);
-  const listRef = useRef<FlatList<AssistantChatMessage>>(null);
 
   const hasMessages = useMemo(() => messages.length > 0, [messages.length]);
 
@@ -39,13 +167,13 @@ export default function CoachScreen() {
     const trimmed = content.trim();
     if (!trimmed || isSending) return;
 
-    const userMessage: AssistantChatMessage = {
+    const userMessage: CoachMessage = {
       id: createId(),
       role: "user",
       content: trimmed,
     };
     const assistantId = createId();
-    const pendingAssistant: AssistantChatMessage = {
+    const pendingAssistant: CoachMessage = {
       id: assistantId,
       role: "assistant",
       content: "Thinking...",
@@ -57,8 +185,32 @@ export default function CoachScreen() {
     setIsSending(true);
 
     try {
+      if (isWebPreview) {
+        await new Promise((resolve) => setTimeout(resolve, 420));
+        const mock = MOCK_RESPONSES[trimmed] ?? {
+          headline:
+            "Coach thinks this looks broadly on track. Calories are close to target, workouts are reasonably consistent, and the next best step is tightening one habit rather than changing everything at once.",
+          highlights: ["Give me one next action", "Show the weekly trend"],
+        };
+        setMessages((prev) =>
+          prev.map((message) =>
+            message.id === assistantId
+              ? {
+                  ...message,
+                  content: mock.headline,
+                  followups: mock.highlights,
+                  status: undefined,
+                }
+              : message
+          )
+        );
+        return;
+      }
+
       const token = await getToken();
-      if (!token) throw new Error("Not signed in");
+      if (!token) {
+        throw new Error("Not signed in");
+      }
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
       const result = await apiRequest<AssistantChatResponse>("/api/assistant/chat", {
         method: "POST",
@@ -72,7 +224,7 @@ export default function CoachScreen() {
             ? {
                 ...message,
                 content: result.headline,
-                highlights: result.highlights ?? [],
+                followups: result.highlights?.slice(0, 2),
                 status: undefined,
               }
             : message
@@ -93,210 +245,345 @@ export default function CoachScreen() {
       );
     } finally {
       setIsSending(false);
-      setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 50);
+      requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
     }
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Coach</Text>
-      <Text style={styles.subtitle}>Read-only insights from your recent logs.</Text>
+    <SafeAreaView style={styles.root} edges={["top"]}>
+      <View style={styles.header}>
+        <Pressable
+          style={styles.backButton}
+          onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+              return;
+            }
+            router.replace("/(tabs)/dashboard");
+          }}
+        >
+          <BackGlyph />
+        </Pressable>
+        <View style={styles.headerCopy}>
+          <Text style={styles.title}>Coach</Text>
+          <Text style={styles.subtitle}>Insights from your logs</Text>
+        </View>
+      </View>
 
-      {!hasMessages ? (
-        <View style={styles.emptyCard}>
-          <Text style={styles.emptyTitle}>Try a starter prompt</Text>
+      <ScrollView
+        ref={scrollRef}
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}
+      >
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.starterRow}
+        >
           {starterPrompts.map((prompt) => (
             <Pressable
               key={prompt}
-              style={[styles.starterButton, isSending ? styles.disabledButton : null]}
+              style={styles.starterChip}
               onPress={() => sendMessage(prompt)}
               disabled={isSending}
             >
-              <Text style={styles.starterButtonText}>{prompt}</Text>
+              <Text style={styles.starterChipText}>{prompt}</Text>
             </Pressable>
           ))}
-        </View>
-      ) : null}
+        </ScrollView>
 
-      <FlatList
-        ref={listRef}
-        data={messages}
-        keyExtractor={(item) => item.id}
-        keyboardShouldPersistTaps="handled"
-        contentContainerStyle={styles.listContent}
-        renderItem={({ item }) => (
-          <View
-            style={[
-              styles.messageBubble,
-              item.role === "user" ? styles.userBubble : styles.assistantBubble,
-              item.status === "error" ? styles.errorBubble : null,
-            ]}
-          >
-            <Text style={styles.messageRole}>{item.role === "user" ? "You" : "Coach"}</Text>
-            <Text style={styles.messageText}>{item.content}</Text>
-            {item.role === "assistant" && item.highlights && item.highlights.length > 0 ? (
-              <View style={styles.highlightList}>
-                {item.highlights.map((highlight) => (
-                  <Text key={highlight} style={styles.highlightText}>
-                    - {highlight}
-                  </Text>
-                ))}
-              </View>
-            ) : null}
+        {!hasMessages ? (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyTitle}>Ask Coach anything about your recent patterns.</Text>
+            <Text style={styles.emptyBody}>
+              Start with calories, weight, workout consistency, or one of the starter prompts above.
+            </Text>
           </View>
-        )}
-        ListFooterComponent={<View style={styles.footerSpace} />}
-      />
+        ) : null}
+
+        {messages.map((message) => {
+          const isUser = message.role === "user";
+          return (
+            <View
+              key={message.id}
+              style={[styles.messageGroup, isUser ? styles.userGroup : styles.assistantGroup]}
+            >
+              <View style={styles.messageMeta}>
+                {isUser ? null : <CoachSparkle />}
+                <Text style={[styles.senderLabel, !isUser ? styles.coachLabel : null]}>
+                  {isUser ? "You" : "Coach"}
+                </Text>
+              </View>
+              <View
+                style={[
+                  styles.bubble,
+                  isUser ? styles.userBubble : styles.assistantBubble,
+                  message.status === "error" ? styles.errorBubble : null,
+                ]}
+              >
+                <Text style={[styles.bubbleText, isUser ? styles.userBubbleText : null]}>
+                  {message.content}
+                </Text>
+              </View>
+              {!isUser && message.followups?.length ? (
+                <View style={styles.followupRow}>
+                  {message.followups.map((followup) => (
+                    <Pressable
+                      key={followup}
+                      style={styles.followupChip}
+                      onPress={() => sendMessage(followup)}
+                    >
+                      <Text style={styles.followupText}>{followup}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              ) : null}
+            </View>
+          );
+        })}
+      </ScrollView>
 
       <View style={styles.composer}>
-        <TextInput
-          style={styles.input}
-          value={draft}
-          onChangeText={setDraft}
-          placeholder="Ask Coach about your trends..."
-          multiline
-          editable={!isSending}
-        />
-        <Pressable
-          style={[
-            styles.sendButton,
-            (!draft.trim() || isSending) ? styles.disabledButton : null,
-          ]}
-          onPress={() => sendMessage(draft)}
-          disabled={!draft.trim() || isSending}
-        >
-          {isSending ? (
-            <ActivityIndicator color="#FFFFFF" />
-          ) : (
-            <Text style={styles.sendButtonText}>Send</Text>
-          )}
-        </Pressable>
+        <View style={styles.composerRow}>
+          <TextInput
+            style={styles.input}
+            value={draft}
+            onChangeText={setDraft}
+            placeholder="Ask about your trends..."
+            placeholderTextColor={COLORS.textTertiary}
+            multiline
+            editable={!isSending}
+          />
+          <Pressable
+            style={styles.micButton}
+            onPress={() =>
+              router.push({ pathname: "/(tabs)/dashboard", params: { cc: "recording" } })
+            }
+          >
+            <MicGlyph />
+          </Pressable>
+          <Pressable
+            style={[
+              styles.sendButton,
+              (!draft.trim() || isSending) ? styles.sendButtonDisabled : null,
+            ]}
+            disabled={!draft.trim() || isSending}
+            onPress={() => sendMessage(draft)}
+          >
+            {isSending ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <SendGlyph color="#FFFFFF" />
+            )}
+          </Pressable>
+        </View>
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  root: {
     flex: 1,
-    padding: 20,
-    backgroundColor: "#FFFFFF",
-    gap: 10,
+    backgroundColor: COLORS.bg,
   },
-  title: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  subtitle: {
-    fontSize: 14,
-    color: "#4B5563",
-  },
-  emptyCard: {
-    backgroundColor: "#F9FAFB",
-    borderRadius: 12,
-    padding: 14,
-    gap: 8,
-  },
-  emptyTitle: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  starterButton: {
-    borderWidth: 1,
-    borderColor: "#D1D5DB",
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    backgroundColor: "#FFFFFF",
-  },
-  starterButtonText: {
-    fontSize: 13,
-    color: "#111827",
-    fontWeight: "600",
-  },
-  listContent: {
-    paddingTop: 6,
-    gap: 10,
-  },
-  messageBubble: {
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    gap: 5,
-  },
-  userBubble: {
-    backgroundColor: "#E5E7EB",
-    alignSelf: "flex-end",
-    maxWidth: "90%",
-  },
-  assistantBubble: {
-    backgroundColor: "#F3F4F6",
-    alignSelf: "flex-start",
-    maxWidth: "95%",
-  },
-  errorBubble: {
-    borderWidth: 1,
-    borderColor: "#FCA5A5",
-    backgroundColor: "#FEE2E2",
-  },
-  messageRole: {
-    fontSize: 11,
-    color: "#6B7280",
-    fontWeight: "700",
-    textTransform: "uppercase",
-  },
-  messageText: {
-    fontSize: 14,
-    color: "#111827",
-  },
-  highlightList: {
-    gap: 4,
-    marginTop: 2,
-  },
-  highlightText: {
-    fontSize: 13,
-    color: "#374151",
-  },
-  footerSpace: {
-    height: 8,
-  },
-  composer: {
-    borderTopWidth: 1,
-    borderTopColor: "#E5E7EB",
-    paddingTop: 10,
-    gap: 8,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: "#D1D5DB",
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-    color: "#111827",
-    backgroundColor: "#FFFFFF",
-    textAlignVertical: "top",
-    minHeight: 70,
-    maxHeight: 140,
-  },
-  sendButton: {
-    alignSelf: "flex-end",
-    backgroundColor: "#111827",
-    borderRadius: 10,
-    paddingVertical: 10,
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
     paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  backButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",
-    minWidth: 84,
   },
-  sendButtonText: {
-    color: "#FFFFFF",
-    fontSize: 14,
+  headerCopy: {
+    flex: 1,
+  },
+  title: {
+    fontSize: 18,
     fontWeight: "700",
+    color: COLORS.textPrimary,
+    letterSpacing: -0.3,
   },
-  disabledButton: {
-    opacity: 0.6,
+  subtitle: {
+    marginTop: 1,
+    fontSize: 12,
+    color: COLORS.textSecondary,
+  },
+  scroll: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 122,
+    gap: 16,
+  },
+  starterRow: {
+    gap: 8,
+    paddingBottom: 8,
+  },
+  starterChip: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    backgroundColor: COLORS.surface,
+  },
+  starterChipText: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    fontWeight: "500",
+  },
+  emptyState: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    padding: 18,
+    gap: 6,
+  },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: COLORS.textPrimary,
+  },
+  emptyBody: {
+    fontSize: 14,
+    lineHeight: 21,
+    color: COLORS.textSecondary,
+  },
+  messageGroup: {
+    gap: 4,
+  },
+  userGroup: {
+    alignItems: "flex-end",
+  },
+  assistantGroup: {
+    alignItems: "flex-start",
+  },
+  messageMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 4,
+  },
+  senderLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: COLORS.textTertiary,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  coachLabel: {
+    color: COLORS.coachPurple,
+  },
+  bubble: {
+    maxWidth: "90%",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  userBubble: {
+    backgroundColor: COLORS.textPrimary,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 4,
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 16,
+  },
+  assistantBubble: {
+    backgroundColor: COLORS.surface,
+    borderLeftWidth: 2,
+    borderLeftColor: COLORS.coachPurple,
+    borderTopLeftRadius: 4,
+    borderTopRightRadius: 16,
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 16,
+  },
+  errorBubble: {
+    borderColor: "#FFB4AE",
+  },
+  bubbleText: {
+    fontSize: 15,
+    lineHeight: 23,
+    color: COLORS.textPrimary,
+  },
+  userBubbleText: {
+    color: "#FFFFFF",
+  },
+  followupRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    paddingTop: 6,
+  },
+  followupChip: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: COLORS.bg,
+  },
+  followupText: {
+    fontSize: 12,
+    fontWeight: "500",
+    color: COLORS.weight,
+  },
+  composer: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 8,
+    backgroundColor: COLORS.bg,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+  composerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  input: {
+    flex: 1,
+    minHeight: 44,
+    maxHeight: 88,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: COLORS.surface,
+    color: COLORS.textPrimary,
+    fontSize: 15,
+    textAlignVertical: "center",
+  },
+  micButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.surface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sendButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.textPrimary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sendButtonDisabled: {
+    backgroundColor: "#D6D6DB",
   },
 });

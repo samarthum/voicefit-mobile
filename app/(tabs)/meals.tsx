@@ -1,19 +1,35 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  FlatList,
-  Keyboard,
+  Platform,
   Pressable,
-  RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
 import { useAuth } from "@clerk/clerk-expo";
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "expo-router";
+import Svg, { Path } from "react-native-svg";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { FloatingCommandBar } from "../../components/FloatingCommandBar";
+import { MealGlyph } from "../../components/MealGlyph";
 import { apiRequest } from "../../lib/api-client";
+
+const COLORS = {
+  bg: "#FFFFFF",
+  surface: "#F8F8F8",
+  border: "#E8E8E8",
+  textPrimary: "#1A1A1A",
+  textSecondary: "#8E8E93",
+  textTertiary: "#AEAEB2",
+  calories: "#FF9500",
+  error: "#FF3B30",
+  blue: "#007AFF",
+};
 
 type MealType = "breakfast" | "lunch" | "dinner" | "snack";
 
@@ -36,23 +52,71 @@ interface MealsListResponse {
   offset: number;
 }
 
-const PAGE_SIZE = 20;
+const SAMPLE_MEALS: MealItem[] = [
+  {
+    id: "meal-preview-1",
+    userId: "preview",
+    eatenAt: new Date().toISOString(),
+    mealType: "lunch",
+    description: "Chicken Salad",
+    transcriptRaw: "Chicken salad 450 calories",
+    calories: 450,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: "meal-preview-2",
+    userId: "preview",
+    eatenAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+    mealType: "breakfast",
+    description: "Overnight Oats",
+    transcriptRaw: "Overnight oats 320 calories",
+    calories: 320,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: "meal-preview-3",
+    userId: "preview",
+    eatenAt: new Date(Date.now() - 18 * 60 * 60 * 1000).toISOString(),
+    mealType: "dinner",
+    description: "Grilled Salmon & Rice",
+    transcriptRaw: "Grilled salmon and rice 620 calories",
+    calories: 620,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+];
+
 const mealTypes: MealType[] = ["breakfast", "lunch", "dinner", "snack"];
-const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+
+function ChevronGlyph() {
+  return (
+    <Svg width={8} height={14} viewBox="0 0 8 14" fill="none">
+      <Path
+        d="M1 1L7 7L1 13"
+        stroke={COLORS.textTertiary}
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
 
 function formatMealTime(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString();
+  return date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 }
 
 export default function MealsScreen() {
-  const { getToken } = useAuth();
+  const router = useRouter();
+  const { getToken, isSignedIn } = useAuth();
   const queryClient = useQueryClient();
-
+  const isWebPreview = __DEV__ && Platform.OS === "web";
   const [dateInput, setDateInput] = useState("");
   const [appliedDate, setAppliedDate] = useState("");
-  const [filterError, setFilterError] = useState<string | null>(null);
   const [selectedMealId, setSelectedMealId] = useState<string | null>(null);
   const [editDescription, setEditDescription] = useState("");
   const [editCalories, setEditCalories] = useState("");
@@ -60,88 +124,57 @@ export default function MealsScreen() {
   const [editError, setEditError] = useState<string | null>(null);
   const [editSuccess, setEditSuccess] = useState<string | null>(null);
 
-  const mealsQuery = useInfiniteQuery({
+  const mealsQuery = useQuery({
     queryKey: ["meals", appliedDate],
-    initialPageParam: 0,
-    queryFn: async ({ pageParam }) => {
-      const token = await getToken();
-      if (!token) {
-        throw new Error("Not signed in");
-      }
-      const offset = pageParam as number;
-      const query = new URLSearchParams({
-        limit: String(PAGE_SIZE),
-        offset: String(offset),
-      });
-      if (appliedDate) {
-        query.set("date", appliedDate);
-      }
-      return apiRequest<MealsListResponse>(`/api/meals?${query.toString()}`, { token });
-    },
-    getNextPageParam: (lastPage, allPages) => {
-      const loaded = allPages.reduce((count, page) => count + page.meals.length, 0);
-      return loaded < lastPage.total ? loaded : undefined;
-    },
-  });
-
-  const mealDetailQuery = useQuery({
-    queryKey: ["meal-detail", selectedMealId],
+    enabled: !isWebPreview && !!isSignedIn,
     queryFn: async () => {
       const token = await getToken();
-      if (!token || !selectedMealId) {
-        throw new Error("Not signed in");
-      }
-      return apiRequest<MealItem>(`/api/meals/${selectedMealId}`, { token });
+      if (!token) throw new Error("Not signed in");
+      const query = new URLSearchParams({ limit: "50", offset: "0" });
+      if (appliedDate) query.set("date", appliedDate);
+      return apiRequest<MealsListResponse>(`/api/meals?${query.toString()}`, { token });
     },
-    enabled: !!selectedMealId,
   });
 
-  useEffect(() => {
-    if (!mealDetailQuery.data) return;
-    setEditDescription(mealDetailQuery.data.description);
-    setEditCalories(String(mealDetailQuery.data.calories));
-    setEditMealType(mealDetailQuery.data.mealType);
-    setEditError(null);
-    setEditSuccess(null);
-  }, [mealDetailQuery.data]);
+  const meals = isWebPreview ? SAMPLE_MEALS : mealsQuery.data?.meals ?? [];
 
-  const editSuccessTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!meals.length) return;
+    if (selectedMealId) return;
+    if (!isWebPreview) return;
+    setSelectedMealId(meals[0].id);
+  }, [isWebPreview, meals, selectedMealId]);
+
+  useEffect(() => {
+    if (!selectedMealId || !meals.length) return;
+    const selected = meals.find((meal) => meal.id === selectedMealId);
+    if (!selected) return;
+    setEditDescription(selected.description);
+    setEditCalories(String(selected.calories));
+    setEditMealType(selected.mealType);
+  }, [meals, selectedMealId]);
 
   const updateMealMutation = useMutation({
     mutationFn: async () => {
-      if (!selectedMealId) {
-        throw new Error("Select a meal first");
-      }
+      if (!selectedMealId) throw new Error("Select a meal first");
       const token = await getToken();
-      if (!token) {
-        throw new Error("Not signed in");
-      }
-      const calories = Number(editCalories.trim());
-      if (!editDescription.trim()) {
-        throw new Error("Description is required.");
-      }
-      if (!Number.isInteger(calories) || calories < 0) {
-        throw new Error("Calories must be a non-negative integer.");
-      }
-
+      if (!token) throw new Error("Not signed in");
       return apiRequest<MealItem>(`/api/meals/${selectedMealId}`, {
         method: "PUT",
         token,
         body: JSON.stringify({
           description: editDescription.trim(),
-          calories,
+          calories: Number(editCalories.trim()),
           mealType: editMealType,
         }),
       });
     },
     onSuccess: async (updatedMeal) => {
       setEditError(null);
-      queryClient.setQueryData(["meal-detail", updatedMeal.id], updatedMeal);
+      setEditSuccess("Meal updated.");
       await queryClient.invalidateQueries({ queryKey: ["meals"] });
       await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-      Keyboard.dismiss();
-      // Close the detail panel after a brief moment so user sees the list updated
-      setSelectedMealId(null);
+      setSelectedMealId(updatedMeal.id);
     },
     onError: (error) => {
       setEditSuccess(null);
@@ -150,437 +183,488 @@ export default function MealsScreen() {
   });
 
   const deleteMealMutation = useMutation({
-    mutationFn: async (id: string) => {
+    mutationFn: async () => {
+      if (!selectedMealId) throw new Error("Select a meal first");
       const token = await getToken();
-      if (!token) {
-        throw new Error("Not signed in");
-      }
-      return apiRequest<{ deleted: boolean }>(`/api/meals/${id}`, {
+      if (!token) throw new Error("Not signed in");
+      return apiRequest<{ deleted: boolean }>(`/api/meals/${selectedMealId}`, {
         method: "DELETE",
         token,
       });
     },
-    onSuccess: async (_result, id) => {
-      if (selectedMealId === id) {
-        setSelectedMealId(null);
-      }
+    onSuccess: async () => {
+      setSelectedMealId(null);
       await queryClient.invalidateQueries({ queryKey: ["meals"] });
       await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
     },
   });
 
-  const meals = useMemo(
-    () => mealsQuery.data?.pages.flatMap((page) => page.meals) ?? [],
-    [mealsQuery.data]
-  );
+  const selectedMeal = meals.find((meal) => meal.id === selectedMealId) ?? null;
+  const totalCalories = meals.reduce((sum, meal) => sum + meal.calories, 0);
+  const summaryDateLabel = appliedDate || "Today";
 
-  const total = mealsQuery.data?.pages[0]?.total ?? 0;
-  const totalLoaded = meals.length;
-
-  const applyFilter = () => {
-    const next = dateInput.trim();
-    if (next && !dateRegex.test(next)) {
-      setFilterError("Date must be YYYY-MM-DD.");
-      return;
-    }
-    setFilterError(null);
+  const handleApplyDate = () => {
+    setAppliedDate(dateInput.trim());
     setSelectedMealId(null);
-    setAppliedDate(next);
   };
 
-  const clearFilter = () => {
+  const handleClearDate = () => {
     setDateInput("");
     setAppliedDate("");
-    setFilterError(null);
     setSelectedMealId(null);
   };
 
-  const confirmDelete = (id: string) => {
+  const handleSave = async () => {
+    if (!selectedMealId) return;
+    if (!editDescription.trim()) {
+      setEditError("Description is required.");
+      return;
+    }
+    if (!Number.isInteger(Number(editCalories.trim()))) {
+      setEditError("Calories must be a whole number.");
+      return;
+    }
+
+    if (isWebPreview) {
+      setEditError(null);
+      setEditSuccess("Preview updated.");
+      return;
+    }
+
+    await updateMealMutation.mutateAsync();
+  };
+
+  const handleDelete = () => {
+    if (isWebPreview) {
+      setSelectedMealId(null);
+      return;
+    }
     Alert.alert("Delete meal", "This will permanently delete the meal.", [
       { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: () => deleteMealMutation.mutate(id),
-      },
+      { text: "Delete", style: "destructive", onPress: () => void deleteMealMutation.mutateAsync() },
     ]);
   };
 
   return (
-    <View style={styles.container}>
-      <FlatList
-        data={meals}
-        keyExtractor={(item) => item.id}
-        keyboardDismissMode="on-drag"
-        keyboardShouldPersistTaps="handled"
-        refreshControl={
-          <RefreshControl
-            refreshing={mealsQuery.isRefetching && !mealsQuery.isFetchingNextPage}
-            onRefresh={() => mealsQuery.refetch()}
-          />
-        }
-        ListHeaderComponent={
-          <View style={styles.headerSection}>
-            <Text style={styles.title}>Meals</Text>
-            <Text style={styles.subtitle}>List, filter, view, edit, and delete meals.</Text>
+    <SafeAreaView style={styles.root} edges={["top"]}>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+        <View style={styles.header}>
+          <Text style={styles.title}>Meals</Text>
+          <Text style={styles.subtitle}>Review and edit your recent entries.</Text>
+        </View>
 
-            <View style={styles.filterCard}>
-              <Text style={styles.label}>Date filter (YYYY-MM-DD)</Text>
-              <TextInput
-                style={styles.input}
-                value={dateInput}
-                onChangeText={setDateInput}
-                autoCapitalize="none"
-                autoCorrect={false}
-                placeholder="Optional date filter"
-              />
-              {filterError ? <Text style={styles.error}>{filterError}</Text> : null}
-              <View style={styles.row}>
-                <Pressable style={styles.buttonPrimary} onPress={applyFilter}>
-                  <Text style={styles.buttonPrimaryText}>Apply</Text>
-                </Pressable>
-                <Pressable style={styles.buttonSecondary} onPress={clearFilter}>
-                  <Text style={styles.buttonSecondaryText}>Clear</Text>
-                </Pressable>
-              </View>
-              <Text style={styles.helperText}>
-                Loaded {totalLoaded} of {total}{appliedDate ? ` for ${appliedDate}` : ""}
+        <View style={styles.summaryRow}>
+          <View style={styles.summaryCard}>
+            <Text style={styles.summaryLabel}>{summaryDateLabel}</Text>
+            <Text style={styles.summaryValue}>{totalCalories.toLocaleString("en-US")}</Text>
+            <Text style={styles.summaryMeta}>calories logged</Text>
+          </View>
+          <View style={styles.summaryCard}>
+            <Text style={styles.summaryLabel}>Entries</Text>
+            <Text style={styles.summaryValue}>{meals.length}</Text>
+            <Text style={styles.summaryMeta}>recent meals</Text>
+          </View>
+        </View>
+
+        <View style={styles.filterCard}>
+          <Text style={styles.filterLabel}>Date filter (YYYY-MM-DD)</Text>
+          <TextInput
+            style={styles.filterInput}
+            value={dateInput}
+            onChangeText={setDateInput}
+            placeholder="Optional date filter"
+            placeholderTextColor={COLORS.textTertiary}
+            autoCapitalize="none"
+          />
+          <View style={styles.filterActions}>
+            <Pressable style={styles.filterPrimary} onPress={handleApplyDate}>
+              <Text style={styles.filterPrimaryText}>Apply</Text>
+            </Pressable>
+            <Pressable style={styles.filterSecondary} onPress={handleClearDate}>
+              <Text style={styles.filterSecondaryText}>Clear</Text>
+            </Pressable>
+          </View>
+        </View>
+
+        <View style={styles.listSection}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Recent Meals</Text>
+            {mealsQuery.isLoading && !isWebPreview ? <ActivityIndicator size="small" /> : null}
+          </View>
+
+          {meals.map((meal) => {
+            const selected = meal.id === selectedMealId;
+            return (
+              <Pressable
+                key={meal.id}
+                style={[styles.mealRow, selected ? styles.mealRowSelected : null]}
+                onPress={() => setSelectedMealId(selected ? null : meal.id)}
+              >
+                <View style={styles.mealLeft}>
+                  <MealGlyph description={meal.description} />
+                  <View style={styles.mealCopy}>
+                    <Text style={styles.mealTitle}>{meal.description}</Text>
+                    <Text style={styles.mealMeta}>
+                      {meal.mealType} · {formatMealTime(meal.eatenAt)}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.mealRight}>
+                  <Text style={styles.mealCalories}>{meal.calories} kcal</Text>
+                  <ChevronGlyph />
+                </View>
+              </Pressable>
+            );
+          })}
+
+          {!meals.length && !mealsQuery.isLoading ? (
+            <View style={styles.emptyCard}>
+              <Text style={styles.emptyTitle}>No meals yet</Text>
+              <Text style={styles.emptyBody}>
+                Log something from Home to see it here, then come back to edit the details.
               </Text>
             </View>
+          ) : null}
+        </View>
 
-            {selectedMealId ? (
-              <View style={styles.detailCard}>
-                <Text style={styles.detailTitle}>Meal Details</Text>
-                {mealDetailQuery.isLoading ? (
-                  <ActivityIndicator />
-                ) : mealDetailQuery.error ? (
-                  <Text style={styles.error}>
-                    {mealDetailQuery.error instanceof Error
-                      ? mealDetailQuery.error.message
-                      : "Failed to load meal"}
+        {selectedMeal ? (
+          <View style={styles.detailCard}>
+            <Text style={styles.detailTitle}>Edit Meal</Text>
+            <TextInput
+              style={styles.detailInput}
+              value={editDescription}
+              onChangeText={setEditDescription}
+              placeholder="Meal description"
+              placeholderTextColor={COLORS.textTertiary}
+            />
+            <TextInput
+              style={styles.detailInput}
+              value={editCalories}
+              onChangeText={(value) => setEditCalories(value.replace(/[^\d]/g, ""))}
+              keyboardType="number-pad"
+              placeholder="Calories"
+              placeholderTextColor={COLORS.textTertiary}
+            />
+            <View style={styles.typeRow}>
+              {mealTypes.map((type) => (
+                <Pressable
+                  key={type}
+                  style={[styles.typeChip, editMealType === type ? styles.typeChipActive : null]}
+                  onPress={() => setEditMealType(type)}
+                >
+                  <Text style={[styles.typeChipText, editMealType === type ? styles.typeChipTextActive : null]}>
+                    {type}
                   </Text>
-                ) : mealDetailQuery.data ? (
-                  <>
-                    <Text style={styles.label}>Meal Type</Text>
-                    <View style={styles.chipRow}>
-                      {mealTypes.map((mealType) => (
-                        <Pressable
-                          key={mealType}
-                          style={[
-                            styles.chip,
-                            editMealType === mealType ? styles.chipActive : null,
-                          ]}
-                          onPress={() => setEditMealType(mealType)}
-                        >
-                          <Text
-                            style={[
-                              styles.chipText,
-                              editMealType === mealType ? styles.chipTextActive : null,
-                            ]}
-                          >
-                            {mealType}
-                          </Text>
-                        </Pressable>
-                      ))}
-                    </View>
-
-                    <Text style={styles.label}>Description</Text>
-                    <TextInput
-                      style={styles.input}
-                      value={editDescription}
-                      onChangeText={setEditDescription}
-                    />
-
-                    <Text style={styles.label}>Calories</Text>
-                    <TextInput
-                      style={styles.input}
-                      value={editCalories}
-                      onChangeText={setEditCalories}
-                      keyboardType="number-pad"
-                    />
-
-                    <Text style={styles.label}>Eaten At</Text>
-                    <Text style={styles.helperText}>{formatMealTime(mealDetailQuery.data.eatenAt)}</Text>
-
-                    {mealDetailQuery.data.transcriptRaw ? (
-                      <>
-                        <Text style={styles.label}>Transcript</Text>
-                        <Text style={styles.helperText}>{mealDetailQuery.data.transcriptRaw}</Text>
-                      </>
-                    ) : null}
-
-                    {editError ? <Text style={styles.error}>{editError}</Text> : null}
-                    {editSuccess ? <Text style={styles.success}>{editSuccess}</Text> : null}
-
-                    <View style={styles.row}>
-                      <Pressable
-                        style={[
-                          styles.buttonPrimary,
-                          updateMealMutation.isPending ? styles.disabledButton : null,
-                        ]}
-                        onPress={() => updateMealMutation.mutate()}
-                        disabled={updateMealMutation.isPending}
-                      >
-                        <Text style={styles.buttonPrimaryText}>
-                          {updateMealMutation.isPending ? "Saving..." : "Save Changes"}
-                        </Text>
-                      </Pressable>
-                      <Pressable
-                        style={styles.buttonSecondary}
-                        onPress={() => setSelectedMealId(null)}
-                      >
-                        <Text style={styles.buttonSecondaryText}>Close</Text>
-                      </Pressable>
-                    </View>
-                  </>
-                ) : null}
-              </View>
-            ) : null}
-          </View>
-        }
-        ListEmptyComponent={
-          mealsQuery.isLoading ? (
-            <ActivityIndicator />
-          ) : mealsQuery.error ? (
-            <Text style={styles.error}>
-              {mealsQuery.error instanceof Error ? mealsQuery.error.message : "Failed to load meals"}
-            </Text>
-          ) : (
-            <Text style={styles.emptyText}>No meals found.</Text>
-          )
-        }
-        renderItem={({ item }) => (
-          <View style={styles.itemCard}>
-            <View style={styles.itemTopRow}>
-              <Text style={styles.itemTitle}>{item.description}</Text>
-              <Text style={styles.itemCalories}>{item.calories} kcal</Text>
+                </Pressable>
+              ))}
             </View>
-            <Text style={styles.itemMeta}>
-              {item.mealType} · {formatMealTime(item.eatenAt)}
-            </Text>
-
-            <View style={styles.row}>
-              <Pressable
-                style={styles.buttonSecondary}
-                onPress={() => setSelectedMealId(item.id)}
-              >
-                <Text style={styles.buttonSecondaryText}>View / Edit</Text>
+            {editError ? <Text style={styles.errorText}>{editError}</Text> : null}
+            {editSuccess ? <Text style={styles.successText}>{editSuccess}</Text> : null}
+            <View style={styles.detailActions}>
+              <Pressable style={styles.deleteButton} onPress={handleDelete}>
+                <Text style={styles.deleteButtonText}>Delete</Text>
               </Pressable>
               <Pressable
                 style={[
-                  styles.buttonDanger,
-                  deleteMealMutation.isPending ? styles.disabledButton : null,
+                  styles.saveButton,
+                  updateMealMutation.isPending ? styles.saveButtonDisabled : null,
                 ]}
-                onPress={() => confirmDelete(item.id)}
-                disabled={deleteMealMutation.isPending}
+                onPress={() => void handleSave()}
+                disabled={updateMealMutation.isPending}
               >
-                <Text style={styles.buttonDangerText}>Delete</Text>
-              </Pressable>
-            </View>
-          </View>
-        )}
-        ListFooterComponent={
-          <View style={styles.footer}>
-            {mealsQuery.hasNextPage ? (
-              <Pressable
-                style={[
-                  styles.buttonPrimary,
-                  mealsQuery.isFetchingNextPage ? styles.disabledButton : null,
-                ]}
-                onPress={() => mealsQuery.fetchNextPage()}
-                disabled={mealsQuery.isFetchingNextPage}
-              >
-                <Text style={styles.buttonPrimaryText}>
-                  {mealsQuery.isFetchingNextPage ? "Loading..." : "Load More"}
+                <Text style={styles.saveButtonText}>
+                  {updateMealMutation.isPending ? "Saving..." : "Save Meal"}
                 </Text>
               </Pressable>
-            ) : totalLoaded > 0 ? (
-              <Text style={styles.helperText}>All meals loaded.</Text>
-            ) : null}
+            </View>
           </View>
-        }
+        ) : null}
+      </ScrollView>
+
+      <FloatingCommandBar
+        hint='"Had pasta for lunch..."'
+        onPress={() => router.push({ pathname: "/(tabs)/dashboard", params: { cc: "expanded" } })}
+        onMicPress={() => router.push({ pathname: "/(tabs)/dashboard", params: { cc: "recording" } })}
       />
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  root: {
     flex: 1,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: COLORS.bg,
   },
-  headerSection: {
-    padding: 20,
-    paddingBottom: 12,
-    gap: 12,
+  scroll: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 96,
+  },
+  header: {
+    paddingBottom: 20,
   },
   title: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: "700",
-    color: "#111827",
+    letterSpacing: -0.5,
+    color: COLORS.textPrimary,
   },
   subtitle: {
+    marginTop: 4,
     fontSize: 14,
-    color: "#4B5563",
+    color: COLORS.textSecondary,
   },
-  filterCard: {
-    backgroundColor: "#F9FAFB",
-    borderRadius: 12,
-    padding: 14,
-    gap: 8,
-  },
-  detailCard: {
-    backgroundColor: "#F9FAFB",
-    borderRadius: 12,
-    padding: 14,
-    gap: 8,
-  },
-  detailTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  label: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#374151",
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: "#D1D5DB",
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-    color: "#111827",
-    backgroundColor: "#FFFFFF",
-  },
-  row: {
+  summaryRow: {
     flexDirection: "row",
     gap: 10,
+    marginBottom: 16,
   },
-  buttonPrimary: {
-    backgroundColor: "#111827",
-    borderRadius: 10,
-    paddingVertical: 11,
-    paddingHorizontal: 14,
-    alignItems: "center",
-    justifyContent: "center",
+  summaryCard: {
+    flex: 1,
+    borderRadius: 16,
+    backgroundColor: COLORS.surface,
+    padding: 16,
   },
-  buttonPrimaryText: {
-    color: "#FFFFFF",
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  buttonSecondary: {
-    backgroundColor: "#E5E7EB",
-    borderRadius: 10,
-    paddingVertical: 11,
-    paddingHorizontal: 14,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  buttonSecondaryText: {
-    color: "#111827",
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  buttonDanger: {
-    backgroundColor: "#FEE2E2",
-    borderRadius: 10,
-    paddingVertical: 11,
-    paddingHorizontal: 14,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  buttonDangerText: {
-    color: "#B91C1C",
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  disabledButton: {
-    opacity: 0.6,
-  },
-  helperText: {
+  summaryLabel: {
     fontSize: 12,
-    color: "#4B5563",
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+    color: COLORS.textSecondary,
   },
-  error: {
-    color: "#B91C1C",
+  summaryValue: {
+    marginTop: 8,
+    fontSize: 28,
+    fontWeight: "700",
+    color: COLORS.textPrimary,
+  },
+  summaryMeta: {
+    marginTop: 2,
+    fontSize: 13,
+    color: COLORS.textSecondary,
+  },
+  filterCard: {
+    borderRadius: 16,
+    backgroundColor: COLORS.surface,
+    padding: 16,
+    marginBottom: 20,
+  },
+  filterLabel: {
     fontSize: 13,
     fontWeight: "600",
-  },
-  success: {
-    color: "#047857",
-    fontSize: 13,
-    fontWeight: "600",
-  },
-  emptyText: {
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    color: "#4B5563",
-    fontSize: 14,
-  },
-  itemCard: {
-    marginHorizontal: 20,
+    color: COLORS.textSecondary,
     marginBottom: 10,
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    borderRadius: 12,
-    padding: 14,
-    gap: 6,
   },
-  itemTopRow: {
+  filterInput: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.bg,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 15,
+    color: COLORS.textPrimary,
+  },
+  filterActions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 12,
+  },
+  filterPrimary: {
+    borderRadius: 12,
+    backgroundColor: COLORS.textPrimary,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  filterPrimaryText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#FFFFFF",
+  },
+  filterSecondary: {
+    borderRadius: 12,
+    backgroundColor: COLORS.bg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  filterSecondaryText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: COLORS.textPrimary,
+  },
+  listSection: {
+    marginBottom: 20,
+  },
+  sectionHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    gap: 12,
+    marginBottom: 12,
   },
-  itemTitle: {
+  sectionTitle: {
+    fontSize: 24,
+    fontWeight: "700",
+    color: COLORS.textPrimary,
+    letterSpacing: -0.4,
+  },
+  mealRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderRadius: 16,
+    backgroundColor: COLORS.surface,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 10,
+  },
+  mealRowSelected: {
+    borderWidth: 1,
+    borderColor: COLORS.blue,
+  },
+  mealLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
     flex: 1,
+  },
+  mealCopy: {
+    flex: 1,
+  },
+  mealTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: COLORS.textPrimary,
+  },
+  mealMeta: {
+    marginTop: 2,
+    fontSize: 13,
+    color: COLORS.textSecondary,
+  },
+  mealRight: {
+    alignItems: "flex-end",
+    gap: 4,
+  },
+  mealCalories: {
     fontSize: 15,
     fontWeight: "700",
-    color: "#111827",
+    color: COLORS.textPrimary,
   },
-  itemCalories: {
-    fontSize: 13,
+  detailCard: {
+    borderRadius: 20,
+    backgroundColor: COLORS.surface,
+    padding: 18,
+    marginBottom: 16,
+  },
+  detailTitle: {
+    fontSize: 20,
     fontWeight: "700",
-    color: "#111827",
+    color: COLORS.textPrimary,
+    marginBottom: 12,
   },
-  itemMeta: {
-    fontSize: 12,
-    color: "#4B5563",
+  detailInput: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.bg,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 15,
+    color: COLORS.textPrimary,
+    marginBottom: 10,
   },
-  chipRow: {
+  typeRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
+    marginTop: 4,
+    marginBottom: 6,
   },
-  chip: {
-    borderWidth: 1,
-    borderColor: "#D1D5DB",
-    backgroundColor: "#FFFFFF",
+  typeChip: {
     borderRadius: 999,
-    paddingVertical: 7,
-    paddingHorizontal: 11,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: COLORS.bg,
   },
-  chipActive: {
-    backgroundColor: "#111827",
-    borderColor: "#111827",
+  typeChipActive: {
+    backgroundColor: COLORS.textPrimary,
+    borderColor: COLORS.textPrimary,
   },
-  chipText: {
-    fontSize: 12,
-    color: "#374151",
+  typeChipText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: COLORS.textSecondary,
     textTransform: "capitalize",
   },
-  chipTextActive: {
+  typeChipTextActive: {
     color: "#FFFFFF",
   },
-  footer: {
-    paddingHorizontal: 20,
-    paddingTop: 4,
-    paddingBottom: 22,
+  errorText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: COLORS.error,
+    marginTop: 6,
+  },
+  successText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#047857",
+    marginTop: 6,
+  },
+  detailActions: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 14,
+  },
+  deleteButton: {
+    flex: 1,
+    borderRadius: 14,
+    backgroundColor: COLORS.bg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingVertical: 14,
     alignItems: "center",
+  },
+  deleteButtonText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: COLORS.error,
+  },
+  saveButton: {
+    flex: 1.6,
+    borderRadius: 14,
+    backgroundColor: COLORS.textPrimary,
+    paddingVertical: 14,
+    alignItems: "center",
+  },
+  saveButtonDisabled: {
+    opacity: 0.6,
+  },
+  saveButtonText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#FFFFFF",
+  },
+  emptyCard: {
+    borderRadius: 16,
+    backgroundColor: COLORS.surface,
+    padding: 18,
+    gap: 6,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: COLORS.textPrimary,
+  },
+  emptyBody: {
+    fontSize: 14,
+    lineHeight: 21,
+    color: COLORS.textSecondary,
   },
 });

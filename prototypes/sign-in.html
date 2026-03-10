@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VoiceFit — Sign In</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --bg: #FFFFFF; --surface: #F8F8F8; --border: #E8E8E8;
+    --text-primary: #1A1A1A; --text-secondary: #8E8E93; --text-tertiary: #AEAEB2;
+    --accent: #007AFF;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
+    background: #E5E5E5; display: flex; justify-content: center; padding: 24px 0; min-height: 100vh;
+  }
+  .phone {
+    width: 390px; height: 844px; background: var(--bg);
+    border-radius: 40px; overflow: hidden; position: relative;
+    box-shadow: 0 25px 80px rgba(0,0,0,0.15);
+    display: flex; flex-direction: column;
+  }
+  .status-bar {
+    height: 54px; display: flex; align-items: flex-end; justify-content: space-between;
+    padding: 0 28px 8px; font-size: 15px; font-weight: 600; color: var(--text-primary);
+    flex-shrink: 0;
+  }
+  .status-bar .right { display: flex; gap: 6px; align-items: center; }
+
+  /* Brand area */
+  .brand-area {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 0 40px; padding-bottom: 20px;
+  }
+  .brand-mic {
+    width: 72px; height: 72px; border-radius: 20px;
+    background: var(--text-primary); display: flex;
+    align-items: center; justify-content: center;
+    margin-bottom: 24px;
+    position: relative;
+  }
+  .brand-mic::after {
+    content: ''; position: absolute; inset: -6px; border-radius: 24px;
+    border: 2px solid rgba(26,26,26,0.06);
+  }
+  .brand-name {
+    font-size: 34px; font-weight: 800; color: var(--text-primary);
+    letter-spacing: -1px; margin-bottom: 8px;
+  }
+  .brand-tagline {
+    font-size: 17px; color: var(--text-secondary); font-weight: 400;
+    letter-spacing: -0.2px;
+  }
+
+  /* Auth area */
+  .auth-area {
+    padding: 0 28px 48px; flex-shrink: 0;
+  }
+
+  /* Social buttons */
+  .social-btn {
+    width: 100%; height: 54px; border-radius: 14px;
+    display: flex; align-items: center; justify-content: center; gap: 12px;
+    font-size: 17px; font-weight: 600; cursor: pointer;
+    font-family: inherit; letter-spacing: -0.2px;
+    transition: opacity 0.15s ease;
+  }
+  .social-btn:active { opacity: 0.85; }
+
+  .social-btn.apple {
+    background: var(--text-primary); color: #FFFFFF;
+    border: none; margin-bottom: 12px;
+  }
+  .social-btn.google {
+    background: var(--bg); color: var(--text-primary);
+    border: 1.5px solid var(--border);
+  }
+
+  /* Divider */
+  .divider {
+    display: flex; align-items: center; gap: 16px;
+    margin: 24px 0;
+  }
+  .divider-line { flex: 1; height: 1px; background: var(--border); }
+  .divider-text {
+    font-size: 13px; font-weight: 500; color: var(--text-tertiary);
+    text-transform: lowercase;
+  }
+
+  /* Email button */
+  .email-btn {
+    width: 100%; height: 54px; border-radius: 14px;
+    background: transparent; border: 1.5px solid var(--border);
+    color: var(--text-secondary); font-size: 17px; font-weight: 600;
+    cursor: pointer; font-family: inherit; letter-spacing: -0.2px;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    transition: opacity 0.15s ease;
+  }
+  .email-btn:active { opacity: 0.85; }
+
+  /* Terms */
+  .terms {
+    text-align: center; margin-top: 24px;
+    font-size: 12px; color: var(--text-tertiary); line-height: 1.6;
+  }
+  .terms a {
+    color: var(--text-secondary); text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  /* Home indicator */
+  .home-indicator {
+    width: 134px; height: 5px; background: var(--text-primary);
+    border-radius: 999px; margin: 0 auto 8px; opacity: 0.15;
+  }
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="status-bar">
+    <span>9:41</span>
+    <div class="right">
+      <svg width="17" height="12" fill="none"><rect x="0" y="3" width="3" height="9" rx="1" fill="#1A1A1A"/><rect x="4.5" y="2" width="3" height="10" rx="1" fill="#1A1A1A"/><rect x="9" y="0" width="3" height="12" rx="1" fill="#1A1A1A"/><rect x="13" y="0" width="3.5" height="12" rx="1" fill="#1A1A1A"/></svg>
+      <svg width="16" height="12" fill="none"><path d="M8 2.4C10.6 2.4 12.9 3.4 14.6 5L16 3.5C13.9 1.3 11.1 0 8 0S2.1 1.3 0 3.5L1.4 5C3.1 3.4 5.4 2.4 8 2.4z" fill="#1A1A1A"/><path d="M8 6.8c1.7 0 3.2.7 4.3 1.8L13.7 7c-1.5-1.5-3.5-2.4-5.7-2.4S4.3 5.5 2.8 7l1.4 1.5C5.3 7.5 6.6 6.8 8 6.8z" fill="#1A1A1A"/><circle cx="8" cy="11" r="1.5" fill="#1A1A1A"/></svg>
+      <svg width="27" height="12" fill="none"><rect x="0" y="1" width="22" height="10" rx="3" stroke="#1A1A1A" stroke-width="1"/><rect x="23" y="4" width="2.5" height="4" rx="1" fill="#1A1A1A" opacity="0.4"/><rect x="2" y="3" width="15" height="6" rx="1.5" fill="#1A1A1A"/></svg>
+    </div>
+  </div>
+
+  <!-- Brand area -->
+  <div class="brand-area">
+    <div class="brand-mic">
+      <svg width="32" height="32" fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="10" y="3" width="12" height="16" rx="6"/>
+        <path d="M6 15a10 10 0 0020 0"/>
+        <path d="M16 25v4"/>
+      </svg>
+    </div>
+    <div class="brand-name">VoiceFit</div>
+    <div class="brand-tagline">Track with your voice</div>
+  </div>
+
+  <!-- Auth area -->
+  <div class="auth-area">
+    <!-- Continue with Apple -->
+    <button class="social-btn apple">
+      <svg width="20" height="24" viewBox="0 0 20 24" fill="#FFFFFF">
+        <path d="M17.05 12.54c-.02-2.25 1.83-3.33 1.91-3.38-1.04-1.52-2.66-1.73-3.24-1.75-1.38-.14-2.69.81-3.39.81-.7 0-1.78-.79-2.93-.77-1.51.02-2.9.88-3.67 2.23-1.57 2.72-.4 6.75 1.13 8.96.75 1.08 1.64 2.3 2.81 2.26 1.13-.05 1.55-.73 2.91-.73 1.36 0 1.74.73 2.93.7 1.21-.02 1.98-1.1 2.72-2.19.86-1.25 1.21-2.47 1.23-2.53-.03-.01-2.36-.91-2.38-3.61zM14.83 5.54c.62-.76 1.04-1.81.93-2.86-.9.04-1.99.6-2.63 1.35-.58.67-1.09 1.74-.95 2.77.99.08 2.01-.51 2.65-1.26z"/>
+      </svg>
+      Continue with Apple
+    </button>
+
+    <!-- Continue with Google -->
+    <button class="social-btn google">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+        <path d="M19.6 10.23c0-.68-.06-1.36-.17-2.01H10v3.8h5.38a4.6 4.6 0 01-2 3.02v2.5h3.24c1.89-1.74 2.98-4.3 2.98-7.31z" fill="#4285F4"/>
+        <path d="M10 20c2.7 0 4.96-.9 6.62-2.42l-3.24-2.5c-.9.6-2.04.95-3.38.95-2.6 0-4.8-1.76-5.58-4.12H1.08v2.58A10 10 0 0010 20z" fill="#34A853"/>
+        <path d="M4.42 11.91A6.01 6.01 0 014.1 10c0-.66.12-1.31.32-1.91V5.51H1.08A10 10 0 000 10c0 1.61.39 3.14 1.08 4.49l3.34-2.58z" fill="#FBBC05"/>
+        <path d="M10 3.96c1.47 0 2.78.5 3.81 1.5l2.86-2.86C14.96 1 12.7 0 10 0A10 10 0 001.08 5.51l3.34 2.58C5.2 5.72 7.4 3.96 10 3.96z" fill="#EA4335"/>
+      </svg>
+      Continue with Google
+    </button>
+
+    <!-- Divider -->
+    <div class="divider">
+      <div class="divider-line"></div>
+      <span class="divider-text">or</span>
+      <div class="divider-line"></div>
+    </div>
+
+    <!-- Continue with email -->
+    <button class="email-btn">
+      <svg width="18" height="18" fill="none" stroke="#8E8E93" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="1" y="3" width="16" height="12" rx="2"/>
+        <path d="M1 5l8 5 8-5"/>
+      </svg>
+      Continue with email
+    </button>
+
+    <!-- Terms -->
+    <div class="terms">
+      By continuing, you agree to our<br>
+      <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>
+    </div>
+  </div>
+
+  <div class="home-indicator"></div>
+</div>
+</body>
+</html>

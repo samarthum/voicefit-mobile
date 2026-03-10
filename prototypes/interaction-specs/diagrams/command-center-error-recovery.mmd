@@ -1,0 +1,30 @@
+%%{init: {
+  "theme": "base",
+  "themeVariables": {
+    "fontSize": "30px",
+    "fontFamily": "-apple-system, SF Pro Display, system-ui, sans-serif",
+    "primaryColor": "#F6F7FB",
+    "primaryBorderColor": "#5B5FC7",
+    "primaryTextColor": "#1A1A1A",
+    "lineColor": "#4C4C55"
+  },
+  "flowchart": {
+    "curve": "basis",
+    "nodeSpacing": 90,
+    "rankSpacing": 90,
+    "padding": 16
+  }
+}}%%
+flowchart LR
+  B[cc_expanded]
+  C[cc_recording]
+  F[cc_saving]
+  G[cc_error]
+  A[cc_collapsed]
+
+  B -->|typed fail| G
+  C -->|voice fail| G
+  F -->|save fail| G
+  G -->|retry voice| C
+  G -->|retry save| F
+  G -->|discard| A

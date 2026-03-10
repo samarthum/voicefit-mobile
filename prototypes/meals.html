@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VoiceFit — Meals</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --bg: #FFFFFF; --surface: #F8F8F8; --border: #E8E8E8;
+    --text-primary: #1A1A1A; --text-secondary: #8E8E93; --text-tertiary: #AEAEB2;
+    --accent: #007AFF; --danger: #FF3B30;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
+    background: #E5E5E5; display: flex; justify-content: center; padding: 24px 0; min-height: 100vh;
+  }
+  .phone {
+    width: 390px; height: 844px; background: var(--bg);
+    border-radius: 40px; overflow: hidden; position: relative;
+    box-shadow: 0 25px 80px rgba(0,0,0,0.15);
+  }
+  .status-bar {
+    height: 54px; display: flex; align-items: flex-end; justify-content: space-between;
+    padding: 0 28px 8px; font-size: 15px; font-weight: 600; color: var(--text-primary);
+  }
+  .status-bar .right { display: flex; gap: 6px; align-items: center; }
+  .screen {
+    height: calc(100% - 54px - 83px); overflow-y: auto; padding: 8px 20px 24px;
+    -webkit-overflow-scrolling: touch;
+  }
+  .screen::-webkit-scrollbar { display: none; }
+  .page-title { font-size: 28px; font-weight: 700; letter-spacing: -0.5px; color: var(--text-primary); }
+  .page-subtitle { margin-top: 4px; font-size: 14px; color: var(--text-secondary); }
+  .summary-row { display: flex; gap: 10px; margin-top: 24px; }
+  .summary-card {
+    flex: 1; background: var(--surface); border-radius: 16px; padding: 16px;
+  }
+  .summary-label { font-size: 12px; font-weight: 700; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.4px; }
+  .summary-value { margin-top: 8px; font-size: 28px; font-weight: 700; color: var(--text-primary); }
+  .summary-meta { margin-top: 2px; font-size: 13px; color: var(--text-secondary); }
+  .filter-card { margin-top: 16px; background: var(--surface); border-radius: 16px; padding: 16px; }
+  .filter-label { font-size: 13px; font-weight: 600; color: var(--text-secondary); margin-bottom: 10px; }
+  .filter-input {
+    width: 100%; height: 48px; border-radius: 12px; border: 1px solid var(--border);
+    background: var(--bg); padding: 0 14px; font-size: 15px; color: var(--text-primary); outline: none;
+  }
+  .filter-actions { display: flex; gap: 10px; margin-top: 12px; }
+  .btn-primary, .btn-secondary, .btn-danger, .btn-save {
+    border: none; font-family: inherit; cursor: pointer; border-radius: 12px; font-size: 14px;
+  }
+  .btn-primary { background: var(--text-primary); color: #FFF; padding: 10px 16px; font-weight: 600; }
+  .btn-secondary { background: var(--bg); color: var(--text-primary); padding: 10px 16px; font-weight: 600; border: 1px solid var(--border); }
+  .section-title { margin-top: 22px; margin-bottom: 12px; font-size: 24px; font-weight: 700; letter-spacing: -0.4px; color: var(--text-primary); }
+  .meal-row {
+    display: flex; align-items: center; justify-content: space-between;
+    background: var(--surface); border-radius: 16px; padding: 12px 14px; margin-bottom: 10px;
+  }
+  .meal-left { display: flex; align-items: center; gap: 12px; }
+  .meal-thumb { width: 28px; height: 28px; border-radius: 8px; background: var(--bg); display: flex; align-items: center; justify-content: center; }
+  .meal-title { font-size: 16px; font-weight: 600; color: var(--text-primary); }
+  .meal-meta { margin-top: 2px; font-size: 13px; color: var(--text-secondary); }
+  .meal-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+  .meal-cals { font-size: 15px; font-weight: 700; color: var(--text-primary); }
+  .detail-card { margin-top: 16px; background: var(--surface); border-radius: 20px; padding: 18px; }
+  .detail-title { font-size: 20px; font-weight: 700; color: var(--text-primary); margin-bottom: 12px; }
+  .detail-input {
+    width: 100%; height: 48px; border-radius: 12px; border: 1px solid var(--border);
+    background: var(--bg); padding: 0 14px; font-size: 15px; color: var(--text-primary); outline: none; margin-bottom: 10px;
+  }
+  .chip-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; margin-bottom: 6px; }
+  .chip {
+    padding: 8px 12px; border-radius: 999px; border: 1px solid var(--border);
+    background: var(--bg); font-size: 13px; font-weight: 600; color: var(--text-secondary); text-transform: capitalize;
+  }
+  .chip.active { background: var(--text-primary); color: #FFF; border-color: var(--text-primary); }
+  .detail-actions { display: flex; gap: 12px; margin-top: 14px; }
+  .btn-danger {
+    flex: 1; padding: 14px 0; background: var(--bg); color: var(--danger);
+    border: 1px solid var(--border); font-weight: 600;
+  }
+  .btn-save {
+    flex: 1.6; padding: 14px 0; background: var(--text-primary); color: #FFF; font-weight: 700;
+  }
+  .tab-bar {
+    position: absolute; bottom: 0; left: 0; right: 0; height: 83px;
+    background: var(--bg); border-top: 1px solid var(--border);
+    display: flex; justify-content: space-around; align-items: flex-start; padding-top: 10px;
+  }
+  .tab-item { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .tab-label { font-size: 10px; font-weight: 500; color: var(--text-secondary); }
+  .command-center {
+    position: absolute; bottom: 8px; left: 12px; right: 12px; min-height: 64px;
+    background: var(--bg); border-radius: 20px; border: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between; padding-left: 18px; padding-right: 8px;
+    box-shadow: 0 -2px 16px rgba(0,0,0,0.06);
+  }
+  .cc-left { display: flex; align-items: center; gap: 10px; }
+  .cc-hint { font-size: 15px; color: var(--text-tertiary); }
+  .cc-mic {
+    width: 48px; height: 48px; border-radius: 999px; background: var(--text-primary);
+    display: flex; align-items: center; justify-content: center;
+  }
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="status-bar">
+    <span>9:41</span>
+    <div class="right">
+      <svg width="17" height="12" fill="none"><rect x="0" y="3" width="3" height="9" rx="1" fill="#1A1A1A"/><rect x="4.5" y="2" width="3" height="10" rx="1" fill="#1A1A1A"/><rect x="9" y="0" width="3" height="12" rx="1" fill="#1A1A1A"/><rect x="13" y="0" width="3.5" height="12" rx="1" fill="#1A1A1A"/></svg>
+      <svg width="16" height="12" fill="none"><path d="M8 2.4C10.6 2.4 12.9 3.4 14.6 5L16 3.5C13.9 1.3 11.1 0 8 0S2.1 1.3 0 3.5L1.4 5C3.1 3.4 5.4 2.4 8 2.4z" fill="#1A1A1A"/><path d="M8 6.8c1.7 0 3.2.7 4.3 1.8L13.7 7c-1.5-1.5-3.5-2.4-5.7-2.4S4.3 5.5 2.8 7l1.4 1.5C5.3 7.5 6.6 6.8 8 6.8z" fill="#1A1A1A"/><circle cx="8" cy="11" r="1.5" fill="#1A1A1A"/></svg>
+      <svg width="27" height="12" fill="none"><rect x="0" y="1" width="22" height="10" rx="3" stroke="#1A1A1A" stroke-width="1"/><rect x="23" y="4" width="2.5" height="4" rx="1" fill="#1A1A1A" opacity="0.4"/><rect x="2" y="3" width="15" height="6" rx="1.5" fill="#1A1A1A"/></svg>
+    </div>
+  </div>
+
+  <div class="screen">
+    <div class="page-title">Meals</div>
+    <div class="page-subtitle">Review and edit your recent entries.</div>
+
+    <div class="summary-row">
+      <div class="summary-card">
+        <div class="summary-label">Today</div>
+        <div class="summary-value">1,390</div>
+        <div class="summary-meta">calories logged</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-label">Entries</div>
+        <div class="summary-value">3</div>
+        <div class="summary-meta">recent meals</div>
+      </div>
+    </div>
+
+    <div class="filter-card">
+      <div class="filter-label">Date filter (YYYY-MM-DD)</div>
+      <input class="filter-input" placeholder="Optional date filter" />
+      <div class="filter-actions">
+        <button class="btn-primary">Apply</button>
+        <button class="btn-secondary">Clear</button>
+      </div>
+    </div>
+
+    <div class="section-title">Recent Meals</div>
+
+    <div class="meal-row">
+      <div class="meal-left">
+        <div class="meal-thumb">🥗</div>
+        <div>
+          <div class="meal-title">Chicken Salad</div>
+          <div class="meal-meta">lunch · 5:54 PM</div>
+        </div>
+      </div>
+      <div class="meal-right">
+        <div class="meal-cals">450 kcal</div>
+        <div>›</div>
+      </div>
+    </div>
+
+    <div class="meal-row">
+      <div class="meal-left">
+        <div class="meal-thumb">🧃</div>
+        <div>
+          <div class="meal-title">Overnight Oats</div>
+          <div class="meal-meta">breakfast · 2:54 PM</div>
+        </div>
+      </div>
+      <div class="meal-right">
+        <div class="meal-cals">320 kcal</div>
+        <div>›</div>
+      </div>
+    </div>
+
+    <div class="meal-row">
+      <div class="meal-left">
+        <div class="meal-thumb">🍽️</div>
+        <div>
+          <div class="meal-title">Grilled Salmon & Rice</div>
+          <div class="meal-meta">dinner · 11:54 PM</div>
+        </div>
+      </div>
+      <div class="meal-right">
+        <div class="meal-cals">620 kcal</div>
+        <div>›</div>
+      </div>
+    </div>
+
+    <div class="detail-card">
+      <div class="detail-title">Edit Meal</div>
+      <input class="detail-input" value="Chicken Salad 450 calories" />
+      <input class="detail-input" value="450" />
+      <div class="chip-row">
+        <div class="chip">breakfast</div>
+        <div class="chip active">lunch</div>
+        <div class="chip">dinner</div>
+        <div class="chip">snack</div>
+      </div>
+      <div class="detail-actions">
+        <button class="btn-danger">Delete</button>
+        <button class="btn-save">Save Meal</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="command-center">
+    <div class="cc-left">
+      <span>✦</span>
+      <span class="cc-hint">"Had pasta for lunch..."</span>
+    </div>
+    <div class="cc-mic">
+      <svg width="18" height="18" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6.5" y="2.5" width="5" height="9" rx="2.5"/><path d="M4 9a5 5 0 0010 0"/><path d="M9 14v3"/></svg>
+    </div>
+  </div>
+
+  <div class="tab-bar">
+    <div class="tab-item"><div>⌂</div><div class="tab-label">Home</div></div>
+    <div class="tab-item"><div>▭</div><div class="tab-label">Workouts</div></div>
+    <div class="tab-item"><div>⚙︎</div><div class="tab-label">Settings</div></div>
+  </div>
+</div>
+</body>
+</html>

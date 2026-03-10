@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VoiceFit — Review Meal</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --bg: #FFFFFF; --surface: #F8F8F8; --border: #E8E8E8;
+    --text-primary: #1A1A1A; --text-secondary: #8E8E93; --text-tertiary: #AEAEB2;
+    --orange: #FF9500; --green: #34C759;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
+    background: #E5E5E5; display: flex; justify-content: center; padding: 24px 0; min-height: 100vh;
+  }
+  .phone {
+    width: 390px; height: 844px; background: var(--bg);
+    border-radius: 40px; overflow: hidden; position: relative;
+    box-shadow: 0 25px 80px rgba(0,0,0,0.15);
+  }
+  .status-bar {
+    height: 54px; display: flex; align-items: flex-end; justify-content: space-between;
+    padding: 0 28px 8px; font-size: 15px; font-weight: 600; color: var(--text-primary);
+  }
+  .status-bar .right { display: flex; gap: 6px; align-items: center; }
+
+  /* Dimmed background */
+  .bg-content { opacity: 0.15; padding: 20px; }
+  .bg-placeholder { height: 200px; background: var(--surface); border-radius: 16px; margin-bottom: 16px; }
+  .bg-placeholder.sm { height: 80px; }
+
+  /* Overlay */
+  .overlay {
+    position: absolute; inset: 0; z-index: 5;
+    background: rgba(0,0,0,0.4);
+    backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);
+  }
+
+  /* Bottom sheet */
+  .sheet {
+    position: absolute; bottom: 0; left: 0; right: 0; z-index: 10;
+    background: var(--bg); border-radius: 28px 28px 0 0;
+    padding: 12px 24px 40px;
+    max-height: 85%;
+    overflow-y: auto;
+  }
+  .sheet::-webkit-scrollbar { display: none; }
+  .sheet-handle {
+    width: 36px; height: 5px; background: var(--border);
+    border-radius: 999px; margin: 0 auto 16px;
+  }
+
+  /* Header */
+  .sheet-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 20px;
+  }
+  .sheet-title {
+    font-size: 18px; font-weight: 700; color: var(--text-primary); letter-spacing: -0.3px;
+  }
+  .sheet-close {
+    width: 32px; height: 32px; border-radius: 999px; background: var(--surface);
+    display: flex; align-items: center; justify-content: center;
+    border: none; cursor: pointer;
+  }
+
+  /* Transcript bubble */
+  .transcript-bubble {
+    background: var(--surface); border-radius: 14px;
+    padding: 14px 16px; margin-bottom: 20px;
+    position: relative;
+  }
+  .transcript-label {
+    font-size: 11px; font-weight: 600; color: var(--text-tertiary);
+    text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;
+  }
+  .transcript-body {
+    font-size: 15px; color: var(--text-primary); line-height: 1.5;
+  }
+  .transcript-edit {
+    position: absolute; top: 12px; right: 14px;
+    font-size: 13px; font-weight: 600; color: #007AFF;
+    background: none; border: none; cursor: pointer; font-family: inherit;
+  }
+
+  /* Confidence badge */
+  .confidence {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 4px 10px; border-radius: 999px;
+    background: rgba(52,199,89,0.1); margin-bottom: 20px;
+  }
+  .confidence-dot {
+    width: 6px; height: 6px; border-radius: 999px; background: var(--green);
+  }
+  .confidence-text {
+    font-size: 12px; font-weight: 600; color: var(--green);
+  }
+
+  /* Meal card */
+  .meal-card {
+    background: var(--bg); border: 1.5px solid var(--border);
+    border-radius: 16px; padding: 20px; margin-bottom: 16px;
+  }
+  .meal-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  .meal-desc {
+    font-size: 18px; font-weight: 700; color: var(--text-primary);
+    letter-spacing: -0.3px; flex: 1;
+  }
+  .meal-type {
+    font-size: 12px; font-weight: 600; padding: 4px 10px;
+    border-radius: 999px; background: rgba(255,149,0,0.1);
+    color: var(--orange); text-transform: uppercase; letter-spacing: 0.3px;
+  }
+
+  /* Calorie hero */
+  .cal-hero {
+    text-align: center; padding: 16px 0; margin-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .cal-number {
+    font-size: 48px; font-weight: 800; color: var(--orange);
+    letter-spacing: -2px; line-height: 1;
+  }
+  .cal-unit {
+    font-size: 16px; font-weight: 600; color: var(--text-secondary);
+    margin-top: 4px;
+  }
+
+  /* Macro row */
+  .macro-row {
+    display: flex; gap: 12px;
+  }
+  .macro-item {
+    flex: 1; text-align: center; padding: 12px 0;
+    background: var(--surface); border-radius: 12px;
+  }
+  .macro-val {
+    font-size: 20px; font-weight: 700; color: var(--text-primary);
+    letter-spacing: -0.5px;
+  }
+  .macro-unit {
+    font-size: 12px; font-weight: 500; color: var(--text-secondary);
+  }
+  .macro-label {
+    font-size: 11px; font-weight: 600; color: var(--text-tertiary);
+    text-transform: uppercase; letter-spacing: 0.3px; margin-top: 2px;
+  }
+
+  /* Ingredients section */
+  .ingredients-section {
+    margin-top: 16px; padding-top: 16px;
+    border-top: 1px solid var(--border);
+  }
+  .ingredients-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .ingredients-label {
+    font-size: 12px; font-weight: 700; color: var(--text-tertiary);
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .ingredients-add {
+    font-size: 13px; font-weight: 600; color: #007AFF;
+    background: none; border: none; cursor: pointer; font-family: inherit;
+  }
+  .ingredient-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 0; min-height: 48px;
+    border-bottom: 1px solid rgba(0,0,0,0.06);
+  }
+  .ingredient-row:last-child { border-bottom: none; }
+  .ingredient-info { flex: 1; min-width: 0; }
+  .ingredient-name {
+    font-size: 15px; font-weight: 600; color: var(--text-primary);
+    line-height: 1.3;
+  }
+  .ingredient-qty {
+    display: inline-flex; align-items: center;
+    margin-top: 4px; padding: 2px 8px;
+    background: var(--surface); border-radius: 6px;
+    font-size: 13px; font-weight: 500; color: var(--text-secondary);
+    border: 1px solid transparent;
+    cursor: pointer; font-family: inherit;
+    transition: border-color 0.15s;
+  }
+  .ingredient-qty:hover { border-color: var(--border); }
+  .ingredient-right {
+    display: flex; align-items: center; gap: 8px;
+    margin-left: 12px; flex-shrink: 0;
+  }
+  .ingredient-cal {
+    font-size: 15px; font-weight: 600; color: var(--orange);
+  }
+  .ingredient-chevron {
+    color: var(--text-tertiary);
+    display: flex; align-items: center;
+  }
+
+  /* Time selector */
+  .time-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 0; margin-top: 16px;
+    border-top: 1px solid var(--border);
+  }
+  .time-label {
+    font-size: 15px; font-weight: 500; color: var(--text-secondary);
+  }
+  .time-value {
+    font-size: 15px; font-weight: 600; color: var(--text-primary);
+    display: flex; align-items: center; gap: 6px;
+  }
+
+  /* Actions */
+  .actions {
+    display: flex; gap: 12px; margin-top: 4px;
+  }
+  .btn-secondary {
+    flex: 1; height: 52px; border-radius: 14px;
+    border: 1.5px solid var(--border); background: transparent;
+    color: var(--text-secondary); font-size: 16px; font-weight: 600;
+    cursor: pointer; font-family: inherit;
+  }
+  .btn-primary {
+    flex: 2; height: 52px; border-radius: 14px; border: none;
+    background: var(--text-primary); color: #FFFFFF;
+    font-size: 16px; font-weight: 600; cursor: pointer; font-family: inherit;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    letter-spacing: -0.2px;
+  }
+  .btn-primary:active, .btn-secondary:active { opacity: 0.85; }
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="status-bar">
+    <span>9:41</span>
+    <div class="right">
+      <svg width="17" height="12" fill="none"><rect x="0" y="3" width="3" height="9" rx="1" fill="#1A1A1A"/><rect x="4.5" y="2" width="3" height="10" rx="1" fill="#1A1A1A"/><rect x="9" y="0" width="3" height="12" rx="1" fill="#1A1A1A"/><rect x="13" y="0" width="3.5" height="12" rx="1" fill="#1A1A1A"/><rect x="13" y="0" width="3.5" height="12" rx="1" fill="#1A1A1A"/></svg>
+      <svg width="16" height="12" fill="none"><path d="M8 2.4C10.6 2.4 12.9 3.4 14.6 5L16 3.5C13.9 1.3 11.1 0 8 0S2.1 1.3 0 3.5L1.4 5C3.1 3.4 5.4 2.4 8 2.4z" fill="#1A1A1A"/><path d="M8 6.8c1.7 0 3.2.7 4.3 1.8L13.7 7c-1.5-1.5-3.5-2.4-5.7-2.4S4.3 5.5 2.8 7l1.4 1.5C5.3 7.5 6.6 6.8 8 6.8z" fill="#1A1A1A"/><circle cx="8" cy="11" r="1.5" fill="#1A1A1A"/></svg>
+      <svg width="27" height="12" fill="none"><rect x="0" y="1" width="22" height="10" rx="3" stroke="#1A1A1A" stroke-width="1"/><rect x="23" y="4" width="2.5" height="4" rx="1" fill="#1A1A1A" opacity="0.4"/><rect x="2" y="3" width="15" height="6" rx="1.5" fill="#1A1A1A"/></svg>
+    </div>
+  </div>
+
+  <!-- Dimmed background -->
+  <div class="bg-content">
+    <div class="bg-placeholder"></div>
+    <div class="bg-placeholder sm"></div>
+  </div>
+
+  <!-- Overlay -->
+  <div class="overlay"></div>
+
+  <!-- Review Bottom Sheet -->
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+
+    <div class="sheet-header">
+      <span class="sheet-title">Review Meal</span>
+      <button class="sheet-close">
+        <svg width="12" height="12" fill="none" stroke="#1A1A1A" stroke-width="2" stroke-linecap="round"><path d="M1 1l10 10M11 1L1 11"/></svg>
+      </button>
+    </div>
+
+    <!-- Transcript -->
+    <div class="transcript-bubble">
+      <div class="transcript-label">You said</div>
+      <div class="transcript-body">I had a chicken salad with rice for lunch, about 500 calories</div>
+      <button class="transcript-edit">Edit</button>
+    </div>
+
+    <!-- Confidence -->
+    <div class="confidence">
+      <div class="confidence-dot"></div>
+      <span class="confidence-text">High confidence</span>
+    </div>
+
+    <!-- Meal card -->
+    <div class="meal-card">
+      <div class="meal-header">
+        <div class="meal-desc">Chicken salad with rice</div>
+        <span class="meal-type">Lunch</span>
+      </div>
+
+      <div class="cal-hero">
+        <div class="cal-number">520</div>
+        <div class="cal-unit">calories</div>
+      </div>
+
+      <div class="macro-row">
+        <div class="macro-item">
+          <div class="macro-val">42<span class="macro-unit">g</span></div>
+          <div class="macro-label">Protein</div>
+        </div>
+        <div class="macro-item">
+          <div class="macro-val">48<span class="macro-unit">g</span></div>
+          <div class="macro-label">Carbs</div>
+        </div>
+        <div class="macro-item">
+          <div class="macro-val">16<span class="macro-unit">g</span></div>
+          <div class="macro-label">Fat</div>
+        </div>
+      </div>
+
+      <!-- Ingredients breakdown -->
+      <div class="ingredients-section">
+        <div class="ingredients-header">
+          <span class="ingredients-label">Ingredients</span>
+          <button class="ingredients-add">+ Add Item</button>
+        </div>
+
+        <div class="ingredient-row">
+          <div class="ingredient-info">
+            <div class="ingredient-name">Grilled chicken breast</div>
+            <span class="ingredient-qty">150g</span>
+          </div>
+          <div class="ingredient-right">
+            <span class="ingredient-cal">248 cal</span>
+            <span class="ingredient-chevron">
+              <svg width="14" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M5 2l5 5-5 5"/></svg>
+            </span>
+          </div>
+        </div>
+
+        <div class="ingredient-row">
+          <div class="ingredient-info">
+            <div class="ingredient-name">White rice, cooked</div>
+            <span class="ingredient-qty">200g</span>
+          </div>
+          <div class="ingredient-right">
+            <span class="ingredient-cal">260 cal</span>
+            <span class="ingredient-chevron">
+              <svg width="14" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M5 2l5 5-5 5"/></svg>
+            </span>
+          </div>
+        </div>
+
+        <div class="ingredient-row">
+          <div class="ingredient-info">
+            <div class="ingredient-name">Mixed salad greens</div>
+            <span class="ingredient-qty">80g</span>
+          </div>
+          <div class="ingredient-right">
+            <span class="ingredient-cal">12 cal</span>
+            <span class="ingredient-chevron">
+              <svg width="14" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M5 2l5 5-5 5"/></svg>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div class="time-row">
+        <span class="time-label">Eaten at</span>
+        <span class="time-value">
+          12:30 PM
+          <svg width="14" height="14" fill="none" stroke="#AEAEB2" stroke-width="2" stroke-linecap="round"><path d="M5 2l5 5-5 5"/></svg>
+        </span>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="actions">
+      <button class="btn-secondary">Discard</button>
+      <button class="btn-primary">
+        <svg width="18" height="18" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 2L6 14l-4-4"/></svg>
+        Save Meal
+      </button>
+    </div>
+  </div>
+</div>
+</body>
+</html>

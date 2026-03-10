@@ -1,0 +1,36 @@
+%%{init: {
+  "theme": "base",
+  "themeVariables": {
+    "fontSize": "22px",
+    "fontFamily": "-apple-system, SF Pro Display, system-ui, sans-serif",
+    "primaryColor": "#F6F7FB",
+    "primaryBorderColor": "#5B5FC7",
+    "primaryTextColor": "#1A1A1A",
+    "lineColor": "#4C4C55",
+    "secondaryColor": "#F3F4F8",
+    "tertiaryColor": "#F3F4F8"
+  },
+  "flowchart": {
+    "curve": "stepAfter",
+    "nodeSpacing": 90,
+    "rankSpacing": 90,
+    "padding": 20
+  }
+}}%%
+flowchart LR
+  HL[home_loading]
+  HR[home_ready]
+  HE[home_error_blocking]
+  HF[home_refreshing]
+  N[Note: switch metric stays in home_ready]
+
+  HL -->|load ok| HR
+  HL -->|load fail| HE
+  HE -->|retry| HL
+
+  HR -->|select day| HL
+  HR -->|pull refresh| HF
+  HF -->|refresh ok| HR
+  HF -->|refresh fail stale| HR
+
+  HR -.-> N

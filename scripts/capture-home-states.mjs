@@ -2,7 +2,7 @@ import { chromium } from "playwright";
 import fs from "node:fs/promises";
 import path from "node:path";
 
-const BASE_URL = "http://localhost:19009/dashboard";
+const BASE_URL = process.env.HOME_CAPTURE_BASE_URL ?? "http://localhost:8081/dashboard";
 const FLAGS_KEY = "__vf_home_preview_flags";
 const outDir = "/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/output/playwright/home-states";
 
@@ -108,6 +108,7 @@ await shot("08-home-after-quick-add");
 await reloadWithFlags("hold_interpreting");
 await page.getByTestId("cc-collapsed-mic").click();
 await page.getByTestId("cc-sheet-cc_recording").waitFor({ timeout: 6000 });
+await page.waitForTimeout(4200);
 await shot("09-cc-recording");
 
 await page.getByTestId("cc-recording-stop").click();

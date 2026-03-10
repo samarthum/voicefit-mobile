@@ -1,6 +1,6 @@
 # Interaction Diagram Image Registry
 
-- Last updated: 2026-02-10
+- Last updated: 2026-02-14
 - Purpose: single source of truth for rendered interaction/state diagram image paths used in specs and handoffs.
 
 ## Active rendered diagrams
@@ -43,6 +43,7 @@ npx -y @mermaid-js/mermaid-cli -i <absolute-path-to-diagram.mmd> -o <absolute-pa
 
 - Root folder: `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/output/playwright/home-states/`
 - Capture script: `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/scripts/capture-home-states.mjs`
+- Latest handoff summary: `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/handoffs/home-handoff-2026-02-14.md`
 - Includes: full Home + Command Center state captures (`01` through `16`) mapped in:
   - `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/interaction-specs/home-interaction-spec.md`
   - `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/interaction-specs/command-center-interaction-spec.md`
