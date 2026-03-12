@@ -201,16 +201,10 @@ function buildExercisePreview(title: string, setCount: number) {
   }
   return [
     {
-      name: "Main Lift",
-      detail: "Resistance",
-      weight: "Bodyweight",
-      reps: `${Math.max(setCount, 1)} sets`,
-    },
-    {
-      name: "Accessory Work",
-      detail: "Resistance",
-      weight: "Mixed",
-      reps: "Logged",
+      name: title.trim() || "Logged workout",
+      detail: "Open session to review details",
+      weight: `${Math.max(setCount, 1)} sets`,
+      reps: "Tracked session",
     },
   ];
 }

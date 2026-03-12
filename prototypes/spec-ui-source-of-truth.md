@@ -20,7 +20,7 @@
 
 ## Current implementation status (2026-03-10)
 - Home: implemented in mobile codebase with parity pass for layout, spacing, safe-area behavior, premium meal visuals, and command-center-driven Home flows against the locked prototype set.
-- Command Center on Home: implemented for expanded/typing/recording/interpreting/review meal/review workout/saving/error states with locked CTA contracts and refreshed web-preview captures.
+- Command Center on Home: implemented for expanded/typing/recording/transcribing/interpreting/review meal/review workout/saving/error states with locked CTA contracts and refreshed web-preview captures.
 - Coach Chat: scaffold replaced with prototype-style chat UI, starter chips, composer, sample web-preview conversation, and live/mocked send behavior.
 - Workouts: scaffold replaced with prototype-style stats row, session cards, and persistent command bar; web preview routes into session prototypes.
 - Workout Session: preview-capable active and empty session screens now exist at `/workout-session/preview-active` and `/workout-session/preview-empty`, with fake tab-bar parity and exercise-picker routing.
@@ -54,6 +54,21 @@
   - Workout session live-data CRUD is now closer to prototype behavior, but final native-device QA is still needed for live set editing and finish flows.
   - Web parity checks still differ from prototype captures where the prototype includes a mocked status bar/home-indicator that the Expo app intentionally leaves to the host OS/runtime.
   - Analytics and production data QA remain open after the parity pass.
+
+## Runtime polish update (2026-03-11)
+- Home dashboard now suppresses fallback metrics during first-load hydration and shows loading placeholders until real dashboard data exists.
+- Workout fallback cards now use neutral copy instead of invented exercise metadata when live session details are unavailable.
+- Bottom navigation uses the clearer fitness glyph for Workouts in both the real tab bar and fake tab-bar preview components.
+- Coach composer was adjusted for real-device keyboard behavior:
+  - bottom safe-area edge enabled
+  - keyboard offset increased for Android handling
+  - input focus scrolls the thread to the composer
+
+## Voice flow update (2026-03-12)
+- Home command center now includes an explicit `cc_transcribing_voice` state between recording and interpreting.
+- Voice path sequence is now: `Listening` -> `Transcribing...` -> `Interpreting...` -> review/save.
+- Runtime implementation lives in `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/app/(tabs)/dashboard.tsx`.
+- `Interpreting...` now uses the same polished card-based bottom-sheet language as `Transcribing...`, while keeping transcript editing and retry/discard controls intact.
 
 ## Handoff quick start (for next agent)
 1. Review source docs in this order:

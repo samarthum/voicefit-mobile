@@ -67,6 +67,7 @@ Out of scope:
 
 ### 2.2 Voice/save states
 - `cc_recording`: listening, timer + waveform active.
+- `cc_transcribing_voice`: recording stopped; audio upload/transcription in progress before transcript is editable.
 - `cc_interpreting_voice`: recording stopped; transcript shown while interpretation runs; user can edit/interrupt.
 - `cc_review_meal`: parsed meal review card with save/discard.
 - `cc_review_workout`: parsed workout review card with save/discard.
@@ -96,7 +97,9 @@ Out of scope:
 | `tap_mic_collapsed` | `cc_collapsed` | `cc_recording` | Mic permission granted | Open recording sheet. |
 | `tap_mic_expanded` | `cc_expanded_empty` or `cc_expanded_typing` | `cc_recording` | Mic permission granted | Open recording sheet. |
 | `mic_permission_denied` | `cc_collapsed` or `cc_expanded_empty` or `cc_expanded_typing` | `cc_error` | OS denied | Show permission recovery action. |
-| `stop_recording` | `cc_recording` | `cc_interpreting_voice` | Transcript available | Start interpretation and show transcript text. |
+| `stop_recording` | `cc_recording` | `cc_transcribing_voice` | Recording duration valid | Stop capture and upload audio for transcript generation. |
+| `transcription_success` | `cc_transcribing_voice` | `cc_interpreting_voice` | Transcript available | Populate transcript text and start interpretation. |
+| `transcription_failure` | `cc_transcribing_voice` | `cc_error` | Transcription failed | Preserve voice retry/edit recovery path. |
 | `edit_transcript` | `cc_interpreting_voice` | `cc_interpreting_voice` | User edits transcript text | Cancel/restart interpretation with edited transcript. |
 | `voice_interpret_success` | `cc_interpreting_voice` | `cc_review_meal` or `cc_review_workout` | Parse class = meal/workout | Populate review card and wait for explicit save. |
 | `voice_interpret_failure` | `cc_interpreting_voice` | `cc_error` | Interpret failed | Keep last transcript for retry/edit. |
@@ -130,6 +133,7 @@ Out of scope:
 | `cc_expanded_typing` | Same as expanded-empty + active send button | None | Typing allowed; keyboard state preserved. |
 | `cc_submitting_typed` | Expanded sheet with interpreting indicator + typed text | Inputs temporarily disabled | Pending typed interpretation. |
 | `cc_recording` | Timer, recording indicator, waveform, stop button | Host interaction blocked | Matches voice-recording prototype. |
+| `cc_transcribing_voice` | Status header, spinner, captured-audio summary, waveform | Background blocked | Intermediate voice-processing state before transcript editing appears. |
 | `cc_interpreting_voice` | Transcript text block + interpreting indicator + `Edit text` + `Retry voice` + `Discard` actions | Background blocked | User can interrupt/edit while interpretation runs. |
 | `cc_review_meal` | Review Meal sheet with transcript, confidence chip, parsed meal card, ingredient list, discard/save actions | Background blocked | Matches `voice-review-meal.html`. |
 | `cc_review_workout` | Review Workout sheet with transcript, confidence chip, parsed workout card, discard/save actions | Background blocked | Matches `voice-review-workout.html`. |
@@ -139,7 +143,14 @@ Out of scope:
 
 ## 4.1 Locked controls contract
 
-### 4.1.1 `cc_interpreting_voice` controls
+### 4.1.1 `cc_transcribing_voice` controls
+
+| Control | Label | Availability | Behavior |
+|---|---|---|---|
+| Primary status indicator | `Transcribing...` | Always in `cc_transcribing_voice` | Shows spinner and upload/transcription progress state. |
+| Close action | Icon-only close | Always | Dismisses the command center entirely. |
+
+### 4.1.2 `cc_interpreting_voice` controls
 
 | Control | Label | Availability | Behavior |
 |---|---|---|---|
@@ -148,7 +159,7 @@ Out of scope:
 | Secondary action | `Retry voice` | Always | Triggers `tap_retry_recording`; starts fresh recording. |
 | Tertiary action | `Discard` | Always | Triggers `tap_discard_interpreting`; returns to `cc_collapsed`. |
 
-### 4.1.2 `cc_error` copy and CTA mapping (locked)
+### 4.1.3 `cc_error` copy and CTA mapping (locked)
 
 | Error subtype | Title | Body | Primary CTA | Secondary CTA | Tertiary CTA |
 |---|---|---|---|---|---|
@@ -158,7 +169,7 @@ Out of scope:
 | `auto_save_failure` | `Couldn't save right now` | `We kept your entry. Try saving again.` | `Retry save` | `Discard` | Hidden |
 | `quick_add_failure` | `Couldn't add that item` | `Please try again.` | `Retry save` | `Discard` | Hidden |
 
-### 4.1.3 `cc_error` CTA-to-transition mapping (locked)
+### 4.1.4 `cc_error` CTA-to-transition mapping (locked)
 
 | Error subtype | CTA label | Event | Target state |
 |---|---|---|---|

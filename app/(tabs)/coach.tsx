@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
@@ -140,12 +141,12 @@ function SendGlyph({ color }: { color: string }) {
   return (
     <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
       <Path
-        d="M4 12L20 4L16 12L20 20L4 12Z"
+        d="M3.5 20L20 12L3.5 4L6.2 10.4L13 12L6.2 13.6L3.5 20Z"
         stroke={color}
         strokeWidth={2}
+        strokeLinecap="round"
         strokeLinejoin="round"
       />
-      <Path d="M16 12H8" stroke={color} strokeWidth={2} strokeLinecap="round" />
     </Svg>
   );
 }
@@ -160,6 +161,10 @@ export default function CoachScreen() {
   );
   const [draft, setDraft] = useState("");
   const [isSending, setIsSending] = useState(false);
+
+  const scrollToBottom = (animated = true) => {
+    requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated }));
+  };
 
   const hasMessages = useMemo(() => messages.length > 0, [messages.length]);
 
@@ -245,141 +250,150 @@ export default function CoachScreen() {
       );
     } finally {
       setIsSending(false);
-      requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
+      scrollToBottom(true);
     }
   };
 
   return (
     <SafeAreaView style={styles.root} edges={["top"]}>
-      <View style={styles.header}>
-        <Pressable
-          style={styles.backButton}
-          onPress={() => {
-            if (router.canGoBack()) {
-              router.back();
-              return;
-            }
-            router.replace("/(tabs)/dashboard");
-          }}
-        >
-          <BackGlyph />
-        </Pressable>
-        <View style={styles.headerCopy}>
-          <Text style={styles.title}>Coach</Text>
-          <Text style={styles.subtitle}>Insights from your logs</Text>
-        </View>
-      </View>
-
-      <ScrollView
-        ref={scrollRef}
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-        onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}
+      <KeyboardAvoidingView
+        style={styles.keyboardRoot}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 12 : 0}
       >
+        <View style={styles.header}>
+          <Pressable
+            style={styles.backButton}
+            onPress={() => {
+              if (router.canGoBack()) {
+                router.back();
+                return;
+              }
+              router.replace("/(tabs)/dashboard");
+            }}
+          >
+            <BackGlyph />
+          </Pressable>
+          <View style={styles.headerCopy}>
+            <Text style={styles.title}>Coach</Text>
+            <Text style={styles.subtitle}>Insights from your logs</Text>
+          </View>
+        </View>
+
         <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.starterRow}
+          ref={scrollRef}
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+          onContentSizeChange={() => scrollToBottom(false)}
         >
-          {starterPrompts.map((prompt) => (
-            <Pressable
-              key={prompt}
-              style={styles.starterChip}
-              onPress={() => sendMessage(prompt)}
-              disabled={isSending}
-            >
-              <Text style={styles.starterChipText}>{prompt}</Text>
-            </Pressable>
-          ))}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.starterRow}
+          >
+            {starterPrompts.map((prompt) => (
+              <Pressable
+                key={prompt}
+                style={styles.starterChip}
+                onPress={() => sendMessage(prompt)}
+                disabled={isSending}
+              >
+                <Text style={styles.starterChipText}>{prompt}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+
+          {!hasMessages ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyTitle}>Ask Coach anything about your recent patterns.</Text>
+              <Text style={styles.emptyBody}>
+                Start with calories, weight, workout consistency, or one of the starter prompts above.
+              </Text>
+            </View>
+          ) : null}
+
+          {messages.map((message) => {
+            const isUser = message.role === "user";
+            return (
+              <View
+                key={message.id}
+                style={[styles.messageGroup, isUser ? styles.userGroup : styles.assistantGroup]}
+              >
+                <View style={styles.messageMeta}>
+                  {isUser ? null : <CoachSparkle />}
+                  <Text style={[styles.senderLabel, !isUser ? styles.coachLabel : null]}>
+                    {isUser ? "You" : "Coach"}
+                  </Text>
+                </View>
+                <View
+                  style={[
+                    styles.bubble,
+                    isUser ? styles.userBubble : styles.assistantBubble,
+                    message.status === "error" ? styles.errorBubble : null,
+                  ]}
+                >
+                  <Text style={[styles.bubbleText, isUser ? styles.userBubbleText : null]}>
+                    {message.content}
+                  </Text>
+                </View>
+                {!isUser && message.followups?.length ? (
+                  <View style={styles.followupRow}>
+                    {message.followups.map((followup) => (
+                      <Pressable
+                        key={followup}
+                        style={styles.followupChip}
+                        onPress={() => sendMessage(followup)}
+                      >
+                        <Text style={styles.followupText}>{followup}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                ) : null}
+              </View>
+            );
+          })}
         </ScrollView>
 
-        {!hasMessages ? (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyTitle}>Ask Coach anything about your recent patterns.</Text>
-            <Text style={styles.emptyBody}>
-              Start with calories, weight, workout consistency, or one of the starter prompts above.
-            </Text>
-          </View>
-        ) : null}
-
-        {messages.map((message) => {
-          const isUser = message.role === "user";
-          return (
-            <View
-              key={message.id}
-              style={[styles.messageGroup, isUser ? styles.userGroup : styles.assistantGroup]}
+        <View style={styles.composer}>
+          <View style={styles.composerRow}>
+            <TextInput
+              style={styles.input}
+              value={draft}
+              onChangeText={setDraft}
+              placeholder="Ask about your trends..."
+              placeholderTextColor={COLORS.textTertiary}
+              multiline
+              editable={!isSending}
+              textAlignVertical="top"
+              onFocus={() => scrollToBottom(false)}
+            />
+            <Pressable
+              style={styles.micButton}
+              onPress={() =>
+                router.push({ pathname: "/(tabs)/dashboard", params: { cc: "recording" } })
+              }
             >
-              <View style={styles.messageMeta}>
-                {isUser ? null : <CoachSparkle />}
-                <Text style={[styles.senderLabel, !isUser ? styles.coachLabel : null]}>
-                  {isUser ? "You" : "Coach"}
-                </Text>
-              </View>
-              <View
-                style={[
-                  styles.bubble,
-                  isUser ? styles.userBubble : styles.assistantBubble,
-                  message.status === "error" ? styles.errorBubble : null,
-                ]}
-              >
-                <Text style={[styles.bubbleText, isUser ? styles.userBubbleText : null]}>
-                  {message.content}
-                </Text>
-              </View>
-              {!isUser && message.followups?.length ? (
-                <View style={styles.followupRow}>
-                  {message.followups.map((followup) => (
-                    <Pressable
-                      key={followup}
-                      style={styles.followupChip}
-                      onPress={() => sendMessage(followup)}
-                    >
-                      <Text style={styles.followupText}>{followup}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-              ) : null}
-            </View>
-          );
-        })}
-      </ScrollView>
-
-      <View style={styles.composer}>
-        <View style={styles.composerRow}>
-          <TextInput
-            style={styles.input}
-            value={draft}
-            onChangeText={setDraft}
-            placeholder="Ask about your trends..."
-            placeholderTextColor={COLORS.textTertiary}
-            multiline
-            editable={!isSending}
-          />
-          <Pressable
-            style={styles.micButton}
-            onPress={() =>
-              router.push({ pathname: "/(tabs)/dashboard", params: { cc: "recording" } })
-            }
-          >
-            <MicGlyph />
-          </Pressable>
-          <Pressable
-            style={[
-              styles.sendButton,
-              (!draft.trim() || isSending) ? styles.sendButtonDisabled : null,
-            ]}
-            disabled={!draft.trim() || isSending}
-            onPress={() => sendMessage(draft)}
-          >
-            {isSending ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <SendGlyph color="#FFFFFF" />
-            )}
-          </Pressable>
+              <MicGlyph />
+            </Pressable>
+            <Pressable
+              style={[
+                styles.sendButton,
+                (!draft.trim() || isSending) ? styles.sendButtonDisabled : null,
+              ]}
+              disabled={!draft.trim() || isSending}
+              onPress={() => sendMessage(draft)}
+            >
+              {isSending ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <SendGlyph color="#FFFFFF" />
+              )}
+            </Pressable>
+          </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -388,6 +402,9 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: COLORS.bg,
+  },
+  keyboardRoot: {
+    flex: 1,
   },
   header: {
     flexDirection: "row",
@@ -426,7 +443,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: 16,
     paddingTop: 16,
-    paddingBottom: 122,
+    paddingBottom: 24,
     gap: 16,
   },
   starterRow: {
@@ -539,12 +556,8 @@ const styles = StyleSheet.create({
     color: COLORS.weight,
   },
   composer: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
     paddingHorizontal: 16,
-    paddingTop: 8,
+    paddingTop: 6,
     paddingBottom: 8,
     backgroundColor: COLORS.bg,
     borderTopWidth: 1,

@@ -73,3 +73,25 @@ cd /Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile
 npx tsc --noEmit
 npx expo start --web
 ```
+
+## Follow-up polish pass — 2026-03-11
+- Home dashboard hydration now stays in an explicit loading state until the first real payload exists:
+  - `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/app/(tabs)/dashboard.tsx`
+  - This prevents the old flash of fallback metrics like `2000 calories left` and `0 steps` before real data arrives.
+- Dashboard loading placeholders were fully wired with concrete style tokens instead of referencing missing skeleton styles:
+  - `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/app/(tabs)/dashboard.tsx`
+- Bottom-nav workout icon was tightened to a clearer fitness glyph in both the real tab layout and the fake prototype tab bar:
+  - `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/app/(tabs)/_layout.tsx`
+  - `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/components/FakeTabBar.tsx`
+- Workouts fallback session preview no longer invents misleading labels like `Main Lift` or `Bodyweight` when only generic session data exists:
+  - `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/app/(tabs)/workouts.tsx`
+- Coach composer keyboard behavior was tightened for real-device use:
+  - `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/app/(tabs)/coach.tsx`
+  - Safe-area bottom edge enabled
+  - keyboard offset increased for Android
+  - composer scrolls into view on focus
+  - send glyph remains right-pointing
+- Validation completed:
+  - `npx tsc --noEmit`
+  - Expo web runtime booted at `http://localhost:8081`
+  - Browser check confirmed no runtime console errors on `/dashboard`, `/workouts`, or `/coach`

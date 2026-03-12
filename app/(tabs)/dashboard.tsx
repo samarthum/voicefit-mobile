@@ -43,6 +43,7 @@ type CommandState =
   | "cc_expanded_typing"
   | "cc_submitting_typed"
   | "cc_recording"
+  | "cc_transcribing_voice"
   | "cc_interpreting_voice"
   | "cc_review_meal"
   | "cc_review_workout"
@@ -753,6 +754,20 @@ function WeightSparkline() {
   );
 }
 
+function LoadingBlock({
+  width,
+  height,
+  radius = 12,
+  style,
+}: {
+  width: number | `${number}%`;
+  height: number;
+  radius?: number;
+  style?: object;
+}) {
+  return <View style={[styles.loadingBlock, { width, height, borderRadius: radius }, style]} />;
+}
+
 function buildLinePaths(values: number[], width: number, height: number, metric: TrendMetric) {
   const innerLeft = 10;
   const innerRight = width - 10;
@@ -1086,6 +1101,9 @@ export default function DashboardScreen() {
       : null;
 
   const homeBlockingError = Boolean(dashboardQuery.error && !dashboardQuery.data);
+  // Keep the hero/cards in a loading state until the first real payload exists.
+  // This avoids flashing default fallback metrics during auth/query hydration.
+  const isDashboardInitialLoading = !dashboard && !homeBlockingError;
 
   const closeCommandCenter = () => {
     setCommandState("cc_collapsed");
@@ -1432,9 +1450,14 @@ export default function DashboardScreen() {
   const stopRecording = async () => {
     if (isWebPreview) {
       const previewTranscript = "I had a chicken salad with rice for lunch, about 500 calories";
+      setCommandState("cc_transcribing_voice");
+      if (hasWebPreviewFlag("hold_transcribing")) {
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 700));
       setVoiceTranscript(previewTranscript);
-      setCommandState("cc_interpreting_voice");
       if (hasWebPreviewFlag("hold_interpreting")) {
+        setCommandState("cc_interpreting_voice");
         setIsInterpretingVoice(true);
         return;
       }
@@ -1444,8 +1467,9 @@ export default function DashboardScreen() {
 
     if (!recording) return;
 
-    setCommandState("cc_interpreting_voice");
-    setIsInterpretingVoice(true);
+    setCommandState("cc_transcribing_voice");
+    setCommandErrorSubtype(null);
+    setCommandErrorDetail(null);
 
     const activeRecording = recording;
     setRecording(null);
@@ -1490,8 +1514,6 @@ export default function DashboardScreen() {
       await interpretVoiceTranscript(cleanedTranscript);
     } catch (error) {
       setCommandError("voice_interpret_failure", getErrorMessage(error));
-    } finally {
-      setIsInterpretingVoice(false);
     }
   };
 
@@ -1626,6 +1648,7 @@ export default function DashboardScreen() {
   const canCloseViaBackdrop =
     commandState === "cc_expanded_empty" || commandState === "cc_expanded_typing";
   const modalAnimationType = Platform.OS === "web" ? "none" : "fade";
+  const sheetBottomOverlap = Platform.OS === "android" ? 12 : 0;
 
   const handleCommandInputChange = (text: string) => {
     setCommandText(text);
@@ -1791,6 +1814,45 @@ export default function DashboardScreen() {
       );
     }
 
+    if (commandState === "cc_transcribing_voice") {
+      return (
+        <View style={styles.sheetContent}>
+          <View style={styles.interpretingHeader}>
+            <View style={styles.interpretingHeaderSide} />
+            <View style={styles.interpretingTitleRow}>
+              <ActivityIndicator color={COLORS.black} size="small" />
+              <Text style={styles.sheetTitle}>Transcribing...</Text>
+            </View>
+            <Pressable style={styles.sheetCloseCircle} onPress={closeCommandCenter} testID="cc-transcribing-close">
+              <CloseGlyph />
+            </Pressable>
+          </View>
+          <View style={styles.interpretingDivider} />
+
+          <View style={styles.transcribingCard}>
+            <View style={styles.transcribingStatusRow}>
+              <View style={styles.transcribingPill}>
+                <SparkleGlyph color={COLORS.textSecondary} />
+                <Text style={styles.transcribingPillText}>Voice note captured</Text>
+              </View>
+              <Text style={styles.transcribingDuration}>
+                {recordingSeconds > 0 ? formatRecordingDuration(recordingSeconds) : "Just now"}
+              </Text>
+            </View>
+
+            <Text style={styles.transcribingTitle}>Converting speech to text</Text>
+            <Text style={styles.transcribingBody}>
+              We&apos;re turning your recording into editable text before analysis.
+            </Text>
+
+            <View style={styles.transcribingWaveWrap}>
+              <AnimatedWaveform active />
+            </View>
+          </View>
+        </View>
+      );
+    }
+
     if (commandState === "cc_interpreting_voice") {
       return (
         <View style={styles.sheetContent}>
@@ -1806,15 +1868,32 @@ export default function DashboardScreen() {
           </View>
           <View style={styles.interpretingDivider} />
 
-          <TextInput
-            style={styles.voiceTranscriptInput}
-            value={voiceTranscript}
-            onChangeText={setVoiceTranscript}
-            multiline
-            placeholder="Transcript"
-            placeholderTextColor={COLORS.textTertiary}
-            testID="cc-voice-transcript"
-          />
+          <View style={styles.transcribingCard}>
+            <View style={styles.transcribingStatusRow}>
+              <View style={styles.transcribingPill}>
+                <SparkleGlyph color={COLORS.textSecondary} />
+                <Text style={styles.transcribingPillText}>Transcript ready</Text>
+              </View>
+              <Text style={styles.transcribingDuration}>Editable</Text>
+            </View>
+
+            <Text style={styles.transcribingTitle}>Understanding your entry</Text>
+            <Text style={styles.transcribingBody}>
+              Review the transcript below while we classify it into a meal, workout, or another log entry.
+            </Text>
+
+            <View style={styles.interpretingTranscriptCard}>
+              <TextInput
+                style={styles.voiceTranscriptInput}
+                value={voiceTranscript}
+                onChangeText={setVoiceTranscript}
+                multiline
+                placeholder="Transcript"
+                placeholderTextColor={COLORS.textTertiary}
+                testID="cc-voice-transcript"
+              />
+            </View>
+          </View>
 
           <View style={styles.interpretingActions}>
             <Pressable
@@ -2166,40 +2245,71 @@ export default function DashboardScreen() {
         ) : (
           <>
             <View style={styles.heroSection}>
-              <CalorieRing consumed={todayCaloriesConsumed} goal={todayCaloriesGoal} />
+              {isDashboardInitialLoading ? (
+                <View style={styles.heroLoadingWrap}>
+                  <View style={styles.heroLoadingRing}>
+                    <LoadingBlock width={132} height={46} radius={16} />
+                    <LoadingBlock width={86} height={18} radius={9} style={styles.heroLoadingLabel} />
+                  </View>
+                </View>
+              ) : (
+                <CalorieRing consumed={todayCaloriesConsumed} goal={todayCaloriesGoal} />
+              )}
             </View>
 
             <View style={styles.metricsRow}>
               <View style={styles.metricCard}>
                 <View style={styles.metricTopRow}>
                   <Text style={styles.metricLabel}>STEPS</Text>
-                  <MiniStepsRing current={todaySteps} goal={todayStepsGoal} />
+                  {isDashboardInitialLoading ? (
+                    <LoadingBlock width={40} height={40} radius={20} />
+                  ) : (
+                    <MiniStepsRing current={todaySteps} goal={todayStepsGoal} />
+                  )}
                 </View>
-                <Text style={styles.metricMainValue}>{todaySteps.toLocaleString()}</Text>
-                <View style={styles.metricSubRow}>
-                  <Text style={styles.metricSubValue}>of {todayStepsGoal.toLocaleString()}</Text>
-                </View>
+                {isDashboardInitialLoading ? (
+                  <>
+                    <LoadingBlock width={96} height={42} radius={12} />
+                    <LoadingBlock width={88} height={18} radius={9} style={styles.metricLoadingSub} />
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.metricMainValue}>{todaySteps.toLocaleString()}</Text>
+                    <View style={styles.metricSubRow}>
+                      <Text style={styles.metricSubValue}>of {todayStepsGoal.toLocaleString()}</Text>
+                    </View>
+                  </>
+                )}
               </View>
 
               <View style={styles.metricCard}>
                 <View style={styles.metricTopRow}>
                   <Text style={styles.metricLabel}>WEIGHT</Text>
-                  <WeightSparkline />
+                  {isDashboardInitialLoading ? <LoadingBlock width={44} height={40} radius={10} /> : <WeightSparkline />}
                 </View>
-                <View style={styles.metricValueRow}>
-                  <Text style={styles.metricMainValue}>
-                    {recentWeight == null ? "--" : recentWeight.toFixed(1)}
-                  </Text>
-                  <Text style={styles.metricUnit}>kg</Text>
-                </View>
-                <View style={styles.metricSubRow}>
-                  <Text style={styles.metricSubValue}>goal: {DEFAULT_WEIGHT_GOAL} kg</Text>
-                  {weightDelta != null ? (
-                    <Text style={[styles.weightDelta, weightDelta <= 0 ? styles.weightDeltaGood : styles.weightDeltaBad]}>
-                      {weightDelta <= 0 ? "↓" : "↑"} {Math.abs(weightDelta).toFixed(1)}
-                    </Text>
-                  ) : null}
-                </View>
+                {isDashboardInitialLoading ? (
+                  <>
+                    <LoadingBlock width={92} height={42} radius={12} />
+                    <LoadingBlock width={116} height={18} radius={9} style={styles.metricLoadingSub} />
+                  </>
+                ) : (
+                  <>
+                    <View style={styles.metricValueRow}>
+                      <Text style={styles.metricMainValue}>
+                        {recentWeight == null ? "--" : recentWeight.toFixed(1)}
+                      </Text>
+                      <Text style={styles.metricUnit}>kg</Text>
+                    </View>
+                    <View style={styles.metricSubRow}>
+                      <Text style={styles.metricSubValue}>goal: {DEFAULT_WEIGHT_GOAL} kg</Text>
+                      {weightDelta != null ? (
+                        <Text style={[styles.weightDelta, weightDelta <= 0 ? styles.weightDeltaGood : styles.weightDeltaBad]}>
+                          {weightDelta <= 0 ? "↓" : "↑"} {Math.abs(weightDelta).toFixed(1)}
+                        </Text>
+                      ) : null}
+                    </View>
+                  </>
+                )}
               </View>
             </View>
 
@@ -2238,14 +2348,29 @@ export default function DashboardScreen() {
             >
               <View style={styles.trendSummaryRow}>
                 <View>
-                  <Text style={styles.trendSummaryMain}>{renderTrendPrimary()}</Text>
-                  <Text style={styles.trendSummarySub}>Last 7 days avg</Text>
+                  {isDashboardInitialLoading ? (
+                    <>
+                      <LoadingBlock width={140} height={30} radius={10} />
+                      <LoadingBlock width={92} height={16} radius={8} style={styles.trendLoadingSub} />
+                    </>
+                  ) : (
+                    <>
+                      <Text style={styles.trendSummaryMain}>{renderTrendPrimary()}</Text>
+                      <Text style={styles.trendSummarySub}>Last 7 days avg</Text>
+                    </>
+                  )}
                 </View>
-                <Text style={[styles.trendChangeText, { color: trendChangeColor }]}>{renderTrendChange()}</Text>
+                {isDashboardInitialLoading ? (
+                  <LoadingBlock width={110} height={18} radius={9} />
+                ) : (
+                  <Text style={[styles.trendChangeText, { color: trendChangeColor }]}>{renderTrendChange()}</Text>
+                )}
               </View>
 
-              {dashboardQuery.isLoading && !dashboard ? (
-                <ActivityIndicator color={COLORS.black} />
+              {isDashboardInitialLoading ? (
+                <View style={styles.trendLoadingWrap}>
+                  <LoadingBlock width={"100%"} height={120} radius={18} />
+                </View>
               ) : (
                 <>
                   <Svg width="100%" height={160} viewBox={`0 0 ${trendChart.width} 160`}>
@@ -2313,8 +2438,12 @@ export default function DashboardScreen() {
             </View>
 
             <View style={styles.mealsWrap}>
-              {dashboardQuery.isLoading && !dashboard ? (
-                <ActivityIndicator color={COLORS.black} />
+              {isDashboardInitialLoading ? (
+                <View style={styles.mealsLoadingWrap}>
+                  <LoadingBlock width={"100%"} height={68} radius={16} />
+                  <LoadingBlock width={"100%"} height={68} radius={16} />
+                  <LoadingBlock width={"100%"} height={68} radius={16} />
+                </View>
               ) : recentMeals.length > 0 ? (
                 recentMeals.map((meal) => (
                   <View key={meal.id} style={styles.mealRow}>
@@ -2370,7 +2499,16 @@ export default function DashboardScreen() {
               if (canCloseViaBackdrop) closeCommandCenter();
             }}
           />
-          <View style={[styles.sheetWrap, { paddingBottom: insets.bottom }]} testID={`cc-sheet-${commandState}`}>
+          <View
+            style={[
+              styles.sheetWrap,
+              {
+                paddingBottom: insets.bottom + sheetBottomOverlap,
+                marginBottom: -sheetBottomOverlap,
+              },
+            ]}
+            testID={`cc-sheet-${commandState}`}
+          >
             <View style={styles.sheetHandle} />
             {renderCommandContent()}
           </View>
@@ -2476,6 +2614,23 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     paddingBottom: 24,
   },
+  heroLoadingWrap: {
+    width: 180,
+    height: 180,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  heroLoadingRing: {
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: COLORS.surface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  heroLoadingLabel: {
+    marginTop: 10,
+  },
   heroRingWrap: {
     width: 180,
     height: 180,
@@ -2509,6 +2664,9 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
     gap: 8,
+  },
+  metricLoadingSub: {
+    marginTop: 2,
   },
   metricTopRow: {
     flexDirection: "row",
@@ -2633,6 +2791,12 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
     marginBottom: 24,
   },
+  trendLoadingSub: {
+    marginTop: 6,
+  },
+  trendLoadingWrap: {
+    paddingTop: 4,
+  },
   trendSummaryRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -2681,6 +2845,10 @@ const styles = StyleSheet.create({
   mealsWrap: {
     marginBottom: 12,
   },
+  mealsLoadingWrap: {
+    gap: 12,
+    marginBottom: 8,
+  },
   mealRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -2720,6 +2888,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: COLORS.textSecondary,
     marginBottom: 8,
+  },
+  loadingBlock: {
+    backgroundColor: "#ECECEF",
   },
   blockingErrorCard: {
     marginTop: 24,
@@ -3482,6 +3653,69 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     color: COLORS.textSecondary,
   },
+  transcribingCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    marginBottom: 8,
+  },
+  transcribingStatusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    marginBottom: 14,
+  },
+  transcribingPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderRadius: 999,
+    backgroundColor: COLORS.bg,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  transcribingPillText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: COLORS.textSecondary,
+  },
+  transcribingDuration: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: COLORS.textTertiary,
+  },
+  transcribingTitle: {
+    fontSize: 22,
+    fontWeight: "700",
+    letterSpacing: -0.4,
+    color: COLORS.textPrimary,
+  },
+  transcribingBody: {
+    marginTop: 6,
+    fontSize: 15,
+    lineHeight: 22,
+    color: COLORS.textSecondary,
+  },
+  transcribingWaveWrap: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingTop: 18,
+    paddingBottom: 2,
+  },
+  interpretingTranscriptCard: {
+    marginTop: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.bg,
+    overflow: "hidden",
+  },
   interpretingHeader: {
     flexDirection: "row",
     alignItems: "center",
@@ -3505,23 +3739,20 @@ const styles = StyleSheet.create({
   },
   voiceTranscriptInput: {
     minHeight: 96,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.bg,
     paddingHorizontal: 16,
     paddingVertical: 14,
     color: COLORS.textPrimary,
     fontSize: 16,
     lineHeight: 25,
     textAlignVertical: "top",
-    marginBottom: 14,
   },
   interpretingActions: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 10,
+    marginTop: 16,
   },
   primaryActionButton: {
     borderRadius: 13,

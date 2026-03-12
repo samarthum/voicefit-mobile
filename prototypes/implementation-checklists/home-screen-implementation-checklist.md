@@ -68,7 +68,8 @@
 
 - [x] Wire mic entry from collapsed and expanded states to `cc_recording`.
 - [x] On first voice use, request mic permission; denied path goes to `cc_error` subtype `mic_permission_denied`.
-- [x] `stop_recording` transitions to `cc_interpreting_voice` with transcript shown.
+- [x] `stop_recording` transitions to `cc_transcribing_voice`.
+- [x] Successful transcription transitions from `cc_transcribing_voice` to `cc_interpreting_voice` with transcript shown.
 - [x] While interpreting, support `Edit text` that restarts interpretation.
 - [x] While interpreting, support `Retry voice` to return to fresh recording.
 - [x] While interpreting, support `Discard` to close command center.
@@ -132,6 +133,7 @@
 - [x] Confirm no screen includes emoji meal thumbnails.
 - [x] Confirm meal/workout typed and voice paths enter review states before save.
 - [x] Confirm Home refresh always follows successful command-center save.
+- [x] Confirm first app open does not flash fallback dashboard metrics before real data loads.
 
 ## 11) Definition of done
 
@@ -206,3 +208,11 @@
   - `Workouts` tab opens `/workouts`
   - `Settings` tab opens `/settings`
   - Add button, collapsed command bar, mic entry, trend-tab switching, and day switching all work
+
+## 15) Home runtime polish refresh (2026-03-11)
+
+- Fixed first-load hydration behavior in `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/app/(tabs)/dashboard.tsx` so Home holds on loading placeholders until real dashboard data exists.
+- Filled missing dashboard skeleton style tokens so the loading state renders correctly instead of relying on undefined style keys.
+- Re-verified with:
+  - `npx tsc --noEmit`
+  - Expo web runtime on `http://localhost:8081`
