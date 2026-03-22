@@ -157,6 +157,9 @@ const WEB_PREVIEW_FLAGS_KEY = "__vf_home_preview_flags";
 const WAVE_BAR_COUNT = 20;
 const WAVE_MIN = 8;
 const WAVE_MAX = 56;
+// Keep local macro estimation code available for the upcoming nutrition pass,
+// but hide it in UI until macros are backed by the real interpretation pipeline.
+const SHOW_ESTIMATED_REVIEW_MACROS = false;
 
 function toLocalDateString(value: Date) {
   const year = value.getFullYear();
@@ -1962,20 +1965,22 @@ export default function DashboardScreen() {
               <Text style={styles.mealCaloriesLabel}>calories</Text>
             </View>
 
-            <View style={styles.mealMacrosRow}>
-              <View style={styles.mealMacroCell}>
-                <Text style={styles.mealMacroValue}>{reviewDraft.macros.protein}g</Text>
-                <Text style={styles.mealMacroLabel}>PROTEIN</Text>
+            {SHOW_ESTIMATED_REVIEW_MACROS ? (
+              <View style={styles.mealMacrosRow}>
+                <View style={styles.mealMacroCell}>
+                  <Text style={styles.mealMacroValue}>{reviewDraft.macros.protein}g</Text>
+                  <Text style={styles.mealMacroLabel}>PROTEIN</Text>
+                </View>
+                <View style={styles.mealMacroCell}>
+                  <Text style={styles.mealMacroValue}>{reviewDraft.macros.carbs}g</Text>
+                  <Text style={styles.mealMacroLabel}>CARBS</Text>
+                </View>
+                <View style={styles.mealMacroCell}>
+                  <Text style={styles.mealMacroValue}>{reviewDraft.macros.fat}g</Text>
+                  <Text style={styles.mealMacroLabel}>FAT</Text>
+                </View>
               </View>
-              <View style={styles.mealMacroCell}>
-                <Text style={styles.mealMacroValue}>{reviewDraft.macros.carbs}g</Text>
-                <Text style={styles.mealMacroLabel}>CARBS</Text>
-              </View>
-              <View style={styles.mealMacroCell}>
-                <Text style={styles.mealMacroValue}>{reviewDraft.macros.fat}g</Text>
-                <Text style={styles.mealMacroLabel}>FAT</Text>
-              </View>
-            </View>
+            ) : null}
 
             <View style={styles.mealIngredientsSection}>
               <View style={styles.mealIngredientsHeader}>

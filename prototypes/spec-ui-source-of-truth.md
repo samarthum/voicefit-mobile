@@ -70,6 +70,12 @@
 - Runtime implementation lives in `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/app/(tabs)/dashboard.tsx`.
 - `Interpreting...` now uses the same polished card-based bottom-sheet language as `Transcribing...`, while keeping transcript editing and retry/discard controls intact.
 
+## Meal nutrition note (2026-03-22)
+- Meal review macros are intentionally hidden in the mobile UI for now.
+- Reason: the current backend meal interpretation contract returns `mealType`, `description`, `calories`, `confidence`, and `assumptions`, but not authoritative macro fields.
+- The previous macro values shown in review were local client-side estimates only.
+- Estimation code is intentionally retained in `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/app/(tabs)/dashboard.tsx` for the upcoming nutrition pass, but the UI stays off until backend-backed macro fields and persistence are added.
+
 ## Handoff quick start (for next agent)
 1. Review source docs in this order:
    - `/Users/samarth/Desktop/Work/voicefit-all/voicefit-mobile/prototypes/handoffs/home-handoff-2026-02-14.md`
