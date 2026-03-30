@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -176,6 +176,12 @@ export default function WorkoutsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const createToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [createFeedback, setCreateFeedback] = useState<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (createToastTimerRef.current) clearTimeout(createToastTimerRef.current);
+    };
+  }, []);
 
   const sessionsQuery = useQuery({
     queryKey: ["workout-sessions", "prototype-list"],

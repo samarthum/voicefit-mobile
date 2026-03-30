@@ -688,7 +688,9 @@ export default function WorkoutSessionScreen() {
     <SafeAreaView style={styles.root} edges={["top"]}>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
-          <Pressable style={styles.iconButton} onPress={() => router.replace("/(tabs)/workouts")}>
+          <Pressable style={styles.iconButton} onPress={() => {
+            if (router.canGoBack()) { router.back(); } else { router.replace("/(tabs)/workouts"); }
+          }}>
             <BackGlyph />
           </Pressable>
           <View style={styles.headerCenter}>
@@ -780,8 +782,17 @@ export default function WorkoutSessionScreen() {
                 <View style={styles.tableHeader}>
                   <Text style={[styles.tableHeaderLabel, styles.colSet]}>Set</Text>
                   <Text style={[styles.tableHeaderLabel, styles.colPrevious]}>Previous</Text>
-                  <Text style={[styles.tableHeaderLabel, styles.colValue]}>KG</Text>
-                  <Text style={[styles.tableHeaderLabel, styles.colValue]}>Reps</Text>
+                  {card.exerciseType === "cardio" ? (
+                    <>
+                      <Text style={[styles.tableHeaderLabel, styles.colValue]}>Min</Text>
+                      <Text style={[styles.tableHeaderLabel, styles.colValue]}>—</Text>
+                    </>
+                  ) : (
+                    <>
+                      <Text style={[styles.tableHeaderLabel, styles.colValue]}>KG</Text>
+                      <Text style={[styles.tableHeaderLabel, styles.colValue]}>Reps</Text>
+                    </>
+                  )}
                   <View style={styles.colCheck} />
                 </View>
 

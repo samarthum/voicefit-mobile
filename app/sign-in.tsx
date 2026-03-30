@@ -122,7 +122,11 @@ export default function SignInScreen() {
       </View>
 
       <View style={styles.authArea}>
-        <Pressable style={styles.appleButton} onPress={() => void handleAppleSignIn()}>
+        <Pressable
+          style={[styles.appleButton, (isAppleSubmitting || isGoogleSubmitting) ? { opacity: 0.6 } : null]}
+          onPress={() => void handleAppleSignIn()}
+          disabled={isAppleSubmitting || isGoogleSubmitting}
+        >
           {isAppleSubmitting ? (
             <ActivityIndicator color="#FFFFFF" />
           ) : (
@@ -133,7 +137,11 @@ export default function SignInScreen() {
           )}
         </Pressable>
 
-        <Pressable style={styles.googleButton} onPress={() => void handleGoogleSignIn()}>
+        <Pressable
+          style={[styles.googleButton, (isAppleSubmitting || isGoogleSubmitting) ? { opacity: 0.6 } : null]}
+          onPress={() => void handleGoogleSignIn()}
+          disabled={isAppleSubmitting || isGoogleSubmitting}
+        >
           {isGoogleSubmitting ? (
             <ActivityIndicator color={COLORS.textPrimary} />
           ) : (

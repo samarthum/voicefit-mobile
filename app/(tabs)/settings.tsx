@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Platform,
   Pressable,
   ScrollView,
@@ -136,10 +137,7 @@ function SettingsRow({
         <View style={[styles.settingIcon, { backgroundColor: iconBackground }]}>{icon}</View>
         <Text style={styles.settingLabel}>{label}</Text>
       </View>
-      <View style={styles.settingRight}>
-        <Text style={styles.settingValue}>{value}</Text>
-        <RowChevron />
-      </View>
+      <Text style={styles.settingValue}>{value}</Text>
     </View>
   );
 }
@@ -346,7 +344,12 @@ export default function SettingsScreen() {
           />
         </View>
 
-        <Pressable style={styles.dangerButton} onPress={() => void signOut()}>
+        <Pressable style={styles.dangerButton} onPress={() => {
+          Alert.alert("Sign Out", "Are you sure you want to sign out?", [
+            { text: "Cancel", style: "cancel" },
+            { text: "Sign Out", style: "destructive", onPress: () => void signOut() },
+          ]);
+        }}>
           <Text style={styles.dangerButtonText}>Sign Out</Text>
         </Pressable>
 

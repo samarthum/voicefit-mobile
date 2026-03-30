@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Keyboard,
   Platform,
   Pressable,
   ScrollView,
@@ -146,6 +147,8 @@ export default function MealsScreen() {
   }, [isWebPreview, meals, selectedMealId]);
 
   useEffect(() => {
+    setEditError(null);
+    setEditSuccess(null);
     if (!selectedMealId || !meals.length) return;
     const selected = meals.find((meal) => meal.id === selectedMealId);
     if (!selected) return;
@@ -169,12 +172,15 @@ export default function MealsScreen() {
         }),
       });
     },
-    onSuccess: async (updatedMeal) => {
+    onSuccess: async () => {
+      Keyboard.dismiss();
       setEditError(null);
       setEditSuccess("Meal updated.");
-      await queryClient.invalidateQueries({ queryKey: ["meals"] });
-      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-      setSelectedMealId(updatedMeal.id);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["meals"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+      ]);
+      setSelectedMealId(null);
     },
     onError: (error) => {
       setEditSuccess(null);

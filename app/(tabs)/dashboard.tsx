@@ -216,9 +216,9 @@ function formatClockTime(value: Date) {
 }
 
 function confidenceLabel(confidence: number) {
-  if (confidence >= 0.9) return "High confidence";
-  if (confidence >= 0.75) return "Medium confidence";
-  return "Low confidence";
+  if (confidence >= 0.9) return { text: "High confidence", color: COLORS.steps, bg: "rgba(52,199,89,0.12)" };
+  if (confidence >= 0.75) return { text: "Medium confidence", color: "#FF9500", bg: "rgba(255,149,0,0.12)" };
+  return { text: "Low confidence", color: COLORS.error, bg: "rgba(255,59,48,0.12)" };
 }
 
 function parsePositiveNumber(value: string) {
@@ -299,7 +299,7 @@ type MealVisualKind = "salad" | "oats" | "salmon" | "generic";
 function getMealVisualKind(description: string): MealVisualKind {
   const text = description.toLowerCase();
   if (text.includes("oat")) return "oats";
-  if (text.includes("salmon") || text.includes("rice")) return "salmon";
+  if (text.includes("salmon")) return "salmon";
   if (text.includes("salad") || text.includes("chicken")) return "salad";
   return "generic";
 }
@@ -372,7 +372,7 @@ function buildWorkoutReviewDraft(
     source,
     confidence: interpreted.payload.confidence,
     exerciseTypeLabel: interpreted.payload.exerciseType === "resistance" ? "BARBELL" : "CARDIO",
-    sessionLabel: interpreted.payload.exerciseType === "resistance" ? "Morning Push" : "Cardio Session",
+    sessionLabel: "New Session",
     sets,
   };
 }
@@ -771,7 +771,7 @@ function LoadingBlock({
   return <View style={[styles.loadingBlock, { width, height, borderRadius: radius }, style]} />;
 }
 
-function buildLinePaths(values: number[], width: number, height: number, metric: TrendMetric) {
+function buildLinePaths(values: number[], width: number, height: number, metric: TrendMetric, calorieGoal = 2000) {
   const innerLeft = 10;
   const innerRight = width - 10;
   const innerTop = 12;
@@ -799,7 +799,7 @@ function buildLinePaths(values: number[], width: number, height: number, metric:
     ? `${line} L ${points[points.length - 1]?.x.toFixed(2)} ${innerBottom.toFixed(2)} L ${points[0]?.x.toFixed(2)} ${innerBottom.toFixed(2)} Z`
     : "";
 
-  const goalValue = metric === "calories" ? 2000 : null;
+  const goalValue = metric === "calories" ? calorieGoal : null;
   const goalY =
     goalValue == null
       ? null
@@ -923,7 +923,7 @@ export default function DashboardScreen() {
   const commandIntent = Array.isArray(params.cc) ? params.cc[0] : params.cc;
 
   const today = toLocalDateString(new Date());
-  const dayOptions = useMemo(() => getLastSevenDaysEndingToday(), []);
+  const dayOptions = useMemo(() => getLastSevenDaysEndingToday(), [today]);
 
   const [selectedDate, setSelectedDate] = useState(today);
   const [trendTab, setTrendTab] = useState<TrendMetric>("calories");
@@ -1052,9 +1052,15 @@ export default function DashboardScreen() {
     });
   }, [metricCurrentValues]);
 
+  const todayCaloriesConsumed = dashboard?.today.calories.consumed ?? 0;
+  const todayCaloriesGoal = dashboard?.today.calories.goal ?? 2000;
+
+  const todaySteps = dashboard?.today.steps.count ?? 0;
+  const todayStepsGoal = dashboard?.today.steps.goal ?? 10000;
+
   const trendChart = useMemo(
-    () => buildLinePaths(normalizedTrendValues, chartWidth - 8, 160, trendTab),
-    [normalizedTrendValues, chartWidth, trendTab]
+    () => buildLinePaths(normalizedTrendValues, chartWidth - 8, 160, trendTab, todayCaloriesGoal),
+    [normalizedTrendValues, chartWidth, trendTab, todayCaloriesGoal]
   );
 
   const metricAverage = useMemo(() => {
@@ -1086,12 +1092,6 @@ export default function DashboardScreen() {
     return improving ? COLORS.steps : COLORS.error;
   }, [trendChange, trendTab]);
 
-  const todayCaloriesConsumed = dashboard?.today.calories.consumed ?? 0;
-  const todayCaloriesGoal = dashboard?.today.calories.goal ?? 2000;
-
-  const todaySteps = dashboard?.today.steps.count ?? 0;
-  const todayStepsGoal = dashboard?.today.steps.goal ?? 10000;
-
   const recentWeight = dashboard?.today.weight;
   const prevWeight = useMemo(() => {
     if (!weeklyCurrent.length) return null;
@@ -1117,6 +1117,7 @@ export default function DashboardScreen() {
       recording.stopAndUnloadAsync().catch(() => undefined);
       setRecording(null);
     }
+    Keyboard.dismiss();
     setCommandState("cc_collapsed");
     setCommandErrorSubtype(null);
     setCommandErrorDetail(null);
@@ -1252,6 +1253,10 @@ export default function DashboardScreen() {
             metadata: { answer: interpreted.payload.answer },
           }),
         });
+        await refreshAfterSave();
+        setCommandToast(interpreted.payload.answer);
+        closeCommandCenter();
+        return;
       }
 
       await refreshAfterSave();
@@ -1938,7 +1943,8 @@ export default function DashboardScreen() {
             <Pressable
               style={styles.secondaryActionButton}
               onPress={() => {
-                void interpretVoiceTranscript(voiceTranscript);
+                setCommandText(voiceTranscript);
+                setCommandState("cc_expanded_typing");
               }}
               testID="cc-interpreting-edit"
             >
@@ -1963,6 +1969,7 @@ export default function DashboardScreen() {
           style={styles.reviewScroll}
           contentContainerStyle={styles.reviewContent}
           showsVerticalScrollIndicator={false}
+          keyboardDismissMode="on-drag"
         >
           <View style={styles.reviewHeader}>
             <Text style={styles.sheetTitle}>Review Meal</Text>
@@ -1983,9 +1990,9 @@ export default function DashboardScreen() {
             </Pressable>
           </View>
 
-          <View style={styles.reviewConfidencePill}>
-            <View style={styles.reviewConfidenceDot} />
-            <Text style={styles.reviewConfidenceText}>{confidence}</Text>
+          <View style={[styles.reviewConfidencePill, { backgroundColor: confidence.bg }]}>
+            <View style={[styles.reviewConfidenceDot, { backgroundColor: confidence.color }]} />
+            <Text style={[styles.reviewConfidenceText, { color: confidence.color }]}>{confidence.text}</Text>
           </View>
 
           <View style={styles.mealReviewCard}>
@@ -2021,7 +2028,6 @@ export default function DashboardScreen() {
             <View style={styles.mealIngredientsSection}>
               <View style={styles.mealIngredientsHeader}>
                 <Text style={styles.mealIngredientsTitle}>INGREDIENTS</Text>
-                <Text style={styles.mealIngredientsAction}>+ Add Item</Text>
               </View>
               {reviewDraft.ingredients.map((ingredient) => (
                 <View key={ingredient.id} style={styles.mealIngredientRow}>
@@ -2040,10 +2046,7 @@ export default function DashboardScreen() {
 
               <View style={styles.mealTimeRow}>
                 <Text style={styles.mealTimeLabel}>Eaten at</Text>
-                <View style={styles.mealTimeValueWrap}>
-                  <Text style={styles.mealTimeValue}>{reviewDraft.eatenAtLabel}</Text>
-                  <Text style={styles.mealIngredientChevron}>›</Text>
-                </View>
+                <Text style={styles.mealTimeValue}>{reviewDraft.eatenAtLabel}</Text>
               </View>
             </View>
           </View>
@@ -2071,6 +2074,7 @@ export default function DashboardScreen() {
           style={styles.reviewScroll}
           contentContainerStyle={styles.reviewContent}
           showsVerticalScrollIndicator={false}
+          keyboardDismissMode="on-drag"
         >
           <View style={styles.reviewHeader}>
             <Text style={styles.sheetTitle}>Review Workout</Text>
@@ -2091,9 +2095,9 @@ export default function DashboardScreen() {
             </Pressable>
           </View>
 
-          <View style={styles.reviewConfidencePill}>
-            <View style={styles.reviewConfidenceDot} />
-            <Text style={styles.reviewConfidenceText}>{confidence}</Text>
+          <View style={[styles.reviewConfidencePill, { backgroundColor: confidence.bg }]}>
+            <View style={[styles.reviewConfidenceDot, { backgroundColor: confidence.color }]} />
+            <Text style={[styles.reviewConfidenceText, { color: confidence.color }]}>{confidence.text}</Text>
           </View>
 
           <View style={styles.workoutReviewCard}>
@@ -2160,10 +2164,7 @@ export default function DashboardScreen() {
 
           <View style={styles.workoutSessionRow}>
             <Text style={styles.workoutSessionLabel}>Add to session</Text>
-            <View style={styles.workoutSessionValueWrap}>
-              <Text style={styles.workoutSessionValue}>{reviewDraft.sessionLabel}</Text>
-              <Text style={styles.mealIngredientChevron}>›</Text>
-            </View>
+            <Text style={styles.workoutSessionValue}>{reviewDraft.sessionLabel}</Text>
           </View>
 
           <View style={styles.reviewActions}>

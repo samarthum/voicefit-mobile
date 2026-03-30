@@ -13,7 +13,7 @@ import {
 import { useAuth } from "@clerk/clerk-expo";
 import { useRouter } from "expo-router";
 import Svg, { Path } from "react-native-svg";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import type { AssistantChatResponse } from "@voicefit/contracts/types";
 import { apiRequest } from "../../lib/api-client";
 
@@ -157,6 +157,7 @@ function SendGlyph({ color }: { color: string }) {
 export default function CoachScreen() {
   const router = useRouter();
   const { getToken } = useAuth();
+  const insets = useSafeAreaInsets();
   const isWebPreview = __DEV__ && Platform.OS === "web";
   const scrollRef = useRef<ScrollView>(null);
   const [messages, setMessagesRaw] = useState<CoachMessage[]>(() =>
@@ -366,7 +367,7 @@ export default function CoachScreen() {
           })}
         </ScrollView>
 
-        <View style={styles.composer}>
+        <View style={[styles.composer, { paddingBottom: Math.max(insets.bottom, 8) }]}>
           <View style={styles.composerRow}>
             <TextInput
               style={styles.input}
