@@ -171,8 +171,7 @@ export default function SignInScreen() {
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         <Text style={styles.terms}>
-          By continuing, you agree to our{"\n"}
-          <Text style={styles.termsLink}>Terms of Service</Text> and <Text style={styles.termsLink}>Privacy Policy</Text>
+          By continuing, you agree to our Terms of Service and Privacy Policy.
         </Text>
       </View>
     </SafeAreaView>

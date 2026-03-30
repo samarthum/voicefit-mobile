@@ -285,9 +285,6 @@ function appendPreviewExercise(
   base.empty = false;
   base.finished = false;
   base.sets = String(base.exerciseCards.reduce((sum, card) => sum + card.rows.length, 0));
-  if (base.volume === "0 kg") {
-    base.volume = "0 kg";
-  }
   return base;
 }
 

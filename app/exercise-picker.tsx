@@ -139,7 +139,7 @@ export default function ExercisePickerScreen() {
         params: {
           id: sessionId,
           addExerciseName: item.name,
-          addExerciseType: item.group === "Compound" ? "resistance" : "resistance",
+          addExerciseType: "resistance",
           addExerciseNonce: String(Date.now()),
         },
       });

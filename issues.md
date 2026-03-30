@@ -65,15 +65,15 @@ Audit date: 2026-03-30
 
 ## Low
 
-- [ ] **L1** `dashboard.tsx:405` — `buildWorkoutSystemText` defined but never called.
-- [ ] **L2** `dashboard.tsx` — `inferMealDescription`, `inferMealType`, `inferCalories` only used in web preview mock.
-- [ ] **L3** `dashboard.tsx:342` — `parseWorkoutSetsFromTranscript` regex misses common spoken patterns.
-- [ ] **L4** `workout-session/[id].tsx:288` — No-op assignment: `if (volume === "0 kg") { volume = "0 kg"; }`.
-- [ ] **L5** `exercise-picker.tsx:134` — Exercise type always "resistance" in both ternary branches.
-- [ ] **L6** `package.json` — `react-hook-form` declared, never imported.
-- [ ] **L7** `package.json` — `playwright` in devDependencies of mobile app.
-- [ ] **L8** `package.json` — `expo-linking` declared but `Linking` imported from `react-native`.
-- [ ] **L9** `sign-in.tsx` — Terms of Service / Privacy Policy links non-functional.
-- [ ] **L10** `sign-up-email.tsx:103` — No email verification flow implemented.
-- [ ] **L11** All API callers — Token management pattern repeated ~30 times.
-- [ ] **L12** `dashboard.tsx` — 3832-line file should be split into multiple modules.
+- [x] **L1** `dashboard.tsx:405` — `buildWorkoutSystemText` defined but never called.
+- [x] **L2** `dashboard.tsx` — `inferMealDescription`, `inferMealType`, `inferCalories` only used in web preview mock. (Not dead — used in dev preview path)
+- [x] **L3** `dashboard.tsx:342` — `parseWorkoutSetsFromTranscript` regex misses common spoken patterns.
+- [x] **L4** `workout-session/[id].tsx:288` — No-op assignment: `if (volume === "0 kg") { volume = "0 kg"; }`.
+- [x] **L5** `exercise-picker.tsx:134` — Exercise type always "resistance" in both ternary branches.
+- [x] **L6** `package.json` — `react-hook-form` declared, never imported.
+- [x] **L7** `package.json` — `playwright` in devDependencies of mobile app.
+- [ ] **L8** `package.json` — `expo-linking` declared but `Linking` imported from `react-native`. (Kept — transitive dependency of expo-auth-session)
+- [x] **L9** `sign-in.tsx` — Terms of Service / Privacy Policy links non-functional.
+- [ ] **L10** `sign-up-email.tsx:103` — No email verification flow implemented. (Deferred — needs backend changes)
+- [ ] **L11** All API callers — Token management pattern repeated ~30 times. (Deferred — refactoring task)
+- [ ] **L12** `dashboard.tsx` — 3832-line file should be split into multiple modules. (Deferred — refactoring task)

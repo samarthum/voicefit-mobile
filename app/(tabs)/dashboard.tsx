@@ -339,12 +339,31 @@ function buildMealReviewDraft(
 }
 
 function parseWorkoutSetsFromTranscript(transcript: string) {
-  const matches = [...transcript.matchAll(/(\d+(?:\.\d+)?)\s*(?:kg|kgs?|kilograms?)\s*(?:for|x)\s*(\d+)/gi)];
-  return matches.slice(0, 8).map((match, index) => ({
+  // Match patterns like "80kg for 10", "80 kg x 10", "80 kilograms for 10"
+  const kgFirst = [...transcript.matchAll(/(\d+(?:\.\d+)?)\s*(?:kg|kgs?|kilograms?)\s*(?:for|x|×)\s*(\d+)/gi)];
+  // Match patterns like "10 reps at 80kg", "10 at 80 kg"
+  const repsFirst = [...transcript.matchAll(/(\d+)\s*(?:reps?)?\s*(?:at|@)\s*(\d+(?:\.\d+)?)\s*(?:kg|kgs?|kilograms?)?/gi)];
+  // Match "3 sets of 10 at 80" or "3x10 at 80"
+  const setsOf = [...transcript.matchAll(/(\d+)\s*(?:sets?\s*(?:of|x|×))\s*(\d+)\s*(?:(?:at|@)\s*(\d+(?:\.\d+)?))?/gi)];
+
+  const results: Array<{ weightKg: string; reps: string }> = [];
+
+  for (const m of kgFirst) results.push({ weightKg: m[1], reps: m[2] });
+  for (const m of repsFirst) results.push({ weightKg: m[2], reps: m[1] });
+  for (const m of setsOf) {
+    const setCount = Number(m[1]);
+    const reps = m[2];
+    const weight = m[3] ?? "";
+    for (let i = 0; i < Math.min(setCount, 8); i++) results.push({ weightKg: weight, reps });
+  }
+
+  if (!results.length) return [];
+
+  return results.slice(0, 8).map((r, index) => ({
     id: `set-${index + 1}`,
     setNumber: index + 1,
-    weightKg: match[1],
-    reps: match[2],
+    weightKg: r.weightKg,
+    reps: r.reps,
     notes: "",
   }));
 }
@@ -402,22 +421,6 @@ function progressPercent(current: number, goal: number) {
   return Math.max(0, Math.min(1, current / goal));
 }
 
-function buildWorkoutSystemText(payload: {
-  exerciseName: string;
-  exerciseType: "resistance" | "cardio";
-  reps: number | null;
-  weightKg: number | null;
-  durationMinutes: number | null;
-}) {
-  const details: string[] = [];
-  if (payload.exerciseType === "cardio") {
-    if (payload.durationMinutes != null) details.push(`${payload.durationMinutes} min`);
-  } else {
-    if (payload.reps != null) details.push(`${payload.reps} reps`);
-    if (payload.weightKg != null) details.push(`${payload.weightKg} kg`);
-  }
-  return `Logged ${payload.exerciseName}${details.length ? ` · ${details.join(" · ")}` : ""}`;
-}
 
 async function ensureQuickSession(token: string) {
   const date = toLocalDateString(new Date());
