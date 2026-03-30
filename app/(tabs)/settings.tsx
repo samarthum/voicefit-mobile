@@ -46,10 +46,9 @@ function getErrorMessage(error: unknown) {
   return "Something went wrong. Please try again.";
 }
 
+// Display raw digits in the TextInput to avoid cursor-jumping from locale formatting.
 function formatGoal(value: string) {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return value;
-  return parsed.toLocaleString("en-US");
+  return value;
 }
 
 function initialsFor(name: string, email: string) {
@@ -157,6 +156,7 @@ export default function SettingsScreen() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
   const saveSuccessTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasEditedRef = useRef(false);
 
   const { data, isLoading, error } = useQuery<UserSettingsResponse>({
     queryKey: ["user-settings"],
@@ -171,6 +171,7 @@ export default function SettingsScreen() {
   const effectiveData = data ?? PREVIEW_SETTINGS;
 
   useEffect(() => {
+    if (hasEditedRef.current) return;
     setCalorieGoal(String(effectiveData.calorieGoal));
     setStepGoal(String(effectiveData.stepGoal));
   }, [effectiveData.calorieGoal, effectiveData.stepGoal]);
@@ -233,6 +234,7 @@ export default function SettingsScreen() {
 
       queryClient.setQueryData(["user-settings"], updated);
       await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      hasEditedRef.current = false;
       setSaveSuccess("Goals updated.");
     } catch (saveErr) {
       setSaveError(getErrorMessage(saveErr));
@@ -273,7 +275,10 @@ export default function SettingsScreen() {
                 <TextInput
                   style={styles.goalInput}
                   value={formatGoal(calorieGoal)}
-                  onChangeText={(value) => setCalorieGoal(value.replace(/[^\d]/g, ""))}
+                  onChangeText={(value) => {
+                    hasEditedRef.current = true;
+                    setCalorieGoal(value.replace(/[^\d]/g, ""));
+                  }}
                   keyboardType="number-pad"
                   editable={!isSaving}
                 />
@@ -284,7 +289,10 @@ export default function SettingsScreen() {
                 <TextInput
                   style={styles.goalInput}
                   value={formatGoal(stepGoal)}
-                  onChangeText={(value) => setStepGoal(value.replace(/[^\d]/g, ""))}
+                  onChangeText={(value) => {
+                    hasEditedRef.current = true;
+                    setStepGoal(value.replace(/[^\d]/g, ""));
+                  }}
                   keyboardType="number-pad"
                   editable={!isSaving}
                 />

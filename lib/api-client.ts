@@ -50,32 +50,56 @@ async function parseApiResponse<T>(response: Response): Promise<T> {
   return json.data as T;
 }
 
+const DEFAULT_TIMEOUT_MS = 15_000;
+
 export async function apiRequest<T>(
   path: string,
-  options: RequestInit & { token?: string } = {}
+  options: RequestInit & { token?: string; timeoutMs?: number } = {}
 ): Promise<T> {
-  const { token, headers, body, ...rest } = options;
-  const response = await fetch(normalizeUrl(path), {
-    ...rest,
-    body,
-    headers: buildHeaders(body, token, headers),
-  });
-
-  return parseApiResponse<T>(response);
+  const { token, headers, body, timeoutMs, ...rest } = options;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs ?? DEFAULT_TIMEOUT_MS);
+  try {
+    const response = await fetch(normalizeUrl(path), {
+      ...rest,
+      body,
+      headers: buildHeaders(body, token, headers),
+      signal: controller.signal,
+    });
+    return parseApiResponse<T>(response);
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error("Request timed out");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 export async function apiFormRequest<T>(
   path: string,
   formData: FormData,
-  options: Omit<RequestInit, "body"> & { token?: string } = {}
+  options: Omit<RequestInit, "body"> & { token?: string; timeoutMs?: number } = {}
 ): Promise<T> {
-  const { token, headers, ...rest } = options;
-  const response = await fetch(normalizeUrl(path), {
-    ...rest,
-    method: rest.method ?? "POST",
-    body: formData,
-    headers: buildHeaders(formData, token, headers),
-  });
-
-  return parseApiResponse<T>(response);
+  const { token, headers, timeoutMs, ...rest } = options;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs ?? DEFAULT_TIMEOUT_MS);
+  try {
+    const response = await fetch(normalizeUrl(path), {
+      ...rest,
+      method: rest.method ?? "POST",
+      body: formData,
+      headers: buildHeaders(formData, token, headers),
+      signal: controller.signal,
+    });
+    return parseApiResponse<T>(response);
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error("Request timed out");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 }

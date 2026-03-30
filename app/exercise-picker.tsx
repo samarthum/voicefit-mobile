@@ -156,9 +156,7 @@ export default function ExercisePickerScreen() {
             <CloseGlyph />
           </Pressable>
           <Text style={styles.title}>Add Exercise</Text>
-          <Pressable>
-            <Text style={styles.createLink}>Create</Text>
-          </Pressable>
+          <View style={styles.headerPlaceholder} />
         </View>
 
         <View style={styles.searchWrap}>
@@ -366,6 +364,9 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surface,
     alignItems: "center",
     justifyContent: "center",
+  },
+  headerPlaceholder: {
+    width: 32,
   },
   emptyText: {
     fontSize: 15,

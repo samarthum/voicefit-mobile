@@ -329,7 +329,7 @@ function isSetComplete(set: WorkoutSet) {
   return (set.reps ?? 0) > 0 && ((set.weightKg ?? 0) > 0 || set.weightKg === 0);
 }
 
-function buildLiveSession(session: WorkoutSessionDetail): SessionViewModel {
+function buildLiveSession(session: WorkoutSessionDetail, currentTime: number = Date.now()): SessionViewModel {
   const groups = new Map<string, WorkoutSet[]>();
   for (const set of session.sets) {
     const next = groups.get(set.exerciseName) ?? [];
@@ -371,7 +371,7 @@ function buildLiveSession(session: WorkoutSessionDetail): SessionViewModel {
   });
 
   const startedAt = new Date(session.startedAt).getTime();
-  const endedAt = session.endedAt ? new Date(session.endedAt).getTime() : Date.now();
+  const endedAt = session.endedAt ? new Date(session.endedAt).getTime() : currentTime;
   const duration = formatClock(endedAt - startedAt);
   const totalVolume = session.sets.reduce(
     (sum, set) => sum + (set.exerciseType === "cardio" ? 0 : (set.weightKg ?? 0) * (set.reps ?? 0)),
@@ -419,6 +419,7 @@ export default function WorkoutSessionScreen() {
   const [previewSession, setPreviewSession] = useState<SessionViewModel | null>(() => getPreviewSession(sessionId));
   const [drafts, setDrafts] = useState<Record<string, SetDraft>>({});
   const [liveError, setLiveError] = useState<string | null>(null);
+  const [now, setNow] = useState(Date.now());
   const handledPickerNonceRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -437,6 +438,15 @@ export default function WorkoutSessionScreen() {
       return apiRequest<WorkoutSessionDetail>(`/api/workout-sessions/${sessionId}`, { token });
     },
   });
+
+  // Tick every second for active session duration display
+  useEffect(() => {
+    const sessionData = sessionQuery.data;
+    const isActive = sessionData && !sessionData.endedAt && !isPreviewId;
+    if (!isActive) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [sessionQuery.data, isPreviewId]);
 
   const createSetMutation = useMutation({
     mutationFn: async (payload: {
@@ -459,9 +469,11 @@ export default function WorkoutSessionScreen() {
       });
     },
     onSuccess: async () => {
-      await sessionQuery.refetch();
-      await queryClient.invalidateQueries({ queryKey: ["workout-sessions"] });
-      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      await Promise.all([
+        sessionQuery.refetch(),
+        queryClient.invalidateQueries({ queryKey: ["workout-sessions"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+      ]);
     },
     onError: (error) => {
       setLiveError(error instanceof Error ? error.message : "Failed to add set.");
@@ -502,9 +514,11 @@ export default function WorkoutSessionScreen() {
       });
     },
     onSuccess: async () => {
-      await sessionQuery.refetch();
-      await queryClient.invalidateQueries({ queryKey: ["workout-sessions"] });
-      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      await Promise.all([
+        sessionQuery.refetch(),
+        queryClient.invalidateQueries({ queryKey: ["workout-sessions"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+      ]);
     },
     onError: (error) => {
       setLiveError(error instanceof Error ? error.message : "Failed to update set.");
@@ -523,9 +537,11 @@ export default function WorkoutSessionScreen() {
       });
     },
     onSuccess: async () => {
-      await sessionQuery.refetch();
-      await queryClient.invalidateQueries({ queryKey: ["workout-sessions"] });
-      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      await Promise.all([
+        sessionQuery.refetch(),
+        queryClient.invalidateQueries({ queryKey: ["workout-sessions"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+      ]);
     },
     onError: (error) => {
       setLiveError(error instanceof Error ? error.message : "Failed to finish session.");
@@ -580,11 +596,11 @@ export default function WorkoutSessionScreen() {
       addExerciseType: undefined,
       addExerciseNonce: undefined,
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- createSetMutation is stable via nonce guard
   }, [
     addExerciseName,
     addExerciseNonce,
     addExerciseType,
-    createSetMutation,
     isPreviewId,
     isWebPreview,
     router,
@@ -606,7 +622,7 @@ export default function WorkoutSessionScreen() {
   const session: SessionViewModel | null = (() => {
     if (!sessionId) return null;
     if (isPreviewId) return previewSession ? { ...previewSession, finished: previewFinished || previewSession.finished } : null;
-    return sessionQuery.data ? buildLiveSession(sessionQuery.data) : null;
+    return sessionQuery.data ? buildLiveSession(sessionQuery.data, now) : null;
   })();
 
   const handleFinish = async () => {

@@ -55,17 +55,17 @@ export function FloatingCommandBar({
 }: FloatingCommandBarProps) {
   return (
     <View style={[styles.wrap, { bottom: bottomOffset }]} pointerEvents="box-none">
-      <Pressable style={styles.bar} onPress={onPress} testID={testID}>
-        <View style={styles.left}>
+      <View style={styles.bar}>
+        <Pressable style={styles.left} onPress={onPress} testID={testID}>
           <SparkleGlyph />
           <Text style={styles.hint} numberOfLines={1}>
             {hint}
           </Text>
-        </View>
+        </Pressable>
         <Pressable style={styles.micButton} onPress={onMicPress ?? onPress}>
           <MicGlyph />
         </Pressable>
-      </Pressable>
+      </View>
     </View>
   );
 }

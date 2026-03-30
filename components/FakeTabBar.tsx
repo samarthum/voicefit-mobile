@@ -1,6 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const COLORS = {
   bg: "#FFFFFF",
@@ -11,6 +12,7 @@ const COLORS = {
 
 export function FakeTabBar({ active }: { active: "home" | "workouts" | "settings" }) {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   const tabs = [
     { key: "home", label: "Home", href: "/(tabs)/dashboard" },
@@ -19,7 +21,7 @@ export function FakeTabBar({ active }: { active: "home" | "workouts" | "settings
   ] as const;
 
   return (
-    <View style={styles.tabBar}>
+    <View style={[styles.tabBar, { paddingBottom: Math.max(insets.bottom, 8) }]}>
       {tabs.map((tab) => {
         const selected = tab.key === active;
         const color = selected ? COLORS.active : COLORS.inactive;
@@ -53,7 +55,6 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    height: 83,
     paddingTop: 10,
     backgroundColor: COLORS.bg,
     borderTopWidth: 1,

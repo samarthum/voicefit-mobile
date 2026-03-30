@@ -88,6 +88,9 @@ const MOCK_RESPONSES: Record<string, { headline: string; highlights?: string[] }
 
 const createId = () => `coach-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
+// Module-level cache so messages survive navigation within the same app session
+let cachedMessages: CoachMessage[] | null = null;
+
 function getErrorMessage(error: unknown) {
   if (error instanceof Error && error.message.trim()) return error.message;
   return "Coach couldn’t respond right now.";
@@ -156,9 +159,16 @@ export default function CoachScreen() {
   const { getToken } = useAuth();
   const isWebPreview = __DEV__ && Platform.OS === "web";
   const scrollRef = useRef<ScrollView>(null);
-  const [messages, setMessages] = useState<CoachMessage[]>(() =>
-    isWebPreview ? SAMPLE_MESSAGES : []
+  const [messages, setMessagesRaw] = useState<CoachMessage[]>(() =>
+    isWebPreview ? SAMPLE_MESSAGES : cachedMessages ?? []
   );
+  const setMessages: typeof setMessagesRaw = (update) => {
+    setMessagesRaw((prev) => {
+      const next = typeof update === "function" ? update(prev) : update;
+      cachedMessages = next;
+      return next;
+    });
+  };
   const [draft, setDraft] = useState("");
   const [isSending, setIsSending] = useState(false);
 

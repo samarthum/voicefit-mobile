@@ -216,10 +216,20 @@ export default function WorkoutsScreen() {
   });
 
   const liveSessions = sessionsQuery.data?.sessions ?? [];
+
+  const thisWeekSessions = useMemo(() => {
+    const now = new Date();
+    const day = now.getDay();
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - ((day + 6) % 7));
+    monday.setHours(0, 0, 0, 0);
+    return liveSessions.filter((s) => new Date(s.startedAt) >= monday);
+  }, [liveSessions]);
+
   const sessionCards = useMemo<SessionPreview[]>(() => {
     if (isWebPreview) return SAMPLE_SESSIONS;
-    if (!liveSessions.length) return [];
-    return liveSessions.map((session) => ({
+    if (!thisWeekSessions.length) return [];
+    return thisWeekSessions.map((session) => ({
       id: session.id,
       title: session.title,
       subtitle: formatSessionSubtitle(session.startedAt),
@@ -228,20 +238,20 @@ export default function WorkoutsScreen() {
       summary: `${session.setCount} ${session.setCount === 1 ? "set" : "sets"}`,
       navigable: true,
     }));
-  }, [isWebPreview, liveSessions]);
+  }, [isWebPreview, thisWeekSessions]);
 
   const stats = useMemo<StatsPreview>(() => {
     if (isWebPreview) return SAMPLE_STATS;
-    if (!liveSessions.length) {
+    if (!thisWeekSessions.length) {
       return { sessions: "0", sets: "0", exercises: "0" };
     }
-    const totalSets = liveSessions.reduce((sum, session) => sum + session.setCount, 0);
+    const totalSets = thisWeekSessions.reduce((sum, session) => sum + session.setCount, 0);
     return {
-      sessions: String(liveSessions.length),
+      sessions: String(thisWeekSessions.length),
       sets: String(totalSets),
       exercises: "--",
     };
-  }, [isWebPreview, liveSessions]);
+  }, [isWebPreview, thisWeekSessions]);
 
   const onRefresh = async () => {
     if (isWebPreview) return;

@@ -13,23 +13,23 @@ Audit date: 2026-03-30
 
 ## High
 
-- [ ] **H1** `dashboard.tsx:1111-1117` — `closeCommandCenter` doesn't stop active recording. Pressing X while recording leaves mic live.
-- [ ] **H2** `dashboard.tsx:1038-1040` — `metricCurrentValues` not memoized, defeats all downstream memos. New array ref every render cascades recomputes.
-- [ ] **H3** `workouts.tsx:221-228,274` — "This Week" stats not filtered by week. Fetches last 20 sessions (any time range), labels them "This Week".
-- [ ] **H4** `workouts.tsx:274-285` — Fabricated exercise count. `Math.max(1, Math.round(totalSets / 4))` has no connection to real data.
-- [ ] **H5** `workout-session/[id].tsx:583-592` — `createSetMutation` in useEffect deps causes re-run every render.
-- [ ] **H6** `workout-session/[id].tsx:461-464` — Sequential awaits in mutation `onSuccess` block UI. Should be `Promise.all`.
-- [ ] **H7** `exercise-picker.tsx:151-153` — "Create" exercise button is dead. `Pressable` with no `onPress`.
-- [ ] **H8** `coach.tsx:159-161` — Coach chat history lost on navigation. Messages stored in `useState`, wiped when leaving tab.
-- [ ] **H9** `meals.tsx:185-200` — Delete meal mutation silently swallows errors. No `onError` handler.
-- [ ] **H10** `settings.tsx:49-53,275` — `formatGoal` on TextInput causes cursor jumping. Locale commas conflict with digit stripping.
-- [ ] **H11** `settings.tsx:173-176` — Settings useEffect overwrites in-progress edits on refetch.
-- [ ] **H12** `FloatingCommandBar.tsx:58-68` — Nested Pressable: mic button inside bar Pressable. On Android, tapping mic fires both handlers.
-- [ ] **H13** `app/_layout.tsx` — No ErrorBoundary in root layout. Unhandled exceptions = white screen in production.
-- [ ] **H14** `oauth-native-callback.tsx:6-9` — OAuth callback always redirects to `/sign-in`, ignores auth state.
-- [ ] **H15** `api-client.ts:58-64` — No fetch timeout on API calls. Requests hang indefinitely on flaky networks.
-- [ ] **H16** `FakeTabBar.tsx:53` — Hardcoded 83px height. Real tab bar calculates per-device; this is wrong on most devices.
-- [ ] **H17** `workout-session/[id].tsx:373-375` — Duration never ticks for active sessions. Computed once on data fetch.
+- [x] **H1** `dashboard.tsx:1111-1117` — `closeCommandCenter` doesn't stop active recording. Pressing X while recording leaves mic live.
+- [x] **H2** `dashboard.tsx:1038-1040` — `metricCurrentValues` not memoized, defeats all downstream memos. New array ref every render cascades recomputes.
+- [x] **H3** `workouts.tsx:221-228,274` — "This Week" stats not filtered by week. Fetches last 20 sessions (any time range), labels them "This Week".
+- [x] **H4** `workouts.tsx:274-285` — Fabricated exercise count. `Math.max(1, Math.round(totalSets / 4))` has no connection to real data.
+- [x] **H5** `workout-session/[id].tsx:583-592` — `createSetMutation` in useEffect deps causes re-run every render.
+- [x] **H6** `workout-session/[id].tsx:461-464` — Sequential awaits in mutation `onSuccess` block UI. Should be `Promise.all`.
+- [x] **H7** `exercise-picker.tsx:151-153` — "Create" exercise button is dead. `Pressable` with no `onPress`.
+- [x] **H8** `coach.tsx:159-161` — Coach chat history lost on navigation. Messages stored in `useState`, wiped when leaving tab.
+- [x] **H9** `meals.tsx:185-200` — Delete meal mutation silently swallows errors. No `onError` handler.
+- [x] **H10** `settings.tsx:49-53,275` — `formatGoal` on TextInput causes cursor jumping. Locale commas conflict with digit stripping.
+- [x] **H11** `settings.tsx:173-176` — Settings useEffect overwrites in-progress edits on refetch.
+- [x] **H12** `FloatingCommandBar.tsx:58-68` — Nested Pressable: mic button inside bar Pressable. On Android, tapping mic fires both handlers.
+- [x] **H13** `app/_layout.tsx` — No ErrorBoundary in root layout. Unhandled exceptions = white screen in production.
+- [x] **H14** `oauth-native-callback.tsx:6-9` — OAuth callback always redirects to `/sign-in`, ignores auth state.
+- [x] **H15** `api-client.ts:58-64` — No fetch timeout on API calls. Requests hang indefinitely on flaky networks.
+- [x] **H16** `FakeTabBar.tsx:53` — Hardcoded 83px height. Real tab bar calculates per-device; this is wrong on most devices.
+- [x] **H17** `workout-session/[id].tsx:373-375` — Duration never ticks for active sessions. Computed once on data fetch.
 
 ## Medium
 

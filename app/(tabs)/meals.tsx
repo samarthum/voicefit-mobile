@@ -194,8 +194,14 @@ export default function MealsScreen() {
     },
     onSuccess: async () => {
       setSelectedMealId(null);
-      await queryClient.invalidateQueries({ queryKey: ["meals"] });
-      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      setEditError(null);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["meals"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+      ]);
+    },
+    onError: (error) => {
+      setEditError(error instanceof Error ? error.message : "Failed to delete meal.");
     },
   });
 

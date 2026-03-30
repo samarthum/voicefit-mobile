@@ -1035,9 +1035,13 @@ export default function DashboardScreen() {
         ];
   const displayedQuickAddItems = quickAddItems.slice(0, 3);
 
-  const metricCurrentValues = weeklyCurrent
-    .map((point) => metricValueFromPoint(point, trendTab))
-    .map((value) => safeNumber(value));
+  const metricCurrentValues = useMemo(
+    () =>
+      weeklyCurrent
+        .map((point) => metricValueFromPoint(point, trendTab))
+        .map((value) => safeNumber(value)),
+    [weeklyCurrent, trendTab]
+  );
 
   const normalizedTrendValues = useMemo(() => {
     let last = 0;
@@ -1109,6 +1113,10 @@ export default function DashboardScreen() {
   const isDashboardInitialLoading = !dashboard && !homeBlockingError;
 
   const closeCommandCenter = () => {
+    if (recording) {
+      recording.stopAndUnloadAsync().catch(() => undefined);
+      setRecording(null);
+    }
     setCommandState("cc_collapsed");
     setCommandErrorSubtype(null);
     setCommandErrorDetail(null);
