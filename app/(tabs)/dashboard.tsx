@@ -687,7 +687,7 @@ function CalorieRing({ consumed, goal }: { consumed: number; goal: number }) {
   const radius = (size - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
   const left = Math.max(goal - consumed, 0);
-  const progress = progressPercent(left, goal);
+  const progress = progressPercent(consumed, goal);
   const offset = circumference * (1 - progress);
 
   return (
@@ -1557,27 +1557,55 @@ export default function DashboardScreen() {
     if (!reviewDraft) return;
 
     if (reviewDraft.kind === "workout") {
-      const firstFilledSet = reviewDraft.sets.find(
+      const filledSets = reviewDraft.sets.filter(
         (set) => set.weightKg.trim() || set.reps.trim() || set.notes.trim()
       );
-      const sourceSet = firstFilledSet ?? reviewDraft.sets[0];
+      const setsToSave = filledSets.length > 0 ? filledSets : [reviewDraft.sets[0]];
 
-      const nextPayload = {
-        ...reviewDraft.interpreted.payload,
-        weightKg: parsePositiveNumber(sourceSet.weightKg),
-        reps: parsePositiveNumber(sourceSet.reps),
-        notes: sourceSet.notes.trim() || reviewDraft.interpreted.payload.notes,
-      };
+      setCommandState("cc_saving");
+      setCommandErrorSubtype(null);
+      setCommandErrorDetail(null);
 
-      await runSaveAction({
-        kind: "entry",
-        interpreted: {
-          ...reviewDraft.interpreted,
-          payload: nextPayload,
-        },
-        transcript: reviewDraft.transcript,
-        source: reviewDraft.source,
-      });
+      try {
+        if (isWebPreview) {
+          await new Promise((resolve) => setTimeout(resolve, 550));
+          await refreshAfterSave();
+          setCommandToast("Saved");
+          closeCommandCenter();
+          return;
+        }
+
+        const token = await getToken();
+        if (!token) throw new Error("Not signed in");
+
+        const sessionId = await ensureQuickSession(token);
+
+        await Promise.all(
+          setsToSave.map((set) =>
+            apiRequest("/api/workout-sets", {
+              method: "POST",
+              token,
+              body: JSON.stringify({
+                sessionId,
+                exerciseName: reviewDraft.interpreted.payload.exerciseName,
+                exerciseType: reviewDraft.interpreted.payload.exerciseType,
+                reps: parsePositiveNumber(set.reps),
+                weightKg: parsePositiveNumber(set.weightKg),
+                durationMinutes: null,
+                notes: set.notes.trim() || reviewDraft.interpreted.payload.notes,
+                performedAt: new Date().toISOString(),
+                transcriptRaw: reviewDraft.transcript,
+              }),
+            })
+          )
+        );
+
+        await refreshAfterSave();
+        setCommandToast(`Saved ${setsToSave.length} set${setsToSave.length > 1 ? "s" : ""}`);
+        closeCommandCenter();
+      } catch (error) {
+        setCommandError("auto_save_failure", getErrorMessage(error));
+      }
       return;
     }
 

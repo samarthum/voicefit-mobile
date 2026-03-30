@@ -122,7 +122,15 @@ export default function ExercisePickerScreen() {
     return source.filter((item) => item.name.toLowerCase().includes(query));
   }, [activeFilter, search]);
 
-  const chestItems = filteredItems.filter((item) => item.group === "Chest");
+  const groupedItems = useMemo(() => {
+    const groups = new Map<string, ExerciseItem[]>();
+    for (const item of filteredItems) {
+      const existing = groups.get(item.group) ?? [];
+      existing.push(item);
+      groups.set(item.group, existing);
+    }
+    return [...groups.entries()];
+  }, [filteredItems]);
 
   const handleAdd = (item: ExerciseItem) => {
     if (sessionId) {
@@ -179,19 +187,31 @@ export default function ExercisePickerScreen() {
           })}
         </ScrollView>
 
-        <Text style={styles.sectionLabel}>Recent</Text>
-        <View style={styles.sectionCard}>
-          {recentItems.map((item) => (
-            <ExerciseRow key={item.name} item={item} onAdd={() => handleAdd(item)} />
-          ))}
-        </View>
+        {recentItems.length > 0 && activeFilter === "All" && !search.trim() ? (
+          <>
+            <Text style={styles.sectionLabel}>Recent</Text>
+            <View style={styles.sectionCard}>
+              {recentItems.map((item) => (
+                <ExerciseRow key={item.name} item={item} onAdd={() => handleAdd(item)} />
+              ))}
+            </View>
+          </>
+        ) : null}
 
-        <Text style={styles.sectionLabel}>Chest</Text>
-        <View style={styles.sectionCard}>
-          {chestItems.map((item) => (
-            <ExerciseRow key={`${item.name}-${item.equipment}`} item={item} onAdd={() => handleAdd(item)} />
-          ))}
-        </View>
+        {groupedItems.map(([group, items]) => (
+          <View key={group}>
+            <Text style={styles.sectionLabel}>{group}</Text>
+            <View style={styles.sectionCard}>
+              {items.map((item) => (
+                <ExerciseRow key={`${item.name}-${item.equipment}`} item={item} onAdd={() => handleAdd(item)} />
+              ))}
+            </View>
+          </View>
+        ))}
+
+        {groupedItems.length === 0 && search.trim() ? (
+          <Text style={styles.emptyText}>No exercises match "{search.trim()}"</Text>
+        ) : null}
       </ScrollView>
 
       <FloatingCommandBar
@@ -346,5 +366,11 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surface,
     alignItems: "center",
     justifyContent: "center",
+  },
+  emptyText: {
+    fontSize: 15,
+    color: COLORS.textSecondary,
+    textAlign: "center",
+    paddingVertical: 24,
   },
 });

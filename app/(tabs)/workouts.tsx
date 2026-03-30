@@ -165,49 +165,8 @@ function formatSessionSubtitle(value: string) {
   })}`;
 }
 
-function buildExercisePreview(title: string, setCount: number) {
-  const normalized = title.toLowerCase();
-  if (normalized.includes("push")) {
-    return [
-      {
-        name: "Bench Press",
-        detail: "Barbell · Resistance",
-        weight: "80 kg",
-        reps: `${Math.max(1, Math.floor(setCount / 2))} × 8 reps`,
-      },
-      {
-        name: "Overhead Press",
-        detail: "Dumbbell · Resistance",
-        weight: "24 kg",
-        reps: `${Math.max(1, Math.ceil(setCount / 2))} × 10 reps`,
-      },
-    ];
-  }
-  if (normalized.includes("leg")) {
-    return [
-      {
-        name: "Barbell Squat",
-        detail: "Barbell · Resistance",
-        weight: "100 kg",
-        reps: "4 × 6 reps",
-      },
-      {
-        name: "Romanian Deadlift",
-        detail: "Barbell · Resistance",
-        weight: "80 kg",
-        reps: "3 × 10 reps",
-      },
-    ];
-  }
-  return [
-    {
-      name: title.trim() || "Logged workout",
-      detail: "Open session to review details",
-      weight: `${Math.max(setCount, 1)} sets`,
-      reps: "Tracked session",
-    },
-  ];
-}
+// Exercise preview data is only used for web preview / sample sessions.
+// Live sessions show real set count without fabricated exercise details.
 
 export default function WorkoutsScreen() {
   const router = useRouter();
@@ -265,8 +224,8 @@ export default function WorkoutsScreen() {
       title: session.title,
       subtitle: formatSessionSubtitle(session.startedAt),
       status: session.endedAt ? "done" : "active",
-      exercises: buildExercisePreview(session.title, session.setCount),
-      summary: `${Math.max(1, Math.min(2, Math.ceil(session.setCount / 3)))} exercises · ${session.setCount} sets`,
+      exercises: [],
+      summary: `${session.setCount} ${session.setCount === 1 ? "set" : "sets"}`,
       navigable: true,
     }));
   }, [isWebPreview, liveSessions]);
@@ -280,7 +239,7 @@ export default function WorkoutsScreen() {
     return {
       sessions: String(liveSessions.length),
       sets: String(totalSets),
-      exercises: String(Math.max(1, Math.round(totalSets / 4))),
+      exercises: "--",
     };
   }, [isWebPreview, liveSessions]);
 
