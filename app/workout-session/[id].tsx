@@ -753,7 +753,7 @@ export default function WorkoutSessionScreen() {
             </View>
             <Pressable
               style={styles.voicePrompt}
-              onPress={() => router.push({ pathname: "/(tabs)/dashboard", params: { cc: "recording" } })}
+              onPress={() => router.push({ pathname: "/(tabs)/dashboard", params: { cc: "recording", sessionId: sessionId ?? undefined, returnTo: `/workout-session/${sessionId}` } })}
             >
               <View style={styles.voicePromptMic}>
                 <MicGlyph />
@@ -909,8 +909,8 @@ export default function WorkoutSessionScreen() {
 
       <FloatingCommandBar
         hint={session?.empty ? '"Did 3 sets of squats at 100kg..."' : '"Add 3 sets of curls at 15kg..."'}
-        onPress={() => router.push({ pathname: "/(tabs)/dashboard", params: { cc: "expanded" } })}
-        onMicPress={() => router.push({ pathname: "/(tabs)/dashboard", params: { cc: "recording" } })}
+        onPress={() => router.push({ pathname: "/(tabs)/dashboard", params: { cc: "expanded", sessionId: sessionId ?? undefined, returnTo: `/workout-session/${sessionId}` } })}
+        onMicPress={() => router.push({ pathname: "/(tabs)/dashboard", params: { cc: "recording", sessionId: sessionId ?? undefined, returnTo: `/workout-session/${sessionId}` } })}
         bottomOffset={91}
       />
       <FakeTabBar active="workouts" />

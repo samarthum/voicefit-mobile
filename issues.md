@@ -54,7 +54,7 @@ Audit date: 2026-03-30
 - [x] **M19** `meals.tsx:148-155` — Stale error/success persists when switching meals.
 - [x] **M20** `settings.tsx:341` — Sign out has no confirmation dialog.
 - [x] **M21** `settings.tsx:310-339` — Settings rows look tappable (chevron) but aren't.
-- [ ] **M22** `coach.tsx:372-379` — Coach mic button navigates away to dashboard instead of recording in-context. (Deferred — voice flow is centralized in dashboard)
+- [x] **M22** `coach.tsx:372-379` — Voice command center navigates away from workout screens. Fixed: passes sessionId + returnTo params so sets are added to the active session and user returns to their workout.
 - [x] **M23** `app/_layout.tsx` — No StatusBar component. Text may be invisible in dark mode with white bg.
 - [x] **M24** `feed.tsx:47` vs `dashboard.tsx:164` — Two different "today" utilities (UTC vs local) produce different dates near midnight.
 - [ ] **M25** All files — COLORS duplicated 11 times across files. (Deferred — refactoring task)

@@ -435,8 +435,8 @@ export default function WorkoutsScreen() {
 
       <FloatingCommandBar
         hint='"Did 3 sets of squats..."'
-        onPress={() => router.push({ pathname: "/(tabs)/dashboard", params: { cc: "expanded" } })}
-        onMicPress={() => router.push({ pathname: "/(tabs)/dashboard", params: { cc: "recording" } })}
+        onPress={() => router.push({ pathname: "/(tabs)/dashboard", params: { cc: "expanded", returnTo: "/(tabs)/workouts" } })}
+        onMicPress={() => router.push({ pathname: "/(tabs)/dashboard", params: { cc: "recording", returnTo: "/(tabs)/workouts" } })}
       />
     </SafeAreaView>
   );

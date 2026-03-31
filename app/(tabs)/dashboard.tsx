@@ -919,7 +919,7 @@ export default function DashboardScreen() {
   const { getToken } = useAuth();
   const queryClient = useQueryClient();
   const router = useRouter();
-  const params = useLocalSearchParams<{ cc?: string | string[] }>();
+  const params = useLocalSearchParams<{ cc?: string | string[]; sessionId?: string; returnTo?: string }>();
   const insets = useSafeAreaInsets();
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const isWebPreview = __DEV__ && Platform.OS === "web";
@@ -943,6 +943,10 @@ export default function DashboardScreen() {
   const [commandToast, setCommandToast] = useState<string | null>(null);
   const [commandErrorSubtype, setCommandErrorSubtype] = useState<CommandErrorSubtype>(null);
   const [commandErrorDetail, setCommandErrorDetail] = useState<string | null>(null);
+
+  // Track origin context when command center is opened from another screen
+  const [originSessionId, setOriginSessionId] = useState<string | null>(null);
+  const [returnTo, setReturnTo] = useState<string | null>(null);
 
   const pendingSaveRef = useRef<SaveAction | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1126,6 +1130,21 @@ export default function DashboardScreen() {
     setCommandErrorDetail(null);
     setIsInterpretingVoice(false);
     setReviewDraft(null);
+
+    // Navigate back to origin screen if command center was opened from another tab
+    const dest = returnTo;
+    const sid = originSessionId;
+    setReturnTo(null);
+    setOriginSessionId(null);
+    if (dest) {
+      requestAnimationFrame(() => {
+        if (sid && dest.includes("workout-session")) {
+          router.replace({ pathname: "/workout-session/[id]" as const, params: { id: sid } });
+        } else {
+          router.replace(dest as "/(tabs)/workouts");
+        }
+      });
+    }
   };
 
   const openCommandCenter = () => {
@@ -1208,7 +1227,7 @@ export default function DashboardScreen() {
           }),
         });
       } else if (interpreted.intent === "workout_set") {
-        const sessionId = await ensureQuickSession(token);
+        const sessionId = originSessionId ?? await ensureQuickSession(token);
         await apiRequest("/api/workout-sets", {
           method: "POST",
           token,
@@ -1446,6 +1465,10 @@ export default function DashboardScreen() {
 
     handledCommandIntentRef.current = commandIntent;
 
+    // Capture origin context from params
+    if (params.sessionId) setOriginSessionId(params.sessionId as string);
+    if (params.returnTo) setReturnTo(params.returnTo as string);
+
     if (commandIntent === "expanded") {
       setCommandText("");
       setVoiceTranscript("");
@@ -1462,9 +1485,9 @@ export default function DashboardScreen() {
     }
 
     requestAnimationFrame(() => {
-      router.setParams({ cc: undefined });
+      router.setParams({ cc: undefined, sessionId: undefined, returnTo: undefined });
     });
-  }, [commandIntent, router]);
+  }, [commandIntent, router, params.sessionId, params.returnTo]);
 
   const stopRecording = async () => {
     if (isWebPreview) {
@@ -1594,7 +1617,7 @@ export default function DashboardScreen() {
         const token = await getToken();
         if (!token) throw new Error("Not signed in");
 
-        const sessionId = await ensureQuickSession(token);
+        const sessionId = originSessionId ?? await ensureQuickSession(token);
 
         await Promise.all(
           setsToSave.map((set) =>
@@ -2167,7 +2190,7 @@ export default function DashboardScreen() {
 
           <View style={styles.workoutSessionRow}>
             <Text style={styles.workoutSessionLabel}>Add to session</Text>
-            <Text style={styles.workoutSessionValue}>{reviewDraft.sessionLabel}</Text>
+            <Text style={styles.workoutSessionValue}>{originSessionId ? "Current Session" : reviewDraft.sessionLabel}</Text>
           </View>
 
           <View style={styles.reviewActions}>
