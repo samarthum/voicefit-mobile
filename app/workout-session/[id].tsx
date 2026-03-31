@@ -57,6 +57,7 @@ interface WorkoutSessionDetail {
   createdAt: string;
   updatedAt: string;
   sets: WorkoutSet[];
+  previousBests?: Record<string, { weightKg: number | null; reps: number | null; durationMinutes: number | null }>;
 }
 
 type SetDraft = {
@@ -342,28 +343,27 @@ function buildLiveSession(session: WorkoutSessionDetail, currentTime: number = D
           sets[0]?.exerciseType === "cardio" ? "Conditioning" : "Resistance"
         }`;
 
+    // Show data from most recent prior session for this exercise
+    const prevBest = session.previousBests?.[exerciseName];
+    const previous =
+      prevBest == null
+        ? "—"
+        : sets[0]?.exerciseType === "cardio"
+          ? `${prevBest.durationMinutes ?? 0} min`
+          : `${prevBest.weightKg ?? 0} × ${prevBest.reps ?? 0}`;
+
     return {
       name: exerciseName,
       meta,
       exerciseType: sets[0]?.exerciseType ?? "resistance",
-      rows: sets.map((set, index) => {
-        const previousSet = index > 0 ? sets[index - 1] : null;
-        const previous =
-          previousSet == null
-            ? "—"
-            : previousSet.exerciseType === "cardio"
-              ? `${previousSet.durationMinutes ?? 0} min`
-              : `${previousSet.weightKg ?? 0} × ${previousSet.reps ?? 0}`;
-
-        return {
-          id: set.id,
-          setLabel: String(index + 1),
-          previous,
-          isWarmup: false,
-          checked: isSetComplete(set),
-          live: set,
-        };
-      }),
+      rows: sets.map((set, index) => ({
+        id: set.id,
+        setLabel: String(index + 1),
+        previous,
+        isWarmup: false,
+        checked: isSetComplete(set),
+        live: set,
+      })),
     };
   });
 

@@ -45,11 +45,11 @@ Audit date: 2026-03-30
 - [x] **M10** `dashboard.tsx:301` — `getMealVisualKind` classifies all "rice" meals as salmon icon.
 - [x] **M11** `dashboard.tsx:1926,2034` — Missing `keyboardDismissMode` on review ScrollViews.
 - [x] **M12** Multiple files — No `Keyboard.dismiss()` after saves across multiple screens.
-- [ ] **M13** `workout-session/[id].tsx:353-359` — "Previous" column shows prior set in same session, not historical data from prior sessions. (Deferred — needs API changes)
+- [x] **M13** `workout-session/[id].tsx:353-359` — "Previous" column shows prior set in same session, not historical data from prior sessions.
 - [x] **M14** `workout-session/[id].tsx:767-768` — KG/Reps headers shown for cardio exercises. Should show Duration.
 - [x] **M15** `workout-session/[id].tsx:675` — `router.replace` for back navigation loses history.
 - [x] **M16** `workouts.tsx:218,243` — Toast timer not cleaned up on unmount.
-- [ ] **M17** `workouts.tsx:221-228` — No pagination, only first 20 sessions shown. (Deferred — needs infinite scroll UI)
+- [x] **M17** `workouts.tsx:221-228` — No pagination, only first 20 sessions shown.
 - [x] **M18** `meals.tsx:172-178` — Edit panel doesn't auto-close after save.
 - [x] **M19** `meals.tsx:148-155` — Stale error/success persists when switching meals.
 - [x] **M20** `settings.tsx:341` — Sign out has no confirmation dialog.

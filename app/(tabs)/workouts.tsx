@@ -11,7 +11,7 @@ import {
   View,
 } from "react-native";
 import { useAuth } from "@clerk/clerk-expo";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import Svg, { Path } from "react-native-svg";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -183,13 +183,23 @@ export default function WorkoutsScreen() {
     };
   }, []);
 
-  const sessionsQuery = useQuery({
-    queryKey: ["workout-sessions", "prototype-list"],
+  const PAGE_SIZE = 20;
+
+  const sessionsQuery = useInfiniteQuery({
+    queryKey: ["workout-sessions", "infinite-list"],
+    initialPageParam: 0,
     enabled: !isWebPreview && !!isSignedIn,
-    queryFn: async () => {
+    queryFn: async ({ pageParam }) => {
       const token = await getToken();
       if (!token) throw new Error("Not signed in");
-      return apiRequest<WorkoutSessionsResponse>("/api/workout-sessions?limit=20&offset=0", { token });
+      return apiRequest<WorkoutSessionsResponse>(
+        `/api/workout-sessions?limit=${PAGE_SIZE}&offset=${pageParam as number}`,
+        { token },
+      );
+    },
+    getNextPageParam: (lastPage, allPages) => {
+      const loaded = allPages.reduce((sum, page) => sum + page.sessions.length, 0);
+      return loaded < lastPage.total ? loaded : undefined;
     },
   });
 
@@ -221,7 +231,10 @@ export default function WorkoutsScreen() {
     },
   });
 
-  const liveSessions = sessionsQuery.data?.sessions ?? [];
+  const liveSessions = useMemo(
+    () => sessionsQuery.data?.pages.flatMap((page) => page.sessions) ?? [],
+    [sessionsQuery.data],
+  );
 
   const thisWeekSessions = useMemo(() => {
     const now = new Date();
@@ -234,8 +247,8 @@ export default function WorkoutsScreen() {
 
   const sessionCards = useMemo<SessionPreview[]>(() => {
     if (isWebPreview) return SAMPLE_SESSIONS;
-    if (!thisWeekSessions.length) return [];
-    return thisWeekSessions.map((session) => ({
+    if (!liveSessions.length) return [];
+    return liveSessions.map((session) => ({
       id: session.id,
       title: session.title,
       subtitle: formatSessionSubtitle(session.startedAt),
@@ -244,7 +257,7 @@ export default function WorkoutsScreen() {
       summary: `${session.setCount} ${session.setCount === 1 ? "set" : "sets"}`,
       navigable: true,
     }));
-  }, [isWebPreview, thisWeekSessions]);
+  }, [isWebPreview, liveSessions]);
 
   const stats = useMemo<StatsPreview>(() => {
     if (isWebPreview) return SAMPLE_STATS;
@@ -298,6 +311,7 @@ export default function WorkoutsScreen() {
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        keyboardDismissMode="on-drag"
       >
         <View style={styles.header}>
           <Text style={styles.pageTitle}>Workouts</Text>
@@ -320,7 +334,7 @@ export default function WorkoutsScreen() {
           </View>
           <View style={styles.statPill}>
             <Text style={styles.statValue}>{stats.sets}</Text>
-            <Text style={styles.statLabel}>Sets This{"\n"}Week</Text>
+            <Text style={styles.statLabel}>Sets This{"\n"}week</Text>
           </View>
           <View style={styles.statPill}>
             <Text style={styles.statValue}>{stats.exercises}</Text>
@@ -328,7 +342,7 @@ export default function WorkoutsScreen() {
           </View>
         </View>
 
-        <Text style={styles.sectionTitle}>This Week</Text>
+        <Text style={styles.sectionTitle}>Sessions</Text>
 
         {sessionsQuery.isLoading && !isWebPreview ? (
           <View style={styles.loadingWrap}>
@@ -396,6 +410,20 @@ export default function WorkoutsScreen() {
               Create a session to start logging sets, or use the Command Center to add a workout by voice.
             </Text>
           </View>
+        ) : null}
+
+        {sessionsQuery.hasNextPage ? (
+          <Pressable
+            style={[styles.loadMoreButton, sessionsQuery.isFetchingNextPage ? styles.buttonDisabled : null]}
+            onPress={() => sessionsQuery.fetchNextPage()}
+            disabled={sessionsQuery.isFetchingNextPage}
+          >
+            {sessionsQuery.isFetchingNextPage ? (
+              <ActivityIndicator color={COLORS.textPrimary} size="small" />
+            ) : (
+              <Text style={styles.loadMoreText}>Load More</Text>
+            )}
+          </Pressable>
         ) : null}
       </ScrollView>
 
@@ -608,6 +636,19 @@ const styles = StyleSheet.create({
   emptyBody: {
     fontSize: 14,
     lineHeight: 21,
+    color: COLORS.textSecondary,
+  },
+  loadMoreButton: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    marginBottom: 8,
+    borderRadius: 12,
+    backgroundColor: COLORS.surface,
+  },
+  loadMoreText: {
+    fontSize: 14,
+    fontWeight: "600",
     color: COLORS.textSecondary,
   },
   toast: {
