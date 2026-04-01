@@ -101,4 +101,6 @@ export type ReviewDraft = MealReviewDraft | WorkoutReviewDraft;
 export interface ScreenContext {
   /** Active workout session ID — sets get added to this session */
   sessionId?: string;
+  /** Current screen context — determines quick-add suggestions */
+  screen?: "workout" | "default";
 }

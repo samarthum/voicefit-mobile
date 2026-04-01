@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Keyboard,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -58,7 +60,7 @@ interface WorkoutSessionDetail {
   createdAt: string;
   updatedAt: string;
   sets: WorkoutSet[];
-  previousBests?: Record<string, { weightKg: number | null; reps: number | null; durationMinutes: number | null }>;
+  previousSets?: Record<string, Array<{ weightKg: number | null; reps: number | null; durationMinutes: number | null }>>;
 }
 
 type SetDraft = {
@@ -344,27 +346,31 @@ function buildLiveSession(session: WorkoutSessionDetail, currentTime: number = D
           sets[0]?.exerciseType === "cardio" ? "Conditioning" : "Resistance"
         }`;
 
-    // Show data from most recent prior session for this exercise
-    const prevBest = session.previousBests?.[exerciseName];
-    const previous =
-      prevBest == null
-        ? "—"
-        : sets[0]?.exerciseType === "cardio"
-          ? `${prevBest.durationMinutes ?? 0} min`
-          : `${prevBest.weightKg ?? 0} × ${prevBest.reps ?? 0}`;
+    // Show data from most recent prior session for this exercise, matched by set index
+    const prevSets = session.previousSets?.[exerciseName] ?? [];
 
     return {
       name: exerciseName,
       meta,
       exerciseType: sets[0]?.exerciseType ?? "resistance",
-      rows: sets.map((set, index) => ({
-        id: set.id,
-        setLabel: String(index + 1),
-        previous,
-        isWarmup: false,
-        checked: isSetComplete(set),
-        live: set,
-      })),
+      rows: sets.map((set, index) => {
+        const prevSet = prevSets[index];
+        const previous =
+          prevSet == null
+            ? "—"
+            : sets[0]?.exerciseType === "cardio"
+              ? `${prevSet.durationMinutes ?? 0} min`
+              : `${prevSet.weightKg ?? 0} × ${prevSet.reps ?? 0}`;
+
+        return {
+          id: set.id,
+          setLabel: String(index + 1),
+          previous,
+          isWarmup: false,
+          checked: isSetComplete(set),
+          live: set,
+        };
+      }),
     };
   });
 
@@ -420,6 +426,8 @@ export default function WorkoutSessionScreen() {
   const [liveError, setLiveError] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
   const handledPickerNonceRef = useRef<string | null>(null);
+  const [renameModalVisible, setRenameModalVisible] = useState(false);
+  const [renameText, setRenameText] = useState("");
 
   useEffect(() => {
     if (!isPreviewId) return;
@@ -547,6 +555,96 @@ export default function WorkoutSessionScreen() {
     },
   });
 
+  const deleteSessionMutation = useMutation({
+    mutationFn: async () => {
+      if (!sessionId) throw new Error("Invalid session id");
+      const token = await getToken();
+      if (!token) throw new Error("Not signed in");
+      return apiRequest<{ deleted: boolean }>(`/api/workout-sessions/${sessionId}`, {
+        method: "DELETE",
+        token,
+      });
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["workout-sessions"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+      ]);
+      if (router.canGoBack()) router.back();
+      else router.replace("/(tabs)/workouts");
+    },
+    onError: (error) => {
+      Alert.alert("Error", error instanceof Error ? error.message : "Failed to delete session.");
+    },
+  });
+
+  const renameSessionMutation = useMutation({
+    mutationFn: async (title: string) => {
+      if (!sessionId) throw new Error("Invalid session id");
+      const token = await getToken();
+      if (!token) throw new Error("Not signed in");
+      return apiRequest<WorkoutSessionDetail>(`/api/workout-sessions/${sessionId}`, {
+        method: "PUT",
+        token,
+        body: JSON.stringify({ title }),
+      });
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        sessionQuery.refetch(),
+        queryClient.invalidateQueries({ queryKey: ["workout-sessions"] }),
+      ]);
+    },
+    onError: (error) => {
+      Alert.alert("Error", error instanceof Error ? error.message : "Failed to rename session.");
+    },
+  });
+
+  const handleSessionMenu = () => {
+    if (isPreviewId || isWebPreview) return;
+    Keyboard.dismiss();
+    Alert.alert(
+      session?.title ?? "Session",
+      undefined,
+      [
+        {
+          text: "Rename",
+          onPress: () => {
+            setRenameText(session?.title ?? "");
+            setRenameModalVisible(true);
+          },
+        },
+        {
+          text: "Delete Session",
+          style: "destructive",
+          onPress: () => {
+            Alert.alert(
+              "Delete this session?",
+              "This will remove the session and all its sets. This cannot be undone.",
+              [
+                { text: "Cancel", style: "cancel" },
+                {
+                  text: "Delete",
+                  style: "destructive",
+                  onPress: () => void deleteSessionMutation.mutateAsync(),
+                },
+              ]
+            );
+          },
+        },
+        { text: "Cancel", style: "cancel" },
+      ]
+    );
+  };
+
+  const handleRenameConfirm = () => {
+    const trimmed = renameText.trim();
+    if (!trimmed) return;
+    setRenameModalVisible(false);
+    Keyboard.dismiss();
+    void renameSessionMutation.mutateAsync(trimmed);
+  };
+
   useEffect(() => {
     if (!sessionQuery.data) return;
     setDrafts((prev) => {
@@ -608,7 +706,7 @@ export default function WorkoutSessionScreen() {
 
   useEffect(() => {
     if (sessionId && !isPreviewId) {
-      cc.setScreenContext({ sessionId });
+      cc.setScreenContext({ sessionId, screen: "workout" });
     }
     return () => cc.clearScreenContext();
   }, [sessionId, isPreviewId]);
@@ -703,18 +801,28 @@ export default function WorkoutSessionScreen() {
             <Text style={styles.sessionTitle}>{session?.title ?? "Workout Session"}</Text>
             <Text style={styles.sessionSubtitle}>{session?.subtitle ?? "Loading..."}</Text>
           </View>
-          <Pressable
-            style={[
-              styles.finishButton,
-              session?.finished ? styles.finishButtonDisabled : styles.finishButtonActive,
-            ]}
-            onPress={() => void handleFinish()}
-            disabled={session?.finished || finishMutation.isPending}
-          >
-            <Text style={[styles.finishButtonText, session?.finished ? styles.finishButtonTextDisabled : null]}>
-              Finish
-            </Text>
-          </Pressable>
+          <View style={styles.headerRight}>
+            {!isPreviewId && !isWebPreview && session ? (
+              <Pressable
+                style={styles.iconButton}
+                onPress={handleSessionMenu}
+                hitSlop={8}
+              >
+                <DotsGlyph />
+              </Pressable>
+            ) : null}
+            {!session?.finished ? (
+              <Pressable
+                style={[styles.finishButton, styles.finishButtonActive]}
+                onPress={() => void handleFinish()}
+                disabled={finishMutation.isPending}
+              >
+                <Text style={styles.finishButtonText}>Finish</Text>
+              </Pressable>
+            ) : (
+              <View style={{ width: 72 }} />
+            )}
+          </View>
         </View>
 
         <View style={styles.statsStrip}>
@@ -749,26 +857,30 @@ export default function WorkoutSessionScreen() {
             <Text style={styles.emptyBody}>
               Add your first exercise to get started, or just speak into the mic below.
             </Text>
-            <Pressable
-              style={styles.addExerciseButton}
-              onPress={() => router.push({ pathname: "/exercise-picker", params: { sessionId } })}
-            >
-              <Text style={styles.addExerciseText}>＋ Add Exercise</Text>
-            </Pressable>
-            <View style={styles.orRow}>
-              <View style={styles.orLine} />
-              <Text style={styles.orText}>Or</Text>
-              <View style={styles.orLine} />
-            </View>
-            <Pressable
-              style={styles.voicePrompt}
-              onPress={() => cc.startRecording()}
-            >
-              <View style={styles.voicePromptMic}>
-                <MicGlyph />
-              </View>
-              <Text style={styles.voicePromptText}>"Bench press 3 sets of 10 at 80 kg"</Text>
-            </Pressable>
+            {!session?.finished && (
+              <>
+                <Pressable
+                  style={styles.addExerciseButton}
+                  onPress={() => router.push({ pathname: "/exercise-picker", params: { sessionId } })}
+                >
+                  <Text style={styles.addExerciseText}>＋ Add Exercise</Text>
+                </Pressable>
+                <View style={styles.orRow}>
+                  <View style={styles.orLine} />
+                  <Text style={styles.orText}>Or</Text>
+                  <View style={styles.orLine} />
+                </View>
+                <Pressable
+                  style={styles.voicePrompt}
+                  onPress={() => cc.startRecording()}
+                >
+                  <View style={styles.voicePromptMic}>
+                    <MicGlyph />
+                  </View>
+                  <Text style={styles.voicePromptText}>"Bench press 3 sets of 10 at 80 kg"</Text>
+                </Pressable>
+              </>
+            )}
           </View>
         ) : session ? (
           <View style={styles.cardsWrap}>
@@ -861,6 +973,7 @@ export default function WorkoutSessionScreen() {
                           keyboardType="decimal-pad"
                           placeholder="-"
                           placeholderTextColor={COLORS.textTertiary}
+                          editable={!session.finished}
                         />
                         <TextInput
                           style={[styles.rowInput, styles.colValue]}
@@ -877,10 +990,12 @@ export default function WorkoutSessionScreen() {
                           keyboardType="number-pad"
                           placeholder="-"
                           placeholderTextColor={COLORS.textTertiary}
+                          editable={!session.finished}
                         />
                         <Pressable
                           style={[styles.checkCell, row.checked ? styles.checkCellFilled : null]}
                           onPress={() => void handleSaveLiveSet(row.live!)}
+                          disabled={session.finished}
                         >
                           {row.checked ? <CheckGlyph /> : null}
                         </Pressable>
@@ -892,24 +1007,30 @@ export default function WorkoutSessionScreen() {
                   );
                 })}
 
-                <Pressable style={styles.addSetRow} onPress={() => void handleAddSet(card)}>
-                  <Text style={styles.addSetText}>＋ Add Set</Text>
-                </Pressable>
+                {!session.finished && (
+                  <Pressable style={styles.addSetRow} onPress={() => void handleAddSet(card)}>
+                    <Text style={styles.addSetText}>＋ Add Set</Text>
+                  </Pressable>
+                )}
               </View>
             ))}
 
-            <Pressable
-              style={styles.addExerciseGhostButton}
-              onPress={() => router.push({ pathname: "/exercise-picker", params: { sessionId } })}
-            >
-              <Text style={styles.addExerciseGhostText}>＋ Add Exercise</Text>
-            </Pressable>
+            {!session.finished && (
+              <Pressable
+                style={styles.addExerciseGhostButton}
+                onPress={() => router.push({ pathname: "/exercise-picker", params: { sessionId } })}
+              >
+                <Text style={styles.addExerciseGhostText}>＋ Add Exercise</Text>
+              </Pressable>
+            )}
 
-            <View style={styles.activeVoicePrompt}>
-              <Text style={styles.activeVoicePromptText}>
-                Or say <Text style={styles.activeVoicePromptTextStrong}>"lat pulldown 3x12"</Text>
-              </Text>
-            </View>
+            {!session.finished && (
+              <View style={styles.activeVoicePrompt}>
+                <Text style={styles.activeVoicePromptText}>
+                  Or say <Text style={styles.activeVoicePromptTextStrong}>"lat pulldown 3x12"</Text>
+                </Text>
+              </View>
+            )}
           </View>
         ) : sessionQuery.error ? (
           <View style={styles.emptyWrap}>
@@ -921,13 +1042,62 @@ export default function WorkoutSessionScreen() {
         ) : null}
       </ScrollView>
 
-      <FloatingCommandBar
-        hint={session?.empty ? '"Did 3 sets of squats at 100kg..."' : '"Add 3 sets of curls at 15kg..."'}
-        onPress={() => cc.open()}
-        onMicPress={() => cc.startRecording()}
-        bottomOffset={91}
-      />
+      {!session?.finished && (
+        <FloatingCommandBar
+          hint={session?.empty ? '"Did 3 sets of squats at 100kg..."' : '"Add 3 sets of curls at 15kg..."'}
+          onPress={() => cc.open()}
+          onMicPress={() => cc.startRecording()}
+          bottomOffset={91}
+        />
+      )}
       <FakeTabBar active="workouts" />
+
+      <Modal
+        visible={renameModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setRenameModalVisible(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setRenameModalVisible(false)}
+        >
+          <Pressable style={styles.modalCard} onPress={() => {}}>
+            <Text style={styles.modalTitle}>Rename Session</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={renameText}
+              onChangeText={setRenameText}
+              placeholder="Session name"
+              placeholderTextColor={COLORS.textTertiary}
+              autoFocus
+              selectTextOnFocus
+              returnKeyType="done"
+              onSubmitEditing={handleRenameConfirm}
+            />
+            <View style={styles.modalButtons}>
+              <Pressable
+                style={styles.modalButtonCancel}
+                onPress={() => setRenameModalVisible(false)}
+              >
+                <Text style={styles.modalButtonCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[
+                  styles.modalButtonConfirm,
+                  !renameText.trim() && styles.modalButtonDisabled,
+                ]}
+                onPress={handleRenameConfirm}
+                disabled={!renameText.trim() || renameSessionMutation.isPending}
+              >
+                <Text style={styles.modalButtonConfirmText}>
+                  {renameSessionMutation.isPending ? "Saving..." : "Save"}
+                </Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -948,6 +1118,7 @@ const styles = StyleSheet.create({
     borderBottomColor: COLORS.border,
   },
   iconButton: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
+  headerRight: { flexDirection: "row", alignItems: "center", gap: 4 },
   headerCenter: { flex: 1, alignItems: "center" },
   sessionTitle: { fontSize: 18, fontWeight: "700", color: COLORS.textPrimary },
   sessionSubtitle: { marginTop: 2, fontSize: 12, color: COLORS.textSecondary },
@@ -1051,5 +1222,66 @@ const styles = StyleSheet.create({
   activeVoicePromptTextStrong: {
     color: COLORS.textSecondary,
     fontWeight: "600",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 32,
+  },
+  modalCard: {
+    width: "100%",
+    maxWidth: 340,
+    backgroundColor: COLORS.bg,
+    borderRadius: 18,
+    padding: 24,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: COLORS.textPrimary,
+    marginBottom: 16,
+  },
+  modalInput: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+    fontSize: 16,
+    fontWeight: "500",
+    color: COLORS.textPrimary,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 20,
+  },
+  modalButtons: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 10,
+  },
+  modalButtonCancel: {
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  modalButtonCancelText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: COLORS.textSecondary,
+  },
+  modalButtonConfirm: {
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: COLORS.textPrimary,
+  },
+  modalButtonDisabled: {
+    opacity: 0.4,
+  },
+  modalButtonConfirmText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#FFFFFF",
   },
 });

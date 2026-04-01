@@ -36,6 +36,7 @@ import {
   WAVE_MIN,
 } from "./helpers";
 import { useCommandCenterInternal } from "./CommandCenterProvider";
+import { EXERCISE_CATALOG } from "../../lib/exercise-catalog";
 
 // ---------------------------------------------------------------------------
 // SVG Glyphs
@@ -271,21 +272,45 @@ export function CommandCenterOverlay() {
               </Pressable>
             </View>
           </View>
-          <Text style={styles.quickAddLabelExpanded}>Quick Add</Text>
-          <View style={styles.quickAddRows}>
-            {displayedQuickAddItems.map((item, index) => (
-              <Pressable key={item.id} style={[styles.quickAddRow, index === displayedQuickAddItems.length - 1 && styles.quickAddRowLast]} testID={`cc-quick-add-${index}`} onPress={() => { void cc.runSaveAction({ kind: "quick_add", item }); }}>
-                <View style={styles.quickAddLeft}>
-                  <View style={styles.quickAddThumb}><QuickMealThumb description={item.description} /></View>
-                  <View>
-                    <Text style={styles.quickAddName}>{item.description}</Text>
-                    <Text style={styles.quickAddDetail}>{item.calories} kcal · {formatMealTypeLabel(item.mealType)}</Text>
-                  </View>
-                </View>
-                <View style={styles.quickAddPlus}><PlusGlyph /></View>
-              </Pressable>
-            ))}
-          </View>
+          {cc.screenContext.screen === "workout" ? (
+            <>
+              <Text style={styles.quickAddLabelExpanded}>Recent Exercises</Text>
+              <View style={styles.quickAddRows}>
+                {EXERCISE_CATALOG.slice(0, 5).map((exercise, index) => (
+                  <Pressable key={exercise.name} style={[styles.quickAddRow, index === 4 && styles.quickAddRowLast]} testID={`cc-exercise-${index}`} onPress={() => { cc.handleCommandInputChange(`3 sets of ${exercise.name}`); }}>
+                    <View style={styles.quickAddLeft}>
+                      <View style={[styles.quickAddThumb, { backgroundColor: exercise.accent + "18" }]}>
+                        <Text style={{ fontSize: 14 }}>{exercise.group === "Chest" ? "\uD83C\uDFCB\uFE0F" : exercise.group === "Back" ? "\uD83E\uDDBE" : exercise.group === "Shoulders" ? "\uD83D\uDCAA" : exercise.group === "Legs" ? "\uD83E\uDDB5" : exercise.group === "Arms" ? "\uD83D\uDCAA" : "\uD83C\uDFAF"}</Text>
+                      </View>
+                      <View>
+                        <Text style={styles.quickAddName}>{exercise.name}</Text>
+                        <Text style={styles.quickAddDetail}>{exercise.equipment} · {exercise.group}</Text>
+                      </View>
+                    </View>
+                    <View style={styles.quickAddPlus}><PlusGlyph /></View>
+                  </Pressable>
+                ))}
+              </View>
+            </>
+          ) : (
+            <>
+              <Text style={styles.quickAddLabelExpanded}>Quick Add</Text>
+              <View style={styles.quickAddRows}>
+                {displayedQuickAddItems.map((item, index) => (
+                  <Pressable key={item.id} style={[styles.quickAddRow, index === displayedQuickAddItems.length - 1 && styles.quickAddRowLast]} testID={`cc-quick-add-${index}`} onPress={() => { void cc.runSaveAction({ kind: "quick_add", item }); }}>
+                    <View style={styles.quickAddLeft}>
+                      <View style={styles.quickAddThumb}><QuickMealThumb description={item.description} /></View>
+                      <View>
+                        <Text style={styles.quickAddName}>{item.description}</Text>
+                        <Text style={styles.quickAddDetail}>{item.calories} kcal · {formatMealTypeLabel(item.mealType)}</Text>
+                      </View>
+                    </View>
+                    <View style={styles.quickAddPlus}><PlusGlyph /></View>
+                  </Pressable>
+                ))}
+              </View>
+            </>
+          )}
         </View>
       );
     }
