@@ -27,7 +27,7 @@ const COLORS = {
   shoulders: "#AF52DE",
 };
 
-const FILTERS = ["All", "Chest", "Back", "Shoulders", "Legs", "Arms", "Core", "Compound"] as const;
+const FILTERS = ["All", "Chest", "Back", "Shoulders", "Legs", "Arms", "Core", "Cardio"] as const;
 
 type ExerciseItem = ExerciseCatalogItem & { recent?: string };
 
@@ -116,8 +116,9 @@ export default function ExercisePickerScreen() {
 
   const filteredItems = useMemo(() => {
     const query = search.trim().toLowerCase();
+    // When searching, ignore the group filter — search across all exercises
     const source =
-      activeFilter === "All"
+      activeFilter === "All" || query
         ? EXERCISE_CATALOG
         : EXERCISE_CATALOG.filter((item) => item.group === activeFilter);
     if (!query) return source;
@@ -141,7 +142,7 @@ export default function ExercisePickerScreen() {
         params: {
           id: sessionId,
           addExerciseName: item.name,
-          addExerciseType: "resistance",
+          addExerciseType: item.group === "Cardio" ? "cardio" : "resistance",
           addExerciseNonce: String(Date.now()),
         },
       });
