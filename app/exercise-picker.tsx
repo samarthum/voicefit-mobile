@@ -11,6 +11,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import Svg, { Path } from "react-native-svg";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { FloatingCommandBar } from "../components/FloatingCommandBar";
+import { useCommandCenter } from "../components/command-center";
 import { EXERCISE_CATALOG, type ExerciseCatalogItem } from "../lib/exercise-catalog";
 
 const COLORS = {
@@ -97,6 +98,7 @@ function ExerciseRow({
 }
 
 export default function ExercisePickerScreen() {
+  const cc = useCommandCenter();
   const router = useRouter();
   const params = useLocalSearchParams<{ sessionId?: string | string[] }>();
   const sessionId = Array.isArray(params.sessionId) ? params.sessionId[0] : params.sessionId;
@@ -214,8 +216,8 @@ export default function ExercisePickerScreen() {
 
       <FloatingCommandBar
         hint='"Add tricep pushdowns"'
-        onPress={() => router.push({ pathname: "/(tabs)/dashboard", params: { cc: "expanded" } })}
-        onMicPress={() => router.push({ pathname: "/(tabs)/dashboard", params: { cc: "recording" } })}
+        onPress={() => cc.open()}
+        onMicPress={() => cc.startRecording()}
       />
     </SafeAreaView>
   );

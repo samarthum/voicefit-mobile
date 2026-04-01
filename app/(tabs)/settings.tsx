@@ -16,6 +16,7 @@ import { useRouter } from "expo-router";
 import Svg, { Circle, Path } from "react-native-svg";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { FloatingCommandBar } from "../../components/FloatingCommandBar";
+import { useCommandCenter } from "../../components/command-center";
 import { apiRequest } from "../../lib/api-client";
 
 const COLORS = {
@@ -143,6 +144,7 @@ function SettingsRow({
 }
 
 export default function SettingsScreen() {
+  const cc = useCommandCenter();
   const router = useRouter();
   const { signOut, getToken, isSignedIn } = useAuth();
   const { user } = useUser();
@@ -358,8 +360,8 @@ export default function SettingsScreen() {
 
       <FloatingCommandBar
         hint='"Had pasta for lunch..."'
-        onPress={() => router.push({ pathname: "/(tabs)/dashboard", params: { cc: "expanded" } })}
-        onMicPress={() => router.push({ pathname: "/(tabs)/dashboard", params: { cc: "recording" } })}
+        onPress={() => cc.open()}
+        onMicPress={() => cc.startRecording()}
       />
     </SafeAreaView>
   );

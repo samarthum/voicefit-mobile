@@ -16,6 +16,7 @@ import { useRouter } from "expo-router";
 import Svg, { Path } from "react-native-svg";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { FloatingCommandBar } from "../../components/FloatingCommandBar";
+import { useCommandCenter } from "../../components/command-center";
 import { apiRequest } from "../../lib/api-client";
 
 const COLORS = {
@@ -170,6 +171,7 @@ function formatSessionSubtitle(value: string) {
 
 export default function WorkoutsScreen() {
   const router = useRouter();
+  const cc = useCommandCenter();
   const { getToken, isSignedIn } = useAuth();
   const queryClient = useQueryClient();
   const isWebPreview = __DEV__ && Platform.OS === "web";
@@ -435,8 +437,8 @@ export default function WorkoutsScreen() {
 
       <FloatingCommandBar
         hint='"Did 3 sets of squats..."'
-        onPress={() => router.push({ pathname: "/(tabs)/dashboard", params: { cc: "expanded", returnTo: "/(tabs)/workouts" } })}
-        onMicPress={() => router.push({ pathname: "/(tabs)/dashboard", params: { cc: "recording", returnTo: "/(tabs)/workouts" } })}
+        onPress={() => cc.open()}
+        onMicPress={() => cc.startRecording()}
       />
     </SafeAreaView>
   );

@@ -17,6 +17,7 @@ import Svg, { Path } from "react-native-svg";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { FakeTabBar } from "../../components/FakeTabBar";
 import { FloatingCommandBar } from "../../components/FloatingCommandBar";
+import { useCommandCenter } from "../../components/command-center";
 import { getExerciseCatalogItem } from "../../lib/exercise-catalog";
 import { apiRequest } from "../../lib/api-client";
 
@@ -408,6 +409,7 @@ export default function WorkoutSessionScreen() {
   const addExerciseNonce = Array.isArray(params.addExerciseNonce) ? params.addExerciseNonce[0] : params.addExerciseNonce;
 
   const { getToken, isLoaded, isSignedIn } = useAuth();
+  const cc = useCommandCenter();
   const isWebPreview = __DEV__ && Platform.OS === "web";
   const isPreviewId =
     sessionId === "preview-active" || sessionId === "preview-leg-day" || sessionId === "preview-empty";
@@ -604,6 +606,13 @@ export default function WorkoutSessionScreen() {
     sessionId,
   ]);
 
+  useEffect(() => {
+    if (sessionId && !isPreviewId) {
+      cc.setScreenContext({ sessionId });
+    }
+    return () => cc.clearScreenContext();
+  }, [sessionId, isPreviewId]);
+
   if (!isLoaded) {
     return (
       <View style={styles.center}>
@@ -753,7 +762,7 @@ export default function WorkoutSessionScreen() {
             </View>
             <Pressable
               style={styles.voicePrompt}
-              onPress={() => router.push({ pathname: "/(tabs)/dashboard", params: { cc: "recording", sessionId: sessionId ?? undefined, returnTo: `/workout-session/${sessionId}` } })}
+              onPress={() => cc.startRecording()}
             >
               <View style={styles.voicePromptMic}>
                 <MicGlyph />
@@ -909,8 +918,8 @@ export default function WorkoutSessionScreen() {
 
       <FloatingCommandBar
         hint={session?.empty ? '"Did 3 sets of squats at 100kg..."' : '"Add 3 sets of curls at 15kg..."'}
-        onPress={() => router.push({ pathname: "/(tabs)/dashboard", params: { cc: "expanded", sessionId: sessionId ?? undefined, returnTo: `/workout-session/${sessionId}` } })}
-        onMicPress={() => router.push({ pathname: "/(tabs)/dashboard", params: { cc: "recording", sessionId: sessionId ?? undefined, returnTo: `/workout-session/${sessionId}` } })}
+        onPress={() => cc.open()}
+        onMicPress={() => cc.startRecording()}
         bottomOffset={91}
       />
       <FakeTabBar active="workouts" />

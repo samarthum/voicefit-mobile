@@ -15,6 +15,7 @@ import { useRouter } from "expo-router";
 import Svg, { Path } from "react-native-svg";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import type { AssistantChatResponse } from "@voicefit/contracts/types";
+import { useCommandCenter } from "../../components/command-center";
 import { apiRequest } from "../../lib/api-client";
 
 const COLORS = {
@@ -155,6 +156,7 @@ function SendGlyph({ color }: { color: string }) {
 }
 
 export default function CoachScreen() {
+  const cc = useCommandCenter();
   const router = useRouter();
   const { getToken } = useAuth();
   const insets = useSafeAreaInsets();
@@ -382,9 +384,7 @@ export default function CoachScreen() {
             />
             <Pressable
               style={styles.micButton}
-              onPress={() =>
-                router.push({ pathname: "/(tabs)/dashboard", params: { cc: "recording" } })
-              }
+              onPress={() => cc.startRecording()}
             >
               <MicGlyph />
             </Pressable>
