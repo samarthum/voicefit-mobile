@@ -841,48 +841,53 @@ export default function WorkoutSessionScreen() {
                   };
 
                   return (
-                    <View key={row.id} style={[styles.setRow, row.checked ? styles.setRowChecked : null]}>
-                      <View style={[styles.setChip, row.isWarmup ? styles.warmupChip : null]}>
-                        <Text style={[styles.setChipText, row.isWarmup ? styles.warmupChipText : null]}>
-                          {row.setLabel}
-                        </Text>
+                    <View key={row.id}>
+                      <View style={[styles.setRow, row.checked ? styles.setRowChecked : null]}>
+                        <View style={[styles.setChip, row.isWarmup ? styles.warmupChip : null]}>
+                          <Text style={[styles.setChipText, row.isWarmup ? styles.warmupChipText : null]}>
+                            {row.setLabel}
+                          </Text>
+                        </View>
+                        <Text style={[styles.rowText, styles.colPrevious]}>{row.previous}</Text>
+                        <TextInput
+                          style={[styles.rowInput, styles.colValue]}
+                          value={draft.weightKg}
+                          onChangeText={(value) =>
+                            setDrafts((prev) => ({
+                              ...prev,
+                              [row.live!.id]: { ...draft, weightKg: value.replace(/[^\d.]/g, "") },
+                            }))
+                          }
+                          keyboardType="decimal-pad"
+                          placeholder="-"
+                          placeholderTextColor={COLORS.textTertiary}
+                        />
+                        <TextInput
+                          style={[styles.rowInput, styles.colValue]}
+                          value={row.live.exerciseType === "cardio" ? draft.durationMinutes : draft.reps}
+                          onChangeText={(value) =>
+                            setDrafts((prev) => ({
+                              ...prev,
+                              [row.live!.id]:
+                                row.live!.exerciseType === "cardio"
+                                  ? { ...draft, durationMinutes: value.replace(/[^\d]/g, "") }
+                                  : { ...draft, reps: value.replace(/[^\d]/g, "") },
+                            }))
+                          }
+                          keyboardType="number-pad"
+                          placeholder="-"
+                          placeholderTextColor={COLORS.textTertiary}
+                        />
+                        <Pressable
+                          style={[styles.checkCell, row.checked ? styles.checkCellFilled : null]}
+                          onPress={() => void handleSaveLiveSet(row.live!)}
+                        >
+                          {row.checked ? <CheckGlyph /> : null}
+                        </Pressable>
                       </View>
-                      <Text style={[styles.rowText, styles.colPrevious]}>{row.previous}</Text>
-                      <TextInput
-                        style={[styles.rowInput, styles.colValue]}
-                        value={draft.weightKg}
-                        onChangeText={(value) =>
-                          setDrafts((prev) => ({
-                            ...prev,
-                            [row.live!.id]: { ...draft, weightKg: value.replace(/[^\d.]/g, "") },
-                          }))
-                        }
-                        keyboardType="decimal-pad"
-                        placeholder="-"
-                        placeholderTextColor={COLORS.textTertiary}
-                      />
-                      <TextInput
-                        style={[styles.rowInput, styles.colValue]}
-                        value={row.live.exerciseType === "cardio" ? draft.durationMinutes : draft.reps}
-                        onChangeText={(value) =>
-                          setDrafts((prev) => ({
-                            ...prev,
-                            [row.live!.id]:
-                              row.live!.exerciseType === "cardio"
-                                ? { ...draft, durationMinutes: value.replace(/[^\d]/g, "") }
-                                : { ...draft, reps: value.replace(/[^\d]/g, "") },
-                          }))
-                        }
-                        keyboardType="number-pad"
-                        placeholder="-"
-                        placeholderTextColor={COLORS.textTertiary}
-                      />
-                      <Pressable
-                        style={[styles.checkCell, row.checked ? styles.checkCellFilled : null]}
-                        onPress={() => void handleSaveLiveSet(row.live!)}
-                      >
-                        {row.checked ? <CheckGlyph /> : null}
-                      </Pressable>
+                      {row.live.notes ? (
+                        <Text style={styles.setNoteText}>{row.live.notes}</Text>
+                      ) : null}
                     </View>
                   );
                 })}
@@ -1004,6 +1009,7 @@ const styles = StyleSheet.create({
   },
   checkCell: { width: 30, height: 30, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, alignItems: "center", justifyContent: "center", marginLeft: 8 },
   checkCellFilled: { backgroundColor: COLORS.green, borderColor: COLORS.green },
+  setNoteText: { fontSize: 12, color: COLORS.textSecondary, fontStyle: "italic", paddingHorizontal: 20, paddingBottom: 6, paddingTop: 2 },
   addSetRow: { alignItems: "center", justifyContent: "center", paddingVertical: 14, borderTopWidth: 1, borderTopColor: COLORS.border },
   addSetText: { fontSize: 16, fontWeight: "600", color: COLORS.textSecondary },
   emptyWrap: { alignItems: "center", paddingHorizontal: 24, paddingTop: 100 },
