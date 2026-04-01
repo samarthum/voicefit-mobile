@@ -54,7 +54,7 @@ Audit date: 2026-03-30
 - [x] **M19** `meals.tsx:148-155` — Stale error/success persists when switching meals.
 - [x] **M20** `settings.tsx:341` — Sign out has no confirmation dialog.
 - [x] **M21** `settings.tsx:310-339` — Settings rows look tappable (chevron) but aren't.
-- [x] **M22** `coach.tsx:372-379` — Voice command center navigates away from workout screens. Fixed: passes sessionId + returnTo params so sets are added to the active session and user returns to their workout.
+- [x] **M22** Command center extracted into global overlay. No navigation happens — it overlays the current screen. Screens set context (sessionId) so actions target the right entities.
 - [x] **M23** `app/_layout.tsx` — No StatusBar component. Text may be invisible in dark mode with white bg.
 - [x] **M24** `feed.tsx:47` vs `dashboard.tsx:164` — Two different "today" utilities (UTC vs local) produce different dates near midnight.
 - [ ] **M25** All files — COLORS duplicated 11 times across files. (Deferred — refactoring task)
@@ -76,4 +76,4 @@ Audit date: 2026-03-30
 - [x] **L9** `sign-in.tsx` — Terms of Service / Privacy Policy links non-functional.
 - [ ] **L10** `sign-up-email.tsx:103` — No email verification flow implemented. (Deferred — needs backend changes)
 - [ ] **L11** All API callers — Token management pattern repeated ~30 times. (Deferred — refactoring task)
-- [ ] **L12** `dashboard.tsx` — 3832-line file should be split into multiple modules. (Deferred — refactoring task)
+- [x] **L12** `dashboard.tsx` — 3832-line file split. Command center extracted to `components/command-center/` (4 files). Dashboard now 1222 lines.
