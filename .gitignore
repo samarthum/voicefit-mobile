@@ -38,6 +38,11 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 
+# tooling caches / artifacts
+.playwright-cli/
+output/playwright/
+package-lock.json
+
 # generated native folders
 /ios
 /android

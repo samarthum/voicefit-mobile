@@ -24,7 +24,9 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "permissions": ["RECORD_AUDIO"],
+      "permissions": [
+        "RECORD_AUDIO"
+      ],
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "package": "com.samarthmamadapur.voicefitmobile"
@@ -41,6 +43,7 @@
       "eas": {
         "projectId": "601f6626-116b-4e14-b069-076116ca13ff"
       }
-    }
+    },
+    "owner": "samarthmamadapur"
   }
 }
