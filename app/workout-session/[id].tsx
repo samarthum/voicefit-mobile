@@ -60,6 +60,7 @@ interface WorkoutSessionDetail {
   createdAt: string;
   updatedAt: string;
   sets: WorkoutSet[];
+  exerciseNotes?: Record<string, string> | null;
   previousSets?: Record<string, Array<{ weightKg: number | null; reps: number | null; durationMinutes: number | null }>>;
 }
 
@@ -428,6 +429,8 @@ export default function WorkoutSessionScreen() {
   const handledPickerNonceRef = useRef<string | null>(null);
   const [renameModalVisible, setRenameModalVisible] = useState(false);
   const [renameText, setRenameText] = useState("");
+  const [exerciseNoteEditing, setExerciseNoteEditing] = useState<string | null>(null);
+  const [exerciseNoteText, setExerciseNoteText] = useState("");
 
   useEffect(() => {
     if (!isPreviewId) return;
@@ -725,6 +728,68 @@ export default function WorkoutSessionScreen() {
     },
   });
 
+  const editExerciseNotesMutation = useMutation({
+    mutationFn: async (vars: { exerciseName: string; note: string }) => {
+      if (!sessionId) throw new Error("Invalid session id");
+      const token = await getToken();
+      if (!token) throw new Error("Not signed in");
+      // Build the full notes map from the current cache so we send a complete object.
+      const current = queryClient.getQueryData<WorkoutSessionDetail>([
+        "workout-session-detail",
+        sessionId,
+      ]);
+      const nextNotes: Record<string, string> = { ...(current?.exerciseNotes ?? {}) };
+      const trimmed = vars.note.trim();
+      if (trimmed) {
+        nextNotes[vars.exerciseName] = trimmed;
+      } else {
+        delete nextNotes[vars.exerciseName];
+      }
+      return apiRequest<WorkoutSessionDetail>(`/api/workout-sessions/${sessionId}`, {
+        method: "PUT",
+        token,
+        body: JSON.stringify({ exerciseNotes: nextNotes }),
+      });
+    },
+    onMutate: async (vars) => {
+      if (!sessionId) return undefined;
+      const queryKey = ["workout-session-detail", sessionId];
+      await queryClient.cancelQueries({ queryKey });
+      const previous = queryClient.getQueryData<WorkoutSessionDetail>(queryKey);
+      if (previous) {
+        const nextNotes: Record<string, string> = { ...(previous.exerciseNotes ?? {}) };
+        const trimmed = vars.note.trim();
+        if (trimmed) {
+          nextNotes[vars.exerciseName] = trimmed;
+        } else {
+          delete nextNotes[vars.exerciseName];
+        }
+        queryClient.setQueryData<WorkoutSessionDetail>(queryKey, {
+          ...previous,
+          exerciseNotes: nextNotes,
+        });
+      }
+      return { previous };
+    },
+    onError: (error, _vars, context) => {
+      if (sessionId && context?.previous) {
+        queryClient.setQueryData(["workout-session-detail", sessionId], context.previous);
+      }
+      Alert.alert("Error", error instanceof Error ? error.message : "Failed to save note.");
+    },
+    onSuccess: (updated) => {
+      if (!sessionId) return;
+      // Reconcile with what the server actually saved (preserves other fields too).
+      queryClient.setQueryData<WorkoutSessionDetail>(
+        ["workout-session-detail", sessionId],
+        (old) => (old ? { ...old, exerciseNotes: updated.exerciseNotes ?? null } : old)
+      );
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["workout-sessions"] });
+    },
+  });
+
   const handleSessionMenu = () => {
     if (isPreviewId || isWebPreview) return;
     Keyboard.dismiss();
@@ -768,6 +833,30 @@ export default function WorkoutSessionScreen() {
     setRenameModalVisible(false);
     Keyboard.dismiss();
     void renameSessionMutation.mutateAsync(trimmed);
+  };
+
+  const openExerciseNoteEditor = (exerciseName: string) => {
+    if (isPreviewId || isWebPreview) return;
+    if (session?.finished) return;
+    const existing = sessionQuery.data?.exerciseNotes?.[exerciseName] ?? "";
+    setExerciseNoteEditing(exerciseName);
+    setExerciseNoteText(existing);
+  };
+
+  const handleExerciseNoteSave = () => {
+    if (!exerciseNoteEditing) return;
+    const exerciseName = exerciseNoteEditing;
+    const note = exerciseNoteText;
+    setExerciseNoteEditing(null);
+    setExerciseNoteText("");
+    Keyboard.dismiss();
+    void editExerciseNotesMutation.mutateAsync({ exerciseName, note });
+  };
+
+  const handleExerciseNoteCancel = () => {
+    setExerciseNoteEditing(null);
+    setExerciseNoteText("");
+    Keyboard.dismiss();
   };
 
   useEffect(() => {
@@ -1036,7 +1125,10 @@ export default function WorkoutSessionScreen() {
           </View>
         ) : session ? (
           <View style={styles.cardsWrap}>
-            {session.exerciseCards.map((card) => (
+            {session.exerciseCards.map((card) => {
+              const noteText = sessionQuery.data?.exerciseNotes?.[card.name] ?? "";
+              const hasNote = noteText.trim().length > 0;
+              return (
               <View key={card.name} style={styles.exerciseCard}>
                 <View style={styles.exerciseHeader}>
                   <View>
@@ -1048,6 +1140,25 @@ export default function WorkoutSessionScreen() {
                   </View>
                   <DotsGlyph />
                 </View>
+
+                {!isPreviewId && !isWebPreview ? (
+                  hasNote ? (
+                    <Pressable
+                      onPress={() => openExerciseNoteEditor(card.name)}
+                      style={styles.exerciseNoteRow}
+                      disabled={session.finished}
+                    >
+                      <Text style={styles.exerciseNoteText}>{noteText}</Text>
+                    </Pressable>
+                  ) : !session.finished ? (
+                    <Pressable
+                      onPress={() => openExerciseNoteEditor(card.name)}
+                      style={styles.exerciseNoteRow}
+                    >
+                      <Text style={styles.exerciseNoteAdd}>＋ Add note</Text>
+                    </Pressable>
+                  ) : null
+                ) : null}
 
                 <View style={styles.tableHeader}>
                   <Text style={[styles.tableHeaderLabel, styles.colSet]}>Set</Text>
@@ -1157,9 +1268,6 @@ export default function WorkoutSessionScreen() {
                           {row.checked ? <CheckGlyph /> : null}
                         </Pressable>
                       </View>
-                      {row.live.notes ? (
-                        <Text style={styles.setNoteText}>{row.live.notes}</Text>
-                      ) : null}
                     </View>
                   );
                 })}
@@ -1170,7 +1278,8 @@ export default function WorkoutSessionScreen() {
                   </Pressable>
                 )}
               </View>
-            ))}
+              );
+            })}
 
             {!session.finished && (
               <Pressable
@@ -1249,6 +1358,46 @@ export default function WorkoutSessionScreen() {
               >
                 <Text style={styles.modalButtonConfirmText}>
                   {renameSessionMutation.isPending ? "Saving..." : "Save"}
+                </Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={exerciseNoteEditing != null}
+        transparent
+        animationType="fade"
+        onRequestClose={handleExerciseNoteCancel}
+      >
+        <Pressable style={styles.modalOverlay} onPress={handleExerciseNoteCancel}>
+          <Pressable style={styles.modalCard} onPress={() => {}}>
+            <Text style={styles.modalTitle}>
+              {exerciseNoteEditing ? `Note · ${exerciseNoteEditing}` : "Note"}
+            </Text>
+            <TextInput
+              style={[styles.modalInput, styles.modalInputMultiline]}
+              value={exerciseNoteText}
+              onChangeText={setExerciseNoteText}
+              placeholder="e.g. Felt heavy today, focus on form"
+              placeholderTextColor={COLORS.textTertiary}
+              autoFocus
+              multiline
+              numberOfLines={4}
+              textAlignVertical="top"
+            />
+            <View style={styles.modalButtons}>
+              <Pressable style={styles.modalButtonCancel} onPress={handleExerciseNoteCancel}>
+                <Text style={styles.modalButtonCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={styles.modalButtonConfirm}
+                onPress={handleExerciseNoteSave}
+                disabled={editExerciseNotesMutation.isPending}
+              >
+                <Text style={styles.modalButtonConfirmText}>
+                  {editExerciseNotesMutation.isPending ? "Saving..." : "Save"}
                 </Text>
               </Pressable>
             </View>
@@ -1337,7 +1486,22 @@ const styles = StyleSheet.create({
   },
   checkCell: { width: 30, height: 30, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, alignItems: "center", justifyContent: "center", marginLeft: 8 },
   checkCellFilled: { backgroundColor: COLORS.green, borderColor: COLORS.green },
-  setNoteText: { fontSize: 12, color: COLORS.textSecondary, fontStyle: "italic", paddingHorizontal: 20, paddingBottom: 6, paddingTop: 2 },
+  exerciseNoteRow: {
+    paddingHorizontal: 18,
+    paddingTop: 2,
+    paddingBottom: 14,
+  },
+  exerciseNoteText: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    fontStyle: "italic",
+    lineHeight: 18,
+  },
+  exerciseNoteAdd: {
+    fontSize: 13,
+    color: COLORS.textTertiary,
+    fontWeight: "500",
+  },
   addSetRow: { alignItems: "center", justifyContent: "center", paddingVertical: 14, borderTopWidth: 1, borderTopColor: COLORS.border },
   addSetText: { fontSize: 16, fontWeight: "600", color: COLORS.textSecondary },
   emptyWrap: { alignItems: "center", paddingHorizontal: 24, paddingTop: 100 },
@@ -1411,6 +1575,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
     marginBottom: 20,
+  },
+  modalInputMultiline: {
+    minHeight: 96,
+    paddingTop: 12,
   },
   modalButtons: {
     flexDirection: "row",
