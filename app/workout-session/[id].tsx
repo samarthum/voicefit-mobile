@@ -616,6 +616,47 @@ export default function WorkoutSessionScreen() {
     },
   });
 
+  const deleteSetMutation = useMutation({
+    mutationFn: async (setId: string) => {
+      const token = await getToken();
+      if (!token) throw new Error("Not signed in");
+      return apiRequest<{ deleted: boolean }>(`/api/workout-sets/${setId}`, {
+        method: "DELETE",
+        token,
+      });
+    },
+    onMutate: async (setId: string) => {
+      if (!sessionId) return undefined;
+      const queryKey = ["workout-session-detail", sessionId];
+      await queryClient.cancelQueries({ queryKey });
+      const previous = queryClient.getQueryData<WorkoutSessionDetail>(queryKey);
+      if (previous) {
+        queryClient.setQueryData<WorkoutSessionDetail>(queryKey, {
+          ...previous,
+          sets: previous.sets.filter((s) => s.id !== setId),
+        });
+      }
+      // Drop the draft entry for the deleted set so it doesn't linger.
+      setDrafts((prev) => {
+        if (!prev[setId]) return prev;
+        const next = { ...prev };
+        delete next[setId];
+        return next;
+      });
+      return { previous };
+    },
+    onError: (error, _vars, context) => {
+      if (sessionId && context?.previous) {
+        queryClient.setQueryData(["workout-session-detail", sessionId], context.previous);
+      }
+      setLiveError(error instanceof Error ? error.message : "Failed to delete set.");
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["workout-sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+  });
+
   const finishMutation = useMutation({
     mutationFn: async () => {
       if (!sessionId) throw new Error("Invalid session id");
@@ -857,6 +898,27 @@ export default function WorkoutSessionScreen() {
     });
   };
 
+  const handleDeleteSet = (set: WorkoutSet) => {
+    if (isPreviewId || isWebPreview) return;
+    if (session?.finished) return;
+    if (set.id.startsWith("temp-")) {
+      Alert.alert("Still saving", "Hang on a moment, then try again.");
+      return;
+    }
+    Alert.alert(
+      "Delete this set?",
+      "This cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => void deleteSetMutation.mutateAsync(set.id),
+        },
+      ]
+    );
+  };
+
   const handleSaveLiveSet = async (set: WorkoutSet) => {
     const draft = drafts[set.id] ?? { reps: "", weightKg: "", durationMinutes: "" };
     const reps = parseOptionalInt(draft.reps);
@@ -1045,11 +1107,16 @@ export default function WorkoutSessionScreen() {
                   return (
                     <View key={row.id}>
                       <View style={[styles.setRow, row.checked ? styles.setRowChecked : null]}>
-                        <View style={[styles.setChip, row.isWarmup ? styles.warmupChip : null]}>
+                        <Pressable
+                          onLongPress={() => handleDeleteSet(row.live!)}
+                          delayLongPress={400}
+                          style={[styles.setChip, row.isWarmup ? styles.warmupChip : null]}
+                          hitSlop={6}
+                        >
                           <Text style={[styles.setChipText, row.isWarmup ? styles.warmupChipText : null]}>
                             {row.setLabel}
                           </Text>
-                        </View>
+                        </Pressable>
                         <Text style={[styles.rowText, styles.colPrevious]}>{row.previous}</Text>
                         <TextInput
                           style={[styles.rowInput, styles.colValue]}
