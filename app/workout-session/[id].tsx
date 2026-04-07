@@ -475,15 +475,62 @@ export default function WorkoutSessionScreen() {
         }),
       });
     },
-    onSuccess: async () => {
-      await Promise.all([
-        sessionQuery.refetch(),
-        queryClient.invalidateQueries({ queryKey: ["workout-sessions"] }),
-        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
-      ]);
+    onMutate: async (payload) => {
+      if (!sessionId) return undefined;
+      const queryKey = ["workout-session-detail", sessionId];
+      await queryClient.cancelQueries({ queryKey });
+      const previous = queryClient.getQueryData<WorkoutSessionDetail>(queryKey);
+      const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+      const nowIso = new Date().toISOString();
+      const optimisticSet: WorkoutSet = {
+        id: tempId,
+        sessionId,
+        performedAt: nowIso,
+        exerciseName: payload.exerciseName,
+        exerciseType: payload.exerciseType,
+        reps: payload.reps ?? null,
+        weightKg: payload.weightKg ?? null,
+        durationMinutes: payload.durationMinutes ?? null,
+        notes: null,
+        transcriptRaw: null,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      };
+      if (previous) {
+        queryClient.setQueryData<WorkoutSessionDetail>(queryKey, {
+          ...previous,
+          sets: [...previous.sets, optimisticSet],
+        });
+      }
+      return { previous, tempId };
     },
-    onError: (error) => {
+    onError: (error, _vars, context) => {
+      if (sessionId && context?.previous) {
+        queryClient.setQueryData(["workout-session-detail", sessionId], context.previous);
+      }
       setLiveError(error instanceof Error ? error.message : "Failed to add set.");
+    },
+    onSuccess: (newSet, _vars, context) => {
+      if (!sessionId || !context) return;
+      const queryKey = ["workout-session-detail", sessionId];
+      // Replace the optimistic temp set with the real one from the server.
+      queryClient.setQueryData<WorkoutSessionDetail>(queryKey, (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          sets: old.sets.map((s) => (s.id === context.tempId ? newSet : s)),
+        };
+      });
+      // Migrate any draft the user already started typing under the temp id.
+      setDrafts((prev) => {
+        if (!prev[context.tempId]) return prev;
+        const { [context.tempId]: tempDraft, ...rest } = prev;
+        return { ...rest, [newSet.id]: tempDraft };
+      });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["workout-sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
     },
   });
 
@@ -520,15 +567,52 @@ export default function WorkoutSessionScreen() {
         }),
       });
     },
-    onSuccess: async () => {
-      await Promise.all([
-        sessionQuery.refetch(),
-        queryClient.invalidateQueries({ queryKey: ["workout-sessions"] }),
-        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
-      ]);
+    onMutate: async (vars) => {
+      if (!sessionId) return undefined;
+      const queryKey = ["workout-session-detail", sessionId];
+      await queryClient.cancelQueries({ queryKey });
+      const previous = queryClient.getQueryData<WorkoutSessionDetail>(queryKey);
+      if (previous) {
+        queryClient.setQueryData<WorkoutSessionDetail>(queryKey, {
+          ...previous,
+          sets: previous.sets.map((s) =>
+            s.id === vars.setId
+              ? {
+                  ...s,
+                  exerciseName: vars.exerciseName,
+                  exerciseType: vars.exerciseType,
+                  reps: vars.reps,
+                  weightKg: vars.weightKg,
+                  durationMinutes: vars.durationMinutes,
+                  notes: vars.notes ?? s.notes,
+                  updatedAt: new Date().toISOString(),
+                }
+              : s
+          ),
+        });
+      }
+      return { previous };
     },
-    onError: (error) => {
+    onError: (error, _vars, context) => {
+      if (sessionId && context?.previous) {
+        queryClient.setQueryData(["workout-session-detail", sessionId], context.previous);
+      }
       setLiveError(error instanceof Error ? error.message : "Failed to update set.");
+    },
+    onSuccess: (updatedSet) => {
+      if (!sessionId) return;
+      const queryKey = ["workout-session-detail", sessionId];
+      queryClient.setQueryData<WorkoutSessionDetail>(queryKey, (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          sets: old.sets.map((s) => (s.id === updatedSet.id ? updatedSet : s)),
+        };
+      });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["workout-sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
     },
   });
 
@@ -648,15 +732,21 @@ export default function WorkoutSessionScreen() {
   useEffect(() => {
     if (!sessionQuery.data) return;
     setDrafts((prev) => {
+      // Only seed drafts for sets we haven't seen before. Overwriting existing
+      // drafts on every cache update would clobber what the user is typing in
+      // another row when an unrelated mutation lands.
+      let changed = false;
       const next = { ...prev };
       for (const set of sessionQuery.data.sets) {
+        if (next[set.id]) continue;
         next[set.id] = {
           reps: set.reps == null ? "" : String(set.reps),
           weightKg: set.weightKg == null ? "" : String(set.weightKg),
           durationMinutes: set.durationMinutes == null ? "" : String(set.durationMinutes),
         };
+        changed = true;
       }
-      return next;
+      return changed ? next : prev;
     });
   }, [sessionQuery.data]);
 
