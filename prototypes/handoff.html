@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>VoiceFit — Handoff</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@300;400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg: #0A0B0A; --surface: #141614; --surface-2: #1C1F1C;
+    --line: rgba(255,255,255,0.08); --line-2: rgba(255,255,255,0.14);
+    --text: #F3F4F1; --text-soft: rgba(243,244,241,0.68); --text-mute: rgba(243,244,241,0.42);
+    --accent: #C7FB41; --accent-ink: #0A0B0A;
+    --warn: #FFB347;
+  }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); }
+  body { font-family: "Inter Tight", system-ui, sans-serif; -webkit-font-smoothing: antialiased; letter-spacing: -0.005em; }
+  *, *::before, *::after { box-sizing: border-box; }
+  a { color: inherit; text-decoration: none; }
+  .mono { font-family: "Geist Mono", ui-monospace, monospace; }
+
+  .shell { max-width: 1240px; margin: 0 auto; padding: 88px 48px 120px; }
+
+  /* HERO */
+  .hero { display: grid; grid-template-columns: 1.3fr 1fr; gap: 60px; align-items: start; padding-bottom: 80px; border-bottom: 1px solid var(--line); }
+  .eyebrow { font-size: 11px; font-weight: 700; letter-spacing: 0.24em; text-transform: uppercase; color: var(--accent); }
+  h1 { font-size: 76px; font-weight: 700; letter-spacing: -0.045em; line-height: 0.98; margin: 18px 0 22px; }
+  .lede { font-size: 19px; color: var(--text-soft); line-height: 1.55; max-width: 580px; }
+  .hero-meta { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 24px 26px; }
+  .hero-meta .row { display: flex; justify-content: space-between; padding: 10px 0; border-top: 1px solid var(--line); }
+  .hero-meta .row:first-child { border-top: none; padding-top: 0; }
+  .hero-meta .k { font-family: "Geist Mono", monospace; font-size: 10.5px; color: var(--text-mute); letter-spacing: 0.12em; text-transform: uppercase; font-weight: 600; }
+  .hero-meta .v { font-size: 13px; color: var(--text); font-weight: 500; }
+  .hero-meta .v b { color: var(--accent); }
+
+  /* SECTION */
+  .section { margin-top: 80px; }
+  .section-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 32px; }
+  .section-head h2 { font-size: 13px; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase; color: var(--text-mute); margin: 0; }
+  .section-head .count { font-family: "Geist Mono", monospace; font-size: 11px; color: var(--text-mute); letter-spacing: 0.08em; font-weight: 600; }
+
+  /* DELIVERABLES GRID */
+  .deliverables { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
+  .card { display: block; background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 32px 34px; position: relative; overflow: hidden; transition: all 240ms cubic-bezier(0.2, 0.9, 0.3, 1); }
+  .card:hover { border-color: var(--accent); background: #181A17; transform: translateY(-2px); }
+  .card:hover .arrow { color: var(--accent); transform: translate(4px, -4px); }
+  .card.primary { background: linear-gradient(135deg, rgba(199,251,65,0.06), rgba(199,251,65,0.01)); border-color: rgba(199,251,65,0.25); grid-column: span 2; }
+  .card.primary:hover { border-color: var(--accent); background: linear-gradient(135deg, rgba(199,251,65,0.10), rgba(199,251,65,0.02)); }
+
+  .card-n { font-family: "Geist Mono", monospace; font-size: 11px; color: var(--accent); letter-spacing: 0.18em; font-weight: 700; margin-bottom: 14px; display: flex; align-items: center; gap: 10px; }
+  .card-n .tag { padding: 3px 8px; background: rgba(199,251,65,0.1); border: 1px solid rgba(199,251,65,0.25); border-radius: 999px; font-size: 9px; letter-spacing: 0.14em; }
+  .card-title { font-size: 26px; font-weight: 600; letter-spacing: -0.025em; line-height: 1.15; margin-bottom: 10px; }
+  .card.primary .card-title { font-size: 36px; letter-spacing: -0.03em; }
+  .card-desc { font-size: 14px; color: var(--text-soft); line-height: 1.55; max-width: 520px; }
+  .card-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 22px; }
+  .chip { font-family: "Geist Mono", monospace; font-size: 10px; padding: 4px 9px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 999px; color: var(--text-soft); letter-spacing: 0.06em; font-weight: 600; }
+  .arrow { position: absolute; top: 30px; right: 32px; font-size: 22px; color: var(--text-mute); transition: all 240ms; line-height: 1; }
+
+  /* PRINCIPLES */
+  .principles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  .prin { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 24px; }
+  .prin .num { font-family: "Geist Mono", monospace; font-size: 11px; color: var(--accent); letter-spacing: 0.14em; font-weight: 700; }
+  .prin .t { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; margin: 10px 0 8px; line-height: 1.2; }
+  .prin .d { font-size: 12.5px; color: var(--text-soft); line-height: 1.55; }
+
+  /* OPEN QUESTIONS */
+  .questions { background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 32px 36px; }
+  .q-item { padding: 18px 0; border-top: 1px solid var(--line); display: grid; grid-template-columns: 80px 1fr auto; gap: 24px; align-items: baseline; }
+  .q-item:first-child { border-top: none; padding-top: 0; }
+  .q-num { font-family: "Geist Mono", monospace; font-size: 11px; color: var(--accent); letter-spacing: 0.12em; font-weight: 700; }
+  .q-text { font-size: 14.5px; color: var(--text); line-height: 1.5; }
+  .q-text span { color: var(--text-soft); }
+  .q-owner { font-family: "Geist Mono", monospace; font-size: 10.5px; color: var(--text-mute); letter-spacing: 0.1em; text-transform: uppercase; font-weight: 600; }
+
+  /* FOOTER */
+  .footer { margin-top: 100px; padding-top: 40px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; font-size: 11.5px; color: var(--text-mute); font-family: "Geist Mono", monospace; letter-spacing: 0.08em; }
+
+  @media (max-width: 900px) {
+    .hero, .deliverables, .principles { grid-template-columns: 1fr; }
+    .card.primary { grid-column: span 1; }
+    h1 { font-size: 52px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="shell">
+  <div class="hero">
+    <div>
+      <div class="eyebrow">VoiceFit · Handoff Package · v1.0</div>
+      <h1>Voice-first fitness, shipped.</h1>
+      <div class="lede">
+        A complete design package for a mobile fitness app where speaking is the primary input. Everything an engineer, PM, or brand reviewer needs to build, check, or critique — prototypes, system, motion, edge cases, and flows.
+      </div>
+    </div>
+    <div class="hero-meta">
+      <div class="row"><div class="k">Platform</div><div class="v">iOS · 390×844 base</div></div>
+      <div class="row"><div class="k">Direction</div><div class="v"><b>Pulse</b> · dark lime-accent</div></div>
+      <div class="row"><div class="k">Primary input</div><div class="v">Voice (Claude)</div></div>
+      <div class="row"><div class="k">Target save</div><div class="v"><b>&lt; 8s</b> tap → done</div></div>
+      <div class="row"><div class="k">Files</div><div class="v">6 deliverables</div></div>
+      <div class="row"><div class="k">Last updated</div><div class="v">Apr 2026</div></div>
+    </div>
+  </div>
+
+  <!-- DELIVERABLES -->
+  <div class="section">
+    <div class="section-head">
+      <h2>01 · Deliverables</h2>
+      <div class="count">6 files</div>
+    </div>
+
+    <div class="deliverables">
+
+      <a href="#" class="card primary">
+        <div class="card-n">01 <span class="tag">Start here</span></div>
+        <div class="card-title">Directions canvas</div>
+        <div class="card-desc">Two full art directions — Pulse (dark + lime) and Ember (warm orange) — each with home, voice flow, workout, and sign-in. Pan/zoom canvas with side-by-side artboards. Every screen is real hi-fi, not placeholder.</div>
+        <div class="card-chips">
+          <div class="chip">9 artboards</div>
+          <div class="chip">2 directions</div>
+          <div class="chip">Voice flow · 4 states</div>
+          <div class="chip">Zoomable</div>
+        </div>
+        <div class="arrow">↗</div>
+      </a>
+
+      <a href="#" class="card">
+        <div class="card-n">02 · Foundations</div>
+        <div class="card-title">Design tokens</div>
+        <div class="card-desc">Color ramps, type scale, spacing, radii, elevation — with live swatches and copy-ready names. One source of truth for implementation.</div>
+        <div class="card-chips">
+          <div class="chip">Colors</div>
+          <div class="chip">Type · 8 steps</div>
+          <div class="chip">Spacing · 4px grid</div>
+          <div class="chip">Radii</div>
+        </div>
+        <div class="arrow">↗</div>
+      </a>
+
+      <a href="#" class="card">
+        <div class="card-n">03 · Motion</div>
+        <div class="card-title">Motion spec</div>
+        <div class="card-desc">Four easings, three duration tiers, and the exact voice-flow choreography. Every signature moment has a live interactive demo.</div>
+        <div class="card-chips">
+          <div class="chip">4 easings</div>
+          <div class="chip">Voice-flow demo</div>
+          <div class="chip">Reduced-motion</div>
+          <div class="chip">Framer snippets</div>
+        </div>
+        <div class="arrow">↗</div>
+      </a>
+
+      <a href="#" class="card">
+        <div class="card-n">04 · Resilience</div>
+        <div class="card-title">Edge states</div>
+        <div class="card-desc">Eight non-happy-path screens: cold start, offline, mic denied, first-ever use, overflow text, low-confidence clarify, server timeout, and empty history.</div>
+        <div class="card-chips">
+          <div class="chip">8 screens</div>
+          <div class="chip">Offline-first</div>
+          <div class="chip">Privacy copy</div>
+          <div class="chip">No red-as-alarm</div>
+        </div>
+        <div class="arrow">↗</div>
+      </a>
+
+      <a href="#" class="card">
+        <div class="card-n">05 · Journeys</div>
+        <div class="card-title">User flows</div>
+        <div class="card-desc">Six end-to-end journeys covering 90% of sessions. Each step-by-step with branches, timings, and the one metric that confirms it's working.</div>
+        <div class="card-chips">
+          <div class="chip">6 flows</div>
+          <div class="chip">Branches mapped</div>
+          <div class="chip">Success metrics</div>
+        </div>
+        <div class="arrow">↗</div>
+      </a>
+
+      <a href="#" class="card">
+        <div class="card-n">06 · Interactive</div>
+        <div class="card-title">Working prototype</div>
+        <div class="card-desc">Earlier clickable prototype with Tweaks enabled. Useful for walking stakeholders through the tap-to-speak loop in context.</div>
+        <div class="card-chips">
+          <div class="chip">Clickable</div>
+          <div class="chip">Tweaks</div>
+          <div class="chip">v0</div>
+        </div>
+        <div class="arrow">↗</div>
+      </a>
+
+    </div>
+  </div>
+
+  <!-- PRINCIPLES -->
+  <div class="section">
+    <div class="section-head">
+      <h2>02 · Design principles</h2>
+      <div class="count">4 commitments</div>
+    </div>
+
+    <div class="principles">
+      <div class="prin">
+        <div class="num">P1</div>
+        <div class="t">Voice first, not voice only.</div>
+        <div class="d">Every voice action has a tap / keyboard equivalent one layer deep. Voice is the fast path, not the lock-in.</div>
+      </div>
+      <div class="prin">
+        <div class="num">P2</div>
+        <div class="t">Confidence, not certainty.</div>
+        <div class="d">When Claude isn't sure, say so — flag "estimated" plainly, never hide it. Trust is earned by honesty, not polish.</div>
+      </div>
+      <div class="prin">
+        <div class="num">P3</div>
+        <div class="t">Under-celebrate.</div>
+        <div class="d">Dark surfaces, one bright accent, no gamification dopamine. Real progress is quiet. PR banners earn their moment.</div>
+      </div>
+      <div class="prin">
+        <div class="num">P4</div>
+        <div class="t">Fewer numbers.</div>
+        <div class="d">Show the one stat that answers "am I on track?" — bury the rest behind taps. Density is the enemy of glanceability.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- OPEN QUESTIONS -->
+  <div class="section">
+    <div class="section-head">
+      <h2>03 · Open questions</h2>
+      <div class="count">For next review</div>
+    </div>
+
+    <div class="questions">
+      <div class="q-item">
+        <div class="q-num">Q1</div>
+        <div class="q-text">Can the <b>500ms minimum hold</b> on <i>interpreting</i> be shortened for known utterance shapes (e.g. "weight 72.4") without breaking the state-change feel? <span>· motion + latency</span></div>
+        <div class="q-owner">Eng · Motion</div>
+      </div>
+      <div class="q-item">
+        <div class="q-num">Q2</div>
+        <div class="q-text">When Claude infers <b>estimated macros</b>, do we show confidence as a percentage, a verbal band ("roughly"), or just the "estimated" flag? <span>· data visibility</span></div>
+        <div class="q-owner">PM · Research</div>
+      </div>
+      <div class="q-item">
+        <div class="q-num">Q3</div>
+        <div class="q-text">Should the <b>coach surface</b> be accessible via voice-anywhere ("Talk to coach") on day 1, or gated until the user has 1 week of data? <span>· coach readiness</span></div>
+        <div class="q-owner">PM</div>
+      </div>
+      <div class="q-item">
+        <div class="q-num">Q4</div>
+        <div class="q-text">Do we support a <b>keyboard-first fallback home</b> for users who deny mic permanently, or deep-link them to Settings every launch? <span>· accessibility</span></div>
+        <div class="q-owner">Design · A11y</div>
+      </div>
+      <div class="q-item">
+        <div class="q-num">Q5</div>
+        <div class="q-text">Ember direction — should we keep it as a <b>"light-mode" variant</b>, a separate brand route, or retire it now that Pulse is the commit? <span>· brand</span></div>
+        <div class="q-owner">Brand</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <div>VoiceFit Mobile · Handoff v1.0 · Apr 2026</div>
+    <div>designed for review · iterate loud</div>
+  </div>
+</div>
+
+</body>
+</html>

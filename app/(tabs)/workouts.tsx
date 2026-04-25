@@ -18,16 +18,20 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { FloatingCommandBar } from "../../components/FloatingCommandBar";
 import { useCommandCenter } from "../../components/command-center";
 import { apiRequest } from "../../lib/api-client";
+import { color as token, font, radius as r } from "../../lib/tokens";
 
 const COLORS = {
-  bg: "#FFFFFF",
-  surface: "#F8F8F8",
-  border: "#E8E8E8",
-  textPrimary: "#1A1A1A",
-  textSecondary: "#8E8E93",
-  textTertiary: "#AEAEB2",
-  workouts: "#AF52DE",
-  steps: "#34C759",
+  bg: token.bg,
+  surface: token.surface,
+  surface2: token.surface2,
+  border: token.line,
+  textPrimary: token.text,
+  textSecondary: token.textSoft,
+  textTertiary: token.textMute,
+  workouts: token.accent,
+  steps: token.positive,
+  accent: token.accent,
+  accentInk: token.accentInk,
 };
 
 interface WorkoutSessionListItem {
@@ -53,79 +57,70 @@ type SessionPreview = {
   title: string;
   subtitle: string;
   status: "active" | "done";
-  exercises: Array<{
-    name: string;
-    detail: string;
-    weight: string;
-    reps: string;
-  }>;
-  summary: string;
+  setsLabel: string;
+  prCount: number;
   navigable: boolean;
 };
 
 type StatsPreview = {
   sessions: string;
-  sets: string;
-  exercises: string;
+  volume: string;
+  prs: string;
 };
 
 const SAMPLE_STATS: StatsPreview = {
-  sessions: "12",
-  sets: "47",
-  exercises: "6",
+  sessions: "3",
+  volume: "12,480",
+  prs: "2",
 };
 
 const SAMPLE_SESSIONS: SessionPreview[] = [
   {
     id: "preview-active",
-    title: "Morning Push",
-    subtitle: "Today · 10:15 AM",
+    title: "Pull day",
+    subtitle: "Today · 7:32 AM",
     status: "active",
-    exercises: [
-      {
-        name: "Bench Press",
-        detail: "Barbell · Resistance",
-        weight: "80 kg",
-        reps: "3 × 8 reps",
-      },
-      {
-        name: "Overhead Press",
-        detail: "Dumbbell · Resistance",
-        weight: "24 kg",
-        reps: "3 × 10 reps",
-      },
-    ],
-    summary: "2 exercises · 6 sets",
+    setsLabel: "8 / 12",
+    prCount: 1,
     navigable: true,
   },
   {
     id: "preview-done",
-    title: "Leg Day",
-    subtitle: "Yesterday · 6:30 PM",
+    title: "Push day",
+    subtitle: "Monday, Apr 20",
     status: "done",
-    exercises: [
-      {
-        name: "Barbell Squat",
-        detail: "Barbell · Resistance",
-        weight: "100 kg",
-        reps: "4 × 6 reps",
-      },
-      {
-        name: "Romanian Deadlift",
-        detail: "Barbell · Resistance",
-        weight: "80 kg",
-        reps: "3 × 10 reps",
-      },
-    ],
-    summary: "2 exercises · 7 sets",
+    setsLabel: "9",
+    prCount: 1,
     navigable: true,
+  },
+  {
+    id: "preview-legs",
+    title: "Legs",
+    subtitle: "Friday, Apr 17",
+    status: "done",
+    setsLabel: "12",
+    prCount: 0,
+    navigable: false,
   },
 ];
 
+function getISOWeek(date: Date): number {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+}
+
+function formatWeekEyebrow(now: Date): string {
+  const month = now.toLocaleString("en-US", { month: "short" });
+  return `Week ${getISOWeek(now)} · ${month}`;
+}
+
 function PlusGlyph() {
   return (
-    <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
-      <Path d="M12 5V19M5 12H19" stroke="#FFFFFF" strokeWidth={2.5} strokeLinecap="round" />
+    <Svg width={12} height={12} viewBox="0 0 12 12" fill="none">
+      <Path d="M6 2V10M2 6H10" stroke={token.accentInk} strokeWidth={1.8} strokeLinecap="round" />
     </Svg>
   );
 }
@@ -255,24 +250,41 @@ export default function WorkoutsScreen() {
       title: session.title,
       subtitle: formatSessionSubtitle(session.startedAt),
       status: session.endedAt ? "done" : "active",
-      exercises: [],
-      summary: `${session.setCount} ${session.setCount === 1 ? "set" : "sets"}`,
+      setsLabel: String(session.setCount),
+      prCount: 0,
       navigable: true,
     }));
   }, [isWebPreview, liveSessions]);
 
   const stats = useMemo<StatsPreview>(() => {
     if (isWebPreview) return SAMPLE_STATS;
-    if (!thisWeekSessions.length) {
-      return { sessions: "0", sets: "0", exercises: "0" };
-    }
-    const totalSets = thisWeekSessions.reduce((sum, session) => sum + session.setCount, 0);
     return {
       sessions: String(thisWeekSessions.length),
-      sets: String(totalSets),
-      exercises: "--",
+      volume: "—",
+      prs: "0",
     };
   }, [isWebPreview, thisWeekSessions]);
+
+  const weekBars = useMemo(() => {
+    const labels = ["M", "T", "W", "T", "F", "S", "S"];
+    if (isWebPreview) {
+      return labels.map((d, i) => ({ d, v: [0, 0, 12, 8, 0, 0, 9][i], live: i === 3 }));
+    }
+    const now = new Date();
+    const todayIdx = (now.getDay() + 6) % 7;
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - todayIdx);
+    monday.setHours(0, 0, 0, 0);
+    const counts = labels.map(() => 0);
+    for (const session of thisWeekSessions) {
+      const sessionDate = new Date(session.startedAt);
+      const idx = Math.floor((sessionDate.getTime() - monday.getTime()) / 86400000);
+      if (idx >= 0 && idx < 7) counts[idx] += session.setCount;
+    }
+    return labels.map((d, i) => ({ d, v: counts[i], live: i === todayIdx }));
+  }, [isWebPreview, thisWeekSessions]);
+
+  const weekEyebrow = useMemo(() => formatWeekEyebrow(new Date()), []);
 
   const onRefresh = async () => {
     if (isWebPreview) return;
@@ -316,7 +328,10 @@ export default function WorkoutsScreen() {
         keyboardDismissMode="on-drag"
       >
         <View style={styles.header}>
-          <Text style={styles.pageTitle}>Workouts</Text>
+          <View>
+            <Text style={styles.pageEyebrow}>{weekEyebrow}</Text>
+            <Text style={styles.pageTitle}>Train</Text>
+          </View>
           <Pressable
             style={[styles.newButton, createSessionMutation.isPending ? styles.buttonDisabled : null]}
             onPress={() => void handleCreateSession()}
@@ -324,23 +339,58 @@ export default function WorkoutsScreen() {
           >
             <PlusGlyph />
             <Text style={styles.newButtonText}>
-              {createSessionMutation.isPending ? "Creating..." : "New Session"}
+              {createSessionMutation.isPending ? "Creating…" : "New session"}
             </Text>
           </Pressable>
         </View>
 
         <View style={styles.statsRow}>
           <View style={styles.statPill}>
-            <Text style={[styles.statValue, styles.statValueAccent]}>{stats.sessions}</Text>
-            <Text style={styles.statLabel}>Sessions</Text>
+            <Text style={styles.statStatLabel}>Sessions</Text>
+            <Text style={styles.statValue}>{stats.sessions}</Text>
+            <Text style={styles.statSubLabel}>this week</Text>
           </View>
           <View style={styles.statPill}>
-            <Text style={styles.statValue}>{stats.sets}</Text>
-            <Text style={styles.statLabel}>Sets This{"\n"}week</Text>
+            <Text style={styles.statStatLabel}>Volume</Text>
+            <Text style={styles.statValue}>{stats.volume}</Text>
+            <Text style={styles.statSubLabel}>kg</Text>
           </View>
-          <View style={styles.statPill}>
-            <Text style={styles.statValue}>{stats.exercises}</Text>
-            <Text style={styles.statLabel}>Exercises</Text>
+          <View style={[styles.statPill, styles.statPillAccent]}>
+            <Text style={[styles.statStatLabel, styles.statStatLabelAccent]}>PRs</Text>
+            <Text style={[styles.statValue, styles.statValueAccent]}>{stats.prs}</Text>
+            <Text style={styles.statSubLabel}>new</Text>
+          </View>
+        </View>
+
+        <View style={styles.weekCard}>
+          <View style={styles.weekCardHeader}>
+            <Text style={styles.weekCardLabel}>Week at a glance</Text>
+            <Text style={styles.weekCardHint}>Sets per day</Text>
+          </View>
+          <View style={styles.weekBars}>
+            {weekBars.map((bar, i) => (
+              <View key={i} style={styles.weekBarColumn}>
+                <View style={styles.weekBarTrack}>
+                  <View
+                    style={[
+                      styles.weekBar,
+                      {
+                        height: Math.max(bar.v * 4, bar.v ? 12 : 3),
+                        backgroundColor: bar.live ? token.accent : bar.v ? token.textSoft : token.line,
+                      },
+                    ]}
+                  />
+                </View>
+                <Text
+                  style={[
+                    styles.weekBarLabel,
+                    bar.live ? styles.weekBarLabelLive : null,
+                  ]}
+                >
+                  {bar.d}
+                </Text>
+              </View>
+            ))}
           </View>
         </View>
 
@@ -356,52 +406,46 @@ export default function WorkoutsScreen() {
           sessionCards.map((session) => (
             <Pressable
               key={session.id}
-              style={styles.sessionCard}
+              style={[
+                styles.sessionCard,
+                session.status === "active" ? styles.sessionCardActive : null,
+              ]}
               onPress={() => handleOpenSession(session)}
               disabled={!session.navigable}
             >
               <View style={styles.sessionTop}>
-                <View>
+                <View style={styles.sessionTopText}>
                   <Text style={styles.sessionTitle}>{session.title}</Text>
                   <Text style={styles.sessionDate}>{session.subtitle}</Text>
                 </View>
-                <View
-                  style={[
-                    styles.statusPill,
-                    session.status === "active" ? styles.statusActive : styles.statusDone,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.statusText,
-                      session.status === "active"
-                        ? styles.statusTextActive
-                        : styles.statusTextDone,
-                    ]}
-                  >
-                    {session.status === "active" ? "Active" : "Done"}
-                  </Text>
-                </View>
-              </View>
-
-              <View style={styles.exerciseList}>
-                {session.exercises.map((exercise) => (
-                  <View key={`${session.id}-${exercise.name}`} style={styles.exerciseRow}>
-                    <View style={styles.exerciseCopy}>
-                      <Text style={styles.exerciseName}>{exercise.name}</Text>
-                      <Text style={styles.exerciseDetail}>{exercise.detail}</Text>
-                    </View>
-                    <View style={styles.exerciseRight}>
-                      <Text style={styles.exerciseWeight}>{exercise.weight}</Text>
-                      <Text style={styles.exerciseReps}>{exercise.reps}</Text>
-                    </View>
+                {session.status === "active" ? (
+                  <View style={styles.liveBadge}>
+                    <View style={styles.liveDot} />
+                    <Text style={styles.liveText}>LIVE</Text>
                   </View>
-                ))}
+                ) : (
+                  <View style={styles.doneBadge}>
+                    <Text style={styles.doneText}>Done</Text>
+                  </View>
+                )}
               </View>
 
-              <View style={styles.sessionFooter}>
-                <Text style={styles.sessionSummary}>{session.summary}</Text>
-                <ChevronGlyph />
+              <View style={styles.sessionMetrics}>
+                <View style={styles.sessionMetric}>
+                  <Text style={styles.sessionMetricLabel}>Sets</Text>
+                  <Text style={styles.sessionMetricValue}>{session.setsLabel}</Text>
+                </View>
+                {session.prCount > 0 ? (
+                  <View style={styles.sessionMetric}>
+                    <Text style={[styles.sessionMetricLabel, styles.sessionMetricLabelAccent]}>PRs</Text>
+                    <Text style={[styles.sessionMetricValue, styles.sessionMetricValueAccent]}>
+                      {session.prCount}
+                    </Text>
+                  </View>
+                ) : null}
+                <View style={styles.sessionChevron}>
+                  <ChevronGlyph />
+                </View>
               </View>
             </Pressable>
           ))
@@ -436,7 +480,7 @@ export default function WorkoutsScreen() {
       ) : null}
 
       <FloatingCommandBar
-        hint='"Did 3 sets of squats..."'
+        hint="80 kilos for 10 reps…"
         onPress={() => cc.open()}
         onMicPress={() => cc.startRecording()}
       />
@@ -463,25 +507,37 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingBottom: 20,
   },
+  pageEyebrow: {
+    fontFamily: font.sans[600],
+    fontSize: 11,
+    fontWeight: "600",
+    letterSpacing: 1.76,
+    textTransform: "uppercase",
+    color: token.textMute,
+  },
   pageTitle: {
-    fontSize: 28,
-    fontWeight: "700",
-    letterSpacing: -0.5,
-    color: COLORS.textPrimary,
+    fontFamily: font.sans[600],
+    fontSize: 26,
+    fontWeight: "600",
+    letterSpacing: -0.65,
+    color: token.text,
+    marginTop: 2,
   },
   newButton: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderRadius: 999,
-    backgroundColor: COLORS.textPrimary,
+    paddingHorizontal: 14,
+    height: 36,
+    borderRadius: r.pill,
+    backgroundColor: token.accent,
   },
   newButtonText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#FFFFFF",
+    fontFamily: font.sans[700],
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 0.48,
+    color: token.accentInk,
   },
   buttonDisabled: {
     opacity: 0.65,
@@ -489,184 +545,277 @@ const styles = StyleSheet.create({
   statsRow: {
     flexDirection: "row",
     gap: 10,
-    paddingBottom: 24,
+    paddingBottom: 18,
   },
   statPill: {
     flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 12,
-    backgroundColor: COLORS.surface,
-    paddingHorizontal: 8,
-    paddingVertical: 16,
-    minHeight: 78,
+    borderRadius: r.sm,
+    backgroundColor: token.surface,
+    borderWidth: 1,
+    borderColor: token.line,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  statPillAccent: {
+    borderColor: "rgba(199,251,65,0.3)",
+  },
+  statStatLabel: {
+    fontFamily: font.sans[600],
+    fontSize: 9.5,
+    fontWeight: "600",
+    letterSpacing: 1.52,
+    textTransform: "uppercase",
+    color: token.textMute,
+  },
+  statStatLabelAccent: {
+    color: token.accent,
   },
   statValue: {
+    marginTop: 4,
+    fontFamily: font.mono[500],
     fontSize: 22,
-    fontWeight: "700",
-    color: COLORS.textPrimary,
+    fontWeight: "500",
+    letterSpacing: -0.66,
+    color: token.text,
   },
   statValueAccent: {
-    color: COLORS.workouts,
+    color: token.accent,
   },
-  statLabel: {
+  statSubLabel: {
     marginTop: 2,
-    textAlign: "center",
-    fontSize: 12,
-    lineHeight: 16,
-    color: COLORS.textSecondary,
-    fontWeight: "500",
+    fontFamily: font.sans[400],
+    fontSize: 10.5,
+    color: token.textMute,
+  },
+  weekCard: {
+    borderRadius: r.sm,
+    backgroundColor: token.surface,
+    borderWidth: 1,
+    borderColor: token.line,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    marginBottom: 22,
+  },
+  weekCardHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  weekCardLabel: {
+    fontFamily: font.sans[600],
+    fontSize: 10.5,
+    fontWeight: "600",
+    letterSpacing: 1.68,
+    textTransform: "uppercase",
+    color: token.textMute,
+  },
+  weekCardHint: {
+    fontFamily: font.sans[400],
+    fontSize: 10.5,
+    letterSpacing: 0.84,
+    color: token.textMute,
+  },
+  weekBars: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 6,
+    height: 58,
+  },
+  weekBarColumn: {
+    flex: 1,
+    alignItems: "center",
+    gap: 6,
+  },
+  weekBarTrack: {
+    flex: 1,
+    width: "100%",
+    justifyContent: "flex-end",
+  },
+  weekBar: {
+    width: "100%",
+    borderRadius: 4,
+  },
+  weekBarLabel: {
+    fontFamily: font.sans[600],
+    fontSize: 10,
+    fontWeight: "600",
+    letterSpacing: 0.8,
+    color: token.textMute,
+  },
+  weekBarLabelLive: {
+    color: token.accent,
   },
   sectionTitle: {
     paddingBottom: 12,
-    fontSize: 20,
-    fontWeight: "700",
-    letterSpacing: -0.3,
-    color: COLORS.textPrimary,
+    fontFamily: font.sans[600],
+    fontSize: 10.5,
+    fontWeight: "600",
+    letterSpacing: 1.68,
+    textTransform: "uppercase",
+    color: token.text,
   },
   loadingWrap: {
     paddingVertical: 24,
     alignItems: "center",
   },
   sessionCard: {
-    marginBottom: 12,
+    marginBottom: 10,
     borderRadius: 16,
-    backgroundColor: COLORS.surface,
-    padding: 16,
+    backgroundColor: token.surface,
+    borderWidth: 1,
+    borderColor: token.line,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+  },
+  sessionCardActive: {
+    borderColor: "rgba(199,251,65,0.25)",
+    backgroundColor: "rgba(199,251,65,0.05)",
   },
   sessionTop: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    marginBottom: 12,
+    marginBottom: 10,
+  },
+  sessionTopText: {
+    flex: 1,
+    paddingRight: 10,
   },
   sessionTitle: {
-    fontSize: 17,
-    fontWeight: "700",
-    color: COLORS.textPrimary,
+    fontFamily: font.sans[600],
+    fontSize: 15,
+    fontWeight: "600",
+    letterSpacing: -0.15,
+    color: token.text,
   },
   sessionDate: {
-    marginTop: 2,
-    fontSize: 13,
-    color: COLORS.textSecondary,
+    marginTop: 3,
+    fontFamily: font.sans[400],
+    fontSize: 11.5,
+    color: token.textMute,
   },
-  statusPill: {
-    borderRadius: 999,
+  liveBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: token.accent,
+    borderRadius: r.pill,
     paddingHorizontal: 10,
     paddingVertical: 4,
   },
-  statusActive: {
-    backgroundColor: "rgba(52,199,89,0.12)",
+  liveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: token.accentInk,
   },
-  statusDone: {
-    backgroundColor: COLORS.border,
-  },
-  statusText: {
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  statusTextActive: {
-    color: COLORS.steps,
-  },
-  statusTextDone: {
-    color: COLORS.textSecondary,
-  },
-  exerciseList: {
-    gap: 8,
-  },
-  exerciseRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 10,
-    backgroundColor: COLORS.bg,
-  },
-  exerciseCopy: {
-    flex: 1,
-    paddingRight: 12,
-  },
-  exerciseName: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: COLORS.textPrimary,
-  },
-  exerciseDetail: {
-    marginTop: 1,
-    fontSize: 13,
-    color: COLORS.textSecondary,
-  },
-  exerciseRight: {
-    alignItems: "flex-end",
-  },
-  exerciseWeight: {
-    fontSize: 15,
+  liveText: {
+    fontFamily: font.sans[700],
+    fontSize: 10.5,
     fontWeight: "700",
-    color: COLORS.textPrimary,
+    letterSpacing: 0.84,
+    color: token.accentInk,
   },
-  exerciseReps: {
-    marginTop: 1,
-    fontSize: 12,
-    color: COLORS.textSecondary,
+  doneBadge: {
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderRadius: r.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
   },
-  sessionFooter: {
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
+  doneText: {
+    fontFamily: font.sans[600],
+    fontSize: 10,
+    fontWeight: "600",
+    letterSpacing: 1.4,
+    textTransform: "uppercase",
+    color: token.textMute,
+  },
+  sessionMetrics: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
+    gap: 18,
+    marginTop: 4,
   },
-  sessionSummary: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
+  sessionMetric: {
+    gap: 2,
+  },
+  sessionMetricLabel: {
+    fontFamily: font.sans[600],
+    fontSize: 9.5,
+    fontWeight: "600",
+    letterSpacing: 1.33,
+    textTransform: "uppercase",
+    color: token.textMute,
+  },
+  sessionMetricLabelAccent: {
+    color: token.accent,
+  },
+  sessionMetricValue: {
+    fontFamily: font.mono[500],
+    fontSize: 15,
     fontWeight: "500",
+    letterSpacing: -0.3,
+    color: token.text,
+  },
+  sessionMetricValueAccent: {
+    color: token.accent,
+  },
+  sessionChevron: {
+    marginLeft: "auto",
   },
   emptyCard: {
-    borderRadius: 16,
-    backgroundColor: COLORS.surface,
+    borderRadius: r.md,
+    backgroundColor: token.surface,
+    borderWidth: 1,
+    borderColor: token.line,
     padding: 18,
     gap: 8,
   },
   emptyTitle: {
+    fontFamily: font.sans[600],
     fontSize: 18,
-    fontWeight: "700",
-    color: COLORS.textPrimary,
+    fontWeight: "600",
+    letterSpacing: -0.27,
+    color: token.text,
   },
   emptyBody: {
+    fontFamily: font.sans[400],
     fontSize: 14,
     lineHeight: 21,
-    color: COLORS.textSecondary,
+    color: token.textSoft,
   },
   loadMoreButton: {
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 12,
     marginBottom: 8,
-    borderRadius: 12,
-    backgroundColor: COLORS.surface,
+    borderRadius: r.sm,
+    backgroundColor: token.surface,
+    borderWidth: 1,
+    borderColor: token.line,
   },
   loadMoreText: {
-    fontSize: 14,
+    fontFamily: font.sans[600],
+    fontSize: 13,
     fontWeight: "600",
-    color: COLORS.textSecondary,
+    color: token.textSoft,
   },
   toast: {
     position: "absolute",
     left: 20,
     right: 20,
     bottom: 82,
-    borderRadius: 14,
+    borderRadius: r.sm,
     paddingVertical: 12,
     paddingHorizontal: 14,
-    backgroundColor: COLORS.textPrimary,
+    backgroundColor: token.accent,
   },
   toastText: {
-    color: "#FFFFFF",
+    fontFamily: font.sans[700],
+    color: token.accentInk,
     fontSize: 14,
-    fontWeight: "600",
+    fontWeight: "700",
     textAlign: "center",
   },
 });

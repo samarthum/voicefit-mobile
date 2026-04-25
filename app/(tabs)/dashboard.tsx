@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Platform,
   Pressable,
@@ -29,11 +29,20 @@ import { apiRequest } from "../../lib/api-client";
 import { FloatingCommandBar } from "../../components/FloatingCommandBar";
 import { useCommandCenter, COLORS, toLocalDateString, getMealVisualKind } from "../../components/command-center";
 import { getErrorMessage } from "../../components/command-center/helpers";
+import { color as token, font, radius as r } from "../../lib/tokens";
+import { Wordmark, LoadingBlock, OfflineBanner } from "../../components/pulse";
+import NetInfo from "@react-native-community/netinfo";
+import {
+  type TrendMetric,
+  TREND_TABS,
+  safeNumber,
+  buildLinePaths,
+  metricValueFromPoint,
+  metricColor,
+} from "../../lib/trends";
 
-type TrendMetric = "calories" | "steps" | "weight";
 type RecentMeal = DashboardData["recentMeals"][number];
 
-const TREND_TABS: TrendMetric[] = ["calories", "steps", "weight"];
 const DEFAULT_WEIGHT_GOAL = 70;
 
 function parseDateKey(date: string) {
@@ -64,12 +73,6 @@ function formatTrendDay(date: string) {
   return parseDateKey(date).toLocaleDateString("en-US", { weekday: "short" });
 }
 
-function safeNumber(value: number | null | undefined) {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-
-
 function progressPercent(current: number, goal: number) {
   if (!goal || goal <= 0) return 0;
   return Math.max(0, Math.min(1, current / goal));
@@ -78,21 +81,28 @@ function progressPercent(current: number, goal: number) {
 function CoachBadge() {
   return (
     <View style={styles.coachBadge}>
-      <Svg width={44} height={44} viewBox="0 0 44 44" fill="none">
-        <SvgCircle cx={22} cy={22} r={22} fill="#1A1A1A" />
-        <SvgCircle cx={22} cy={22} r={14} stroke="url(#coachGlow)" strokeOpacity={0.35} />
+      <Svg width={40} height={40} viewBox="0 0 40 40" fill="none">
+        <SvgCircle cx={20} cy={20} r={20} fill={token.accent} />
         <Path
-          d="M22 10L24 17.2L31 15.7L25.4 21L31 26.3L24 24.8L22 32L20 24.8L13 26.3L18.6 21L13 15.7L20 17.2L22 10Z"
-          fill="white"
+          d="M20 9L23.5 17L31 19L23.5 21L20 30L16.5 21L9 19L16.5 17L20 9Z"
+          fill={token.accentInk}
         />
-        <Defs>
-          <LinearGradient id="coachGlow" x1={12} y1={10} x2={34} y2={34} gradientUnits="userSpaceOnUse">
-            <Stop stopColor="#FFFFFF" />
-            <Stop offset={1} stopColor="#8E8E93" />
-          </LinearGradient>
-        </Defs>
       </Svg>
     </View>
+  );
+}
+
+function StepsTrendIcon() {
+  return (
+    <Svg width={14} height={14} viewBox="0 0 14 14" fill="none">
+      <Path
+        d="M4 11V7M4 7L7 4L10 7M10 7V11"
+        stroke={token.accent}
+        strokeWidth={1.4}
+        strokeLinecap="round"
+        fill="none"
+      />
+    </Svg>
   );
 }
 
@@ -198,22 +208,26 @@ function QuickMealThumb({ description }: { description: string }) {
 }
 
 function CalorieRing({ consumed, goal }: { consumed: number; goal: number }) {
-  const size = 180;
-  const stroke = 10;
+  const size = 150;
+  const stroke = 12;
   const radius = (size - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
-  const left = Math.max(goal - consumed, 0);
   const progress = progressPercent(consumed, goal);
-  const offset = circumference * (1 - progress);
 
   return (
-    <View style={styles.heroRingWrap}>
+    <View style={[styles.heroRingWrap, { width: size, height: size }]}>
       <Svg width={size} height={size}>
+        <Defs>
+          <LinearGradient id="limeRing" x1="0" y1="0" x2="1" y2="1">
+            <Stop offset="0" stopColor={token.accent} />
+            <Stop offset="1" stopColor={token.accentDim} />
+          </LinearGradient>
+        </Defs>
         <SvgCircle
           cx={size / 2}
           cy={size / 2}
           r={radius}
-          stroke={COLORS.ringTrack}
+          stroke={token.accentRingTrack}
           strokeWidth={stroke}
           fill="none"
         />
@@ -221,18 +235,37 @@ function CalorieRing({ consumed, goal }: { consumed: number; goal: number }) {
           cx={size / 2}
           cy={size / 2}
           r={radius}
-          stroke={COLORS.calories}
+          stroke="url(#limeRing)"
           strokeWidth={stroke}
-          strokeDasharray={`${circumference} ${circumference}`}
-          strokeDashoffset={offset}
+          strokeDasharray={`${circumference * progress} ${circumference}`}
           strokeLinecap="round"
           fill="none"
           transform={`rotate(-90 ${size / 2} ${size / 2})`}
         />
       </Svg>
       <View style={styles.heroRingCenter}>
-        <Text style={styles.heroRingNumber}>{left.toLocaleString()}</Text>
-        <Text style={styles.heroRingLabel}>calories left</Text>
+        <Text style={styles.heroRingNumber}>{consumed.toLocaleString()}</Text>
+        <Text style={styles.heroRingLabel}>kcal in</Text>
+      </View>
+    </View>
+  );
+}
+
+type MacroBarProps = { label: string; current: number | null; goal: number; tone?: "accent" | "soft" };
+function MacroBar({ label, current, goal, tone = "soft" }: MacroBarProps) {
+  const percent = current != null && goal > 0 ? Math.max(0, Math.min(1, current / goal)) : 0;
+  const fillColor = tone === "accent" ? token.accent : token.textSoft;
+  return (
+    <View style={styles.macroRow}>
+      <View style={styles.macroHeader}>
+        <Text style={styles.macroLabel}>{label}</Text>
+        <Text style={styles.macroValue}>
+          {current != null ? Math.round(current) : "—"}
+          <Text style={styles.macroValueGoal}>/{goal}g</Text>
+        </Text>
+      </View>
+      <View style={styles.macroTrack}>
+        <View style={[styles.macroFill, { width: `${percent * 100}%`, backgroundColor: fillColor }]} />
       </View>
     </View>
   );
@@ -266,75 +299,20 @@ function MiniStepsRing({ current, goal }: { current: number; goal: number }) {
 
 function WeightSparkline() {
   return (
-    <Svg width={44} height={40} viewBox="0 0 44 40" fill="none">
-      <Path d="M2 12L8 14L15 11L22 16L29 18L36 22L42 26" stroke={COLORS.weight} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
-      <SvgCircle cx={42} cy={26} r={2.4} fill={COLORS.weight} />
+    <Svg width="100%" height={18} viewBox="0 0 120 18" preserveAspectRatio="none">
+      <Path
+        d="M0 8 L20 10 L40 6 L60 9 L80 7 L100 11 L120 14"
+        stroke={token.accent}
+        strokeWidth={1.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      />
     </Svg>
   );
 }
 
-function LoadingBlock({
-  width,
-  height,
-  radius = 12,
-  style,
-}: {
-  width: number | `${number}%`;
-  height: number;
-  radius?: number;
-  style?: object;
-}) {
-  return <View style={[styles.loadingBlock, { width, height, borderRadius: radius }, style]} />;
-}
-
-function buildLinePaths(values: number[], width: number, height: number, metric: TrendMetric, calorieGoal = 2000) {
-  const innerLeft = 10;
-  const innerRight = width - 10;
-  const innerTop = 12;
-  const innerBottom = height - 30;
-
-  const nonEmpty = values.length > 0;
-  const min = nonEmpty ? Math.min(...values) : 0;
-  const max = nonEmpty ? Math.max(...values) : 1;
-  const range = max - min || 1;
-
-  const points = values.map((value, index) => {
-    const x =
-      values.length <= 1
-        ? innerLeft
-        : innerLeft + (index * (innerRight - innerLeft)) / (values.length - 1);
-    const normalized = (value - min) / range;
-    const y = innerBottom - normalized * (innerBottom - innerTop);
-    return { x, y, value };
-  });
-
-  const pointPairs = points.map((p) => `${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(" L ");
-  const line = points.length ? `M ${pointPairs}` : "";
-
-  const area = points.length
-    ? `${line} L ${points[points.length - 1]?.x.toFixed(2)} ${innerBottom.toFixed(2)} L ${points[0]?.x.toFixed(2)} ${innerBottom.toFixed(2)} Z`
-    : "";
-
-  const goalValue = metric === "calories" ? calorieGoal : null;
-  const goalY =
-    goalValue == null
-      ? null
-      : innerBottom - ((goalValue - min) / range) * (innerBottom - innerTop);
-
-  return { points, line, area, innerBottom, goalY, width };
-}
-
-function metricValueFromPoint(point: DashboardData["weeklyTrends"][number], metric: TrendMetric) {
-  if (metric === "calories") return point.calories;
-  if (metric === "steps") return point.steps;
-  return point.weight;
-}
-
-function metricColor(metric: TrendMetric) {
-  if (metric === "calories") return COLORS.calories;
-  if (metric === "steps") return COLORS.steps;
-  return COLORS.weight;
-}
+// LoadingBlock is now imported from components/pulse — see top of file.
 
 function mockDashboardData(selectedDate: string): DashboardData {
   const base = parseDateKey(selectedDate);
@@ -397,6 +375,14 @@ export default function DashboardScreen() {
   const [selectedDate, setSelectedDate] = useState(today);
   const [trendTab, setTrendTab] = useState<TrendMetric>("calories");
   const [chartWidth, setChartWidth] = useState(320);
+  const [isOffline, setIsOffline] = useState(false);
+
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener((s) => {
+      setIsOffline(s.isConnected === false || s.isInternetReachable === false);
+    });
+    return unsubscribe;
+  }, []);
 
   const dashboardQuery = useQuery<DashboardData>({
     queryKey: ["dashboard", timezone, selectedDate],
@@ -455,6 +441,23 @@ export default function DashboardScreen() {
 
   const todaySteps = dashboard?.today.steps.count ?? 0;
   const todayStepsGoal = dashboard?.today.steps.goal ?? 10000;
+
+  // Macros are not yet aggregated server-side on /api/dashboard. Until that ships,
+  // these stay null and render as "—" placeholders inside the macro bars.
+  const todayProtein: number | null = null;
+  const todayCarbs: number | null = null;
+  const todayFat: number | null = null;
+  const todayProteinGoal = 140;
+  const todayCarbsGoal = 210;
+  const todayFatGoal = 70;
+
+  const coachSummary = useMemo(() => {
+    const remaining = todayCaloriesGoal - todayCaloriesConsumed;
+    if (remaining > 200) return `${remaining.toLocaleString()} kcal left — plenty of room for dinner.`;
+    if (remaining > 0) return `${remaining.toLocaleString()} kcal left — a light bite tops you up.`;
+    if (remaining > -200) return "You're right on goal — nice steady day.";
+    return `${Math.abs(remaining).toLocaleString()} kcal over — coach can suggest a leaner day tomorrow.`;
+  }, [todayCaloriesGoal, todayCaloriesConsumed]);
 
   const trendChart = useMemo(
     () => buildLinePaths(normalizedTrendValues, chartWidth - 8, 160, trendTab, todayCaloriesGoal),
@@ -540,11 +543,17 @@ export default function DashboardScreen() {
         }
       >
         <View style={styles.headerRowTop}>
-          <Text style={styles.appName}>VoiceFit</Text>
+          <Wordmark size={22} />
           <Pressable style={styles.addButton} onPress={() => cc.open()} testID="home-add-button">
             <Text style={styles.addButtonText}>+</Text>
           </Pressable>
         </View>
+
+        {isOffline ? (
+          <View style={styles.offlineBannerWrap}>
+            <OfflineBanner />
+          </View>
+        ) : null}
 
         <View style={styles.dayPickerRow}>
           {dayOptions.map((day) => {
@@ -567,9 +576,13 @@ export default function DashboardScreen() {
                 <Text style={[styles.dayNum, active && styles.dayNumActive, faded && styles.dayNumFaded]}>
                   {day.dayNum}
                 </Text>
-                {hasData || active ? (
-                  <View style={[styles.dayDot, active && styles.dayDotActive]} />
-                ) : null}
+                <View
+                  style={[
+                    styles.dayDot,
+                    active && styles.dayDotActive,
+                    !active && !hasData && styles.dayDotEmpty,
+                  ]}
+                />
               </Pressable>
             );
           })}
@@ -585,196 +598,94 @@ export default function DashboardScreen() {
           </View>
         ) : (
           <>
-            <View style={styles.heroSection}>
-              {isDashboardInitialLoading ? (
-                <View style={styles.heroLoadingWrap}>
-                  <View style={styles.heroLoadingRing}>
-                    <LoadingBlock width={132} height={46} radius={16} />
-                    <LoadingBlock width={86} height={18} radius={9} style={styles.heroLoadingLabel} />
+            <Pressable
+              style={styles.heroCard}
+              onPress={() => router.push("/(tabs)/trends")}
+              testID="home-hero-trends"
+            >
+              <View style={styles.heroCardHeader}>
+                <Text style={styles.heroEyebrow}>Move · today</Text>
+                <Text style={styles.heroGoalText}>{todayCaloriesGoal.toLocaleString()} kcal goal</Text>
+              </View>
+              <View style={styles.heroBody}>
+                {isDashboardInitialLoading ? (
+                  <LoadingBlock width={150} height={150} radius={75} />
+                ) : (
+                  <CalorieRing consumed={todayCaloriesConsumed} goal={todayCaloriesGoal} />
+                )}
+                <View style={styles.heroRight}>
+                  <Text style={styles.heroSummary}>
+                    <Text style={styles.heroSummaryAccent}>
+                      {Math.max(todayCaloriesGoal - todayCaloriesConsumed, 0).toLocaleString()} kcal
+                    </Text>{" "}
+                    left to hit your goal.
+                  </Text>
+                  <View style={styles.macroStack}>
+                    <MacroBar label="Protein" current={todayProtein} goal={todayProteinGoal} tone="accent" />
+                    <MacroBar label="Carbs" current={todayCarbs} goal={todayCarbsGoal} />
+                    <MacroBar label="Fat" current={todayFat} goal={todayFatGoal} />
                   </View>
                 </View>
-              ) : (
-                <CalorieRing consumed={todayCaloriesConsumed} goal={todayCaloriesGoal} />
-              )}
-            </View>
+              </View>
+            </Pressable>
 
             <View style={styles.metricsRow}>
               <View style={styles.metricCard}>
                 <View style={styles.metricTopRow}>
-                  <Text style={styles.metricLabel}>STEPS</Text>
-                  {isDashboardInitialLoading ? (
-                    <LoadingBlock width={40} height={40} radius={20} />
-                  ) : (
-                    <MiniStepsRing current={todaySteps} goal={todayStepsGoal} />
-                  )}
+                  <Text style={styles.metricLabel}>Steps</Text>
+                  <StepsTrendIcon />
                 </View>
                 {isDashboardInitialLoading ? (
-                  <>
-                    <LoadingBlock width={96} height={42} radius={12} />
-                    <LoadingBlock width={88} height={18} radius={9} style={styles.metricLoadingSub} />
-                  </>
+                  <LoadingBlock width={96} height={26} radius={6} />
                 ) : (
-                  <>
+                  <View style={styles.metricValueRow}>
                     <Text style={styles.metricMainValue}>{todaySteps.toLocaleString()}</Text>
-                    <View style={styles.metricSubRow}>
-                      <Text style={styles.metricSubValue}>of {todayStepsGoal.toLocaleString()}</Text>
-                    </View>
-                  </>
+                    <Text style={styles.metricUnit}>/ {todayStepsGoal >= 1000 ? `${Math.round(todayStepsGoal / 1000)}k` : todayStepsGoal}</Text>
+                  </View>
                 )}
+                <View style={styles.metricThinTrack}>
+                  <View style={[styles.metricThinFill, { width: `${progressPercent(todaySteps, todayStepsGoal) * 100}%` }]} />
+                </View>
               </View>
 
               <View style={styles.metricCard}>
                 <View style={styles.metricTopRow}>
-                  <Text style={styles.metricLabel}>WEIGHT</Text>
-                  {isDashboardInitialLoading ? <LoadingBlock width={44} height={40} radius={10} /> : <WeightSparkline />}
+                  <Text style={styles.metricLabel}>Weight</Text>
+                  {weightDelta != null && weightDelta !== 0 ? (
+                    <Text style={[styles.weightDelta, weightDelta <= 0 ? styles.weightDeltaGood : styles.weightDeltaBad]}>
+                      {weightDelta <= 0 ? "↓" : "↑"} {Math.abs(weightDelta).toFixed(1)}
+                    </Text>
+                  ) : null}
                 </View>
                 {isDashboardInitialLoading ? (
-                  <>
-                    <LoadingBlock width={92} height={42} radius={12} />
-                    <LoadingBlock width={116} height={18} radius={9} style={styles.metricLoadingSub} />
-                  </>
+                  <LoadingBlock width={92} height={26} radius={6} />
                 ) : (
-                  <>
-                    <View style={styles.metricValueRow}>
-                      <Text style={styles.metricMainValue}>
-                        {recentWeight == null ? "--" : recentWeight.toFixed(1)}
-                      </Text>
-                      <Text style={styles.metricUnit}>kg</Text>
-                    </View>
-                    <View style={styles.metricSubRow}>
-                      <Text style={styles.metricSubValue}>goal: {DEFAULT_WEIGHT_GOAL} kg</Text>
-                      {weightDelta != null ? (
-                        <Text style={[styles.weightDelta, weightDelta <= 0 ? styles.weightDeltaGood : styles.weightDeltaBad]}>
-                          {weightDelta <= 0 ? "↓" : "↑"} {Math.abs(weightDelta).toFixed(1)}
-                        </Text>
-                      ) : null}
-                    </View>
-                  </>
+                  <View style={styles.metricValueRow}>
+                    <Text style={styles.metricMainValue}>
+                      {recentWeight == null ? "—" : recentWeight.toFixed(1)}
+                    </Text>
+                    <Text style={styles.metricUnit}>kg</Text>
+                  </View>
                 )}
+                <View style={styles.weightSparklineWrap}>
+                  <WeightSparkline />
+                </View>
               </View>
             </View>
 
             <Pressable style={styles.coachCard} onPress={() => router.push("/(tabs)/coach")} testID="home-ask-coach">
               <CoachBadge />
               <View style={styles.coachTextWrap}>
-                <Text style={styles.coachTitle}>Ask Coach</Text>
-                <Text style={styles.coachSub}>Get AI insights on your trends</Text>
+                <Text style={styles.coachTitle}>Ask coach</Text>
+                <Text style={styles.coachSub}>{coachSummary}</Text>
               </View>
               <Text style={styles.coachChevron}>›</Text>
             </Pressable>
 
-            <Text style={styles.sectionTitle}>Weekly Trends</Text>
-            <View style={styles.trendTabsRow}>
-              {TREND_TABS.map((tab) => {
-                const active = tab === trendTab;
-                const label = tab.charAt(0).toUpperCase() + tab.slice(1);
-                return (
-                  <Pressable
-                    key={tab}
-                    style={[styles.trendTab, active && styles.trendTabActive]}
-                    testID={`home-trend-tab-${tab}`}
-                    onPress={() => setTrendTab(tab)}
-                  >
-                    <Text style={[styles.trendTabText, active && styles.trendTabTextActive]}>{label}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-
-            <View
-              style={styles.trendCard}
-              onLayout={(event) => {
-                setChartWidth(event.nativeEvent.layout.width - 24);
-              }}
-            >
-              <View style={styles.trendSummaryRow}>
-                <View>
-                  {isDashboardInitialLoading ? (
-                    <>
-                      <LoadingBlock width={140} height={30} radius={10} />
-                      <LoadingBlock width={92} height={16} radius={8} style={styles.trendLoadingSub} />
-                    </>
-                  ) : (
-                    <>
-                      <Text style={styles.trendSummaryMain}>{renderTrendPrimary()}</Text>
-                      <Text style={styles.trendSummarySub}>Last 7 days avg</Text>
-                    </>
-                  )}
-                </View>
-                {isDashboardInitialLoading ? (
-                  <LoadingBlock width={110} height={18} radius={9} />
-                ) : (
-                  <Text style={[styles.trendChangeText, { color: trendChangeColor }]}>{renderTrendChange()}</Text>
-                )}
-              </View>
-
-              {isDashboardInitialLoading ? (
-                <View style={styles.trendLoadingWrap}>
-                  <LoadingBlock width={"100%"} height={120} radius={18} />
-                </View>
-              ) : (
-                <>
-                  <Svg width="100%" height={160} viewBox={`0 0 ${trendChart.width} 160`}>
-                    {trendChart.goalY != null ? (
-                      <Line
-                        x1={12}
-                        x2={trendChart.width - 12}
-                        y1={trendChart.goalY}
-                        y2={trendChart.goalY}
-                        stroke={COLORS.calories}
-                        strokeDasharray="4 4"
-                        strokeOpacity={0.45}
-                        strokeWidth={1}
-                      />
-                    ) : null}
-                    <Defs>
-                      <LinearGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
-                        <Stop offset="0" stopColor={metricColor(trendTab)} stopOpacity={0.18} />
-                        <Stop offset="1" stopColor={metricColor(trendTab)} stopOpacity={0.01} />
-                      </LinearGradient>
-                    </Defs>
-                    {trendChart.area ? <Path d={trendChart.area} fill="url(#trendFill)" /> : null}
-                    {trendChart.line ? (
-                      <Path
-                        d={trendChart.line}
-                        stroke={metricColor(trendTab)}
-                        strokeWidth={3}
-                        fill="none"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    ) : null}
-                    {trendChart.points.map((point, index) => {
-                      const edge = index === 0 || index === trendChart.points.length - 1;
-                      return (
-                        <SvgCircle
-                          key={`${point.x}-${point.y}`}
-                          cx={point.x}
-                          cy={point.y}
-                          r={edge ? 4 : 3}
-                          fill={COLORS.bg}
-                          stroke={metricColor(trendTab)}
-                          strokeWidth={2}
-                        />
-                      );
-                    })}
-                  </Svg>
-
-                  <View style={styles.trendDaysRow}>
-                    {weeklyCurrent.map((point) => (
-                      <Text key={point.date} style={styles.trendDayLabel}>
-                        {formatTrendDay(point.date)}
-                      </Text>
-                    ))}
-                  </View>
-                </>
-              )}
-            </View>
-
             <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionTitle}>Recent Meals</Text>
+              <Text style={styles.sectionTitle}>Today's log</Text>
               <Pressable onPress={() => router.push("/(tabs)/meals")} testID="home-recent-meals-see-all">
-                <Text style={styles.sectionLink}>See All</Text>
+                <Text style={styles.sectionLink}>See all</Text>
               </Pressable>
             </View>
 
@@ -786,23 +697,24 @@ export default function DashboardScreen() {
                   <LoadingBlock width={"100%"} height={68} radius={16} />
                 </View>
               ) : recentMeals.length > 0 ? (
-                recentMeals.map((meal) => (
-                  <View key={meal.id} style={styles.mealRow}>
-                    <MealThumb description={meal.description} />
-                    <View style={styles.mealInfo}>
-                      <Text style={styles.mealTitle}>{meal.description}</Text>
-                      <Text style={styles.mealMeta}>
-                        {meal.mealType} ·
-                        {" "}
-                        {new Date(meal.eatenAt).toLocaleTimeString("en-US", {
-                          hour: "numeric",
-                          minute: "2-digit",
-                        })}
-                      </Text>
+                recentMeals.map((meal, index) => {
+                  const eaten = new Date(meal.eatenAt);
+                  const hh = String(eaten.getHours()).padStart(2, "0");
+                  const mm = String(eaten.getMinutes()).padStart(2, "0");
+                  return (
+                    <View key={meal.id} style={[styles.mealRow, index === 0 && styles.mealRowFirst]}>
+                      <Text style={styles.mealTime}>{hh}:{mm}</Text>
+                      <View style={styles.mealInfo}>
+                        <Text style={styles.mealTitle} numberOfLines={1}>{meal.description}</Text>
+                        <Text style={styles.mealMeta}>{meal.mealType}</Text>
+                      </View>
+                      <View style={styles.mealKcalRow}>
+                        <Text style={styles.mealKcalNum}>{meal.calories}</Text>
+                        <Text style={styles.mealKcalUnit}>kcal</Text>
+                      </View>
                     </View>
-                    <Text style={styles.mealCalories}>{meal.calories} kcal</Text>
-                  </View>
-                ))
+                  );
+                })
               ) : (
                 <Text style={styles.emptyText}>No meals logged yet.</Text>
               )}
@@ -812,7 +724,7 @@ export default function DashboardScreen() {
       </ScrollView>
 
       <FloatingCommandBar
-        hint='"Had pasta for lunch..."'
+        hint="Log a meal, lift, or weight…"
         onPress={() => cc.open()}
         onMicPress={() => cc.startRecording()}
       />
@@ -838,128 +750,216 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   appName: {
-    fontSize: 28,
+    fontFamily: font.sans[700],
+    fontSize: 22,
     fontWeight: "700",
-    letterSpacing: -0.5,
-    color: COLORS.textPrimary,
+    letterSpacing: -0.66,
+    color: token.text,
   },
   addButton: {
     width: 36,
     height: 36,
-    borderRadius: 999,
-    backgroundColor: COLORS.surface,
+    borderRadius: r.pill,
+    backgroundColor: token.surface,
+    borderWidth: 1,
+    borderColor: token.line,
     alignItems: "center",
     justifyContent: "center",
   },
   addButtonText: {
-    fontSize: 22,
-    lineHeight: 24,
-    color: COLORS.textSecondary,
-    fontWeight: "500",
+    fontFamily: font.sans[300],
+    fontSize: 18,
+    lineHeight: 20,
+    color: token.text,
+    fontWeight: "300",
+  },
+  offlineBannerWrap: {
+    marginTop: 6,
+    marginBottom: 4,
   },
   dayPickerRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
+    gap: 6,
     marginTop: 6,
     marginBottom: 20,
   },
   dayItem: {
-    width: 44,
+    flex: 1,
     borderRadius: 12,
-    paddingVertical: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 0,
     alignItems: "center",
-    gap: 5,
+    gap: 4,
+    borderWidth: 1,
+    borderColor: token.line,
+    backgroundColor: "transparent",
   },
   dayItemActive: {
-    backgroundColor: COLORS.textPrimary,
+    backgroundColor: token.accent,
+    borderColor: "transparent",
   },
   dayLabel: {
-    fontSize: 12,
-    fontWeight: "500",
-    color: COLORS.textTertiary,
+    fontFamily: font.sans[600],
+    fontSize: 10,
+    fontWeight: "600",
+    letterSpacing: 1,
+    color: token.text,
+    opacity: 0.75,
   },
   dayLabelActive: {
-    color: "rgba(255,255,255,0.55)",
+    color: token.accentInk,
+    opacity: 0.75,
   },
   dayLabelFaded: {
-    color: "#D3D3D8",
+    color: token.textMute,
   },
   dayNum: {
-    fontSize: 17,
-    fontWeight: "600",
-    color: COLORS.textPrimary,
+    fontFamily: font.mono[500],
+    fontSize: 18,
+    fontWeight: "500",
+    color: token.text,
+    lineHeight: 18,
+    marginTop: 3,
   },
   dayNumActive: {
-    color: COLORS.bg,
+    color: token.accentInk,
   },
   dayNumFaded: {
-    color: "#C7C7CC",
+    color: token.textMute,
     fontWeight: "500",
   },
   dayDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 5,
-    backgroundColor: COLORS.textSecondary,
+    width: 3,
+    height: 3,
+    borderRadius: 3,
+    marginTop: 5,
+    backgroundColor: token.accent,
   },
   dayDotActive: {
-    backgroundColor: "rgba(255,255,255,0.55)",
+    backgroundColor: token.accentInk,
   },
-  heroSection: {
+  dayDotEmpty: {
+    backgroundColor: "transparent",
+  },
+  heroCard: {
+    backgroundColor: token.surface,
+    borderWidth: 1,
+    borderColor: token.line,
+    borderRadius: 24,
+    padding: 22,
+    paddingBottom: 20,
+    marginBottom: 10,
+  },
+  heroCardHeader: {
+    flexDirection: "row",
     alignItems: "center",
-    paddingTop: 8,
-    paddingBottom: 24,
+    justifyContent: "space-between",
+    marginBottom: 18,
   },
-  heroLoadingWrap: {
-    width: 180,
-    height: 180,
+  heroEyebrow: {
+    fontFamily: font.sans[600],
+    fontSize: 10.5,
+    fontWeight: "600",
+    letterSpacing: 1.68,
+    textTransform: "uppercase",
+    color: token.accent,
+  },
+  heroGoalText: {
+    fontFamily: font.sans[400],
+    fontSize: 11,
+    color: token.textMute,
+  },
+  heroBody: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    gap: 18,
   },
-  heroLoadingRing: {
-    width: 180,
-    height: 180,
-    borderRadius: 90,
-    backgroundColor: COLORS.surface,
-    alignItems: "center",
-    justifyContent: "center",
+  heroRight: {
+    flex: 1,
   },
-  heroLoadingLabel: {
-    marginTop: 10,
+  heroSummary: {
+    fontFamily: font.sans[400],
+    fontSize: 13,
+    color: token.textSoft,
+    marginBottom: 12,
+    lineHeight: 18,
+  },
+  heroSummaryAccent: {
+    color: token.accent,
+    fontWeight: "600",
   },
   heroRingWrap: {
-    width: 180,
-    height: 180,
     alignItems: "center",
     justifyContent: "center",
+    flexShrink: 0,
   },
   heroRingCenter: {
     position: "absolute",
     alignItems: "center",
   },
   heroRingNumber: {
-    fontSize: 42,
-    fontWeight: "700",
-    color: COLORS.textPrimary,
-    letterSpacing: -1.5,
-    lineHeight: 42,
+    fontFamily: font.mono[500],
+    fontSize: 38,
+    fontWeight: "500",
+    color: token.text,
+    letterSpacing: -1.52,
+    lineHeight: 38,
   },
   heroRingLabel: {
-    marginTop: 6,
-    fontSize: 14,
-    color: COLORS.textSecondary,
+    marginTop: 4,
+    fontFamily: font.sans[600],
+    fontSize: 10.5,
+    fontWeight: "600",
+    letterSpacing: 0.84,
+    textTransform: "uppercase",
+    color: token.textMute,
+  },
+  macroStack: {
+    gap: 10,
+  },
+  macroRow: {},
+  macroHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 4,
+  },
+  macroLabel: {
+    fontFamily: font.sans[400],
+    fontSize: 11,
+    color: token.textSoft,
+    letterSpacing: 0.44,
+  },
+  macroValue: {
+    fontFamily: font.mono[500],
+    fontSize: 11,
+    color: token.text,
+  },
+  macroValueGoal: {
+    color: token.textMute,
+  },
+  macroTrack: {
+    height: 4,
+    backgroundColor: token.line,
+    borderRadius: 2,
+    overflow: "hidden",
+  },
+  macroFill: {
+    height: "100%",
+    borderRadius: 2,
   },
   metricsRow: {
     flexDirection: "row",
-    gap: 12,
-    marginBottom: 24,
+    gap: 10,
+    marginBottom: 10,
   },
   metricCard: {
     flex: 1,
-    backgroundColor: COLORS.surface,
-    borderRadius: 16,
+    backgroundColor: token.surface,
+    borderWidth: 1,
+    borderColor: token.line,
+    borderRadius: r.md,
     padding: 16,
-    gap: 8,
+    gap: 0,
   },
   metricLoadingSub: {
     marginTop: 2,
@@ -968,37 +968,55 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    minHeight: 40,
+    marginBottom: 8,
+  },
+  metricThinTrack: {
+    marginTop: 10,
+    height: 3,
+    backgroundColor: token.line,
+    borderRadius: 2,
+    overflow: "hidden",
+  },
+  metricThinFill: {
+    height: "100%",
+    backgroundColor: token.accent,
+    borderRadius: 2,
+  },
+  weightSparklineWrap: {
+    marginTop: 6,
   },
   metricLabel: {
-    fontSize: 13,
+    fontFamily: font.sans[600],
+    fontSize: 10.5,
     fontWeight: "600",
-    letterSpacing: 0.5,
-    color: COLORS.textSecondary,
+    letterSpacing: 1.68,
+    textTransform: "uppercase",
+    color: token.textMute,
   },
   metricMainValue: {
-    fontSize: 24,
-    fontWeight: "700",
-    letterSpacing: -0.5,
-    color: COLORS.textPrimary,
-    lineHeight: 30,
+    fontFamily: font.mono[500],
+    fontSize: 26,
+    fontWeight: "500",
+    letterSpacing: -0.78,
+    color: token.text,
+    lineHeight: 28,
   },
   metricValueRow: {
     flexDirection: "row",
-    alignItems: "flex-end",
-    gap: 4,
+    alignItems: "baseline",
+    gap: 5,
   },
   metricUnit: {
-    fontSize: 14,
-    color: COLORS.textSecondary,
-    fontWeight: "500",
-    lineHeight: 22,
-    marginBottom: 2,
+    fontFamily: font.sans[400],
+    fontSize: 11,
+    color: token.textMute,
+    fontWeight: "400",
   },
   metricSubValue: {
-    fontSize: 13,
-    color: COLORS.textTertiary,
-    fontWeight: "500",
+    fontFamily: font.sans[400],
+    fontSize: 11,
+    color: token.textMute,
+    fontWeight: "400",
   },
   metricSubRow: {
     flexDirection: "row",
@@ -1007,18 +1025,21 @@ const styles = StyleSheet.create({
     minHeight: 20,
   },
   weightDelta: {
-    fontSize: 12,
+    fontFamily: font.sans[600],
+    fontSize: 10,
     fontWeight: "600",
   },
   weightDeltaGood: {
-    color: COLORS.steps,
+    color: token.positive,
   },
   weightDeltaBad: {
-    color: COLORS.error,
+    color: token.warn,
   },
   coachCard: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 16,
+    backgroundColor: token.surface,
+    borderWidth: 1,
+    borderColor: token.line,
+    borderRadius: r.md,
     padding: 16,
     marginBottom: 24,
     flexDirection: "row",
@@ -1026,8 +1047,8 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   coachBadge: {
-    width: 44,
-    height: 44,
+    width: 40,
+    height: 40,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1035,27 +1056,34 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   coachTitle: {
-    fontSize: 16,
+    fontFamily: font.sans[600],
+    fontSize: 10.5,
     fontWeight: "600",
-    color: COLORS.textPrimary,
-    lineHeight: 16,
+    letterSpacing: 1.5,
+    textTransform: "uppercase",
+    color: token.accent,
   },
   coachSub: {
-    marginTop: 2,
-    fontSize: 13,
-    color: COLORS.textSecondary,
-    fontWeight: "500",
+    marginTop: 3,
+    fontFamily: font.sans[400],
+    fontSize: 13.5,
+    color: token.text,
+    fontWeight: "400",
+    letterSpacing: -0.07,
+    lineHeight: 18,
   },
   coachChevron: {
-    color: COLORS.textTertiary,
-    fontSize: 18,
+    color: token.textMute,
+    fontSize: 16,
     fontWeight: "500",
   },
   sectionTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: COLORS.textPrimary,
-    letterSpacing: -0.3,
+    fontFamily: font.sans[600],
+    fontSize: 10.5,
+    fontWeight: "600",
+    color: token.text,
+    letterSpacing: 1.68,
+    textTransform: "uppercase",
     marginBottom: 12,
   },
   trendTabsRow: {
@@ -1064,24 +1092,31 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   trendTab: {
-    borderRadius: 999,
+    borderRadius: r.pill,
     paddingVertical: 6,
     paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: token.line,
   },
   trendTabActive: {
-    backgroundColor: COLORS.textPrimary,
+    backgroundColor: token.accent,
+    borderColor: "transparent",
   },
   trendTabText: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
-    fontWeight: "700",
+    fontFamily: font.sans[600],
+    fontSize: 12,
+    color: token.textSoft,
+    fontWeight: "600",
+    letterSpacing: 0.24,
   },
   trendTabTextActive: {
-    color: COLORS.bg,
+    color: token.accentInk,
   },
   trendCard: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 16,
+    backgroundColor: token.surface,
+    borderWidth: 1,
+    borderColor: token.line,
+    borderRadius: r.lg,
     paddingTop: 20,
     paddingHorizontal: 16,
     paddingBottom: 12,
@@ -1101,20 +1136,27 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   trendSummaryMain: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: COLORS.textPrimary,
-    letterSpacing: -0.5,
+    fontFamily: font.mono[500],
+    fontSize: 26,
+    fontWeight: "500",
+    color: token.text,
+    letterSpacing: -0.78,
   },
   trendSummarySub: {
-    marginTop: 2,
-    fontSize: 13,
-    color: COLORS.textSecondary,
-    fontWeight: "500",
+    marginTop: 4,
+    fontFamily: font.sans[400],
+    fontSize: 11,
+    color: token.textMute,
+    fontWeight: "400",
+    letterSpacing: 0.88,
+    textTransform: "uppercase",
   },
   trendChangeText: {
-    fontSize: 13,
-    fontWeight: "600",
+    fontFamily: font.sans[700],
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 1.54,
+    textTransform: "uppercase",
   },
   trendDaysRow: {
     marginTop: -6,
@@ -1123,9 +1165,11 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   trendDayLabel: {
-    fontSize: 12,
-    color: COLORS.textTertiary,
+    fontFamily: font.sans[600],
+    fontSize: 10,
+    color: token.textMute,
     fontWeight: "600",
+    letterSpacing: 0.8,
   },
   sectionHeaderRow: {
     flexDirection: "row",
@@ -1134,88 +1178,128 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   sectionLink: {
-    fontSize: 15,
-    color: COLORS.textSecondary,
-    fontWeight: "500",
+    fontFamily: font.sans[600],
+    fontSize: 11,
+    color: token.accent,
+    fontWeight: "600",
   },
   mealsWrap: {
+    backgroundColor: token.surface,
+    borderWidth: 1,
+    borderColor: token.line,
+    borderRadius: r.md,
+    overflow: "hidden",
     marginBottom: 12,
   },
   mealsLoadingWrap: {
     gap: 12,
-    marginBottom: 8,
+    padding: 12,
   },
   mealRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-    gap: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderTopWidth: 1,
+    borderTopColor: token.line,
+  },
+  mealRowFirst: {
+    borderTopWidth: 0,
+  },
+  mealTime: {
+    width: 44,
+    fontFamily: font.mono[400],
+    fontSize: 11,
+    color: token.textMute,
   },
   mealThumb: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
-    backgroundColor: COLORS.surface,
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: token.surface2,
     alignItems: "center",
     justifyContent: "center",
   },
   mealInfo: {
     flex: 1,
-    gap: 2,
+    minWidth: 0,
   },
   mealTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: COLORS.textPrimary,
+    fontFamily: font.sans[500],
+    fontSize: 14,
+    fontWeight: "500",
+    color: token.text,
   },
   mealMeta: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
+    marginTop: 2,
+    fontFamily: font.sans[600],
+    fontSize: 10.5,
+    color: token.textMute,
+    letterSpacing: 0.84,
+    textTransform: "uppercase",
+  },
+  mealKcalRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: 3,
+  },
+  mealKcalNum: {
+    fontFamily: font.mono[500],
+    fontSize: 15,
     fontWeight: "500",
+    color: token.text,
+  },
+  mealKcalUnit: {
+    fontFamily: font.sans[400],
+    fontSize: 10,
+    color: token.textMute,
   },
   mealCalories: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: COLORS.textPrimary,
+    fontFamily: font.mono[500],
+    fontSize: 15,
+    fontWeight: "500",
+    color: token.text,
   },
   emptyText: {
+    fontFamily: font.sans[400],
     fontSize: 14,
-    color: COLORS.textSecondary,
-    marginBottom: 8,
+    color: token.textSoft,
+    padding: 16,
   },
   loadingBlock: {
-    backgroundColor: "#ECECEF",
+    backgroundColor: token.surface2,
   },
   blockingErrorCard: {
     marginTop: 24,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 16,
+    borderColor: token.line,
+    borderRadius: r.md,
     padding: 18,
     gap: 10,
-    backgroundColor: COLORS.surface,
+    backgroundColor: token.surface,
   },
   blockingErrorTitle: {
+    fontFamily: font.sans[700],
     fontSize: 20,
-    color: COLORS.textPrimary,
+    color: token.text,
     fontWeight: "700",
   },
   blockingErrorBody: {
+    fontFamily: font.sans[400],
     fontSize: 14,
-    color: COLORS.textSecondary,
+    color: token.textSoft,
   },
   primaryActionButton: {
-    borderRadius: 13,
-    backgroundColor: COLORS.textPrimary,
+    borderRadius: r.sm,
+    backgroundColor: token.accent,
     paddingHorizontal: 18,
     minHeight: 42,
     alignItems: "center",
     justifyContent: "center",
   },
   primaryActionText: {
-    color: COLORS.bg,
+    fontFamily: font.sans[700],
+    color: token.accentInk,
     fontSize: 14,
     fontWeight: "700",
   },

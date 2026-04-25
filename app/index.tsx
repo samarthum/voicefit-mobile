@@ -1,6 +1,7 @@
 import { Redirect } from "expo-router";
 import { View, ActivityIndicator, Platform } from "react-native";
 import { useAuth } from "@clerk/clerk-expo";
+import { color } from "../lib/tokens";
 
 export default function Index() {
   const { isLoaded, isSignedIn } = useAuth();
@@ -8,8 +9,8 @@ export default function Index() {
 
   if (!isLoaded) {
     return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-        <ActivityIndicator />
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: color.bg }}>
+        <ActivityIndicator color={color.accent} />
       </View>
     );
   }

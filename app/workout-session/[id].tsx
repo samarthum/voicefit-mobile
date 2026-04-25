@@ -19,19 +19,25 @@ import Svg, { Path } from "react-native-svg";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { FakeTabBar } from "../../components/FakeTabBar";
 import { FloatingCommandBar } from "../../components/FloatingCommandBar";
+import { UndoToast } from "../../components/pulse";
 import { useCommandCenter } from "../../components/command-center";
 import { getExerciseCatalogItem } from "../../lib/exercise-catalog";
 import { apiRequest } from "../../lib/api-client";
+import { color as token, font, radius as rad } from "../../lib/tokens";
 
 const COLORS = {
-  bg: "#FFFFFF",
-  surface: "#F8F8F8",
-  border: "#E8E8E8",
-  textPrimary: "#1A1A1A",
-  textSecondary: "#8E8E93",
-  textTertiary: "#AEAEB2",
-  green: "#34C759",
-  error: "#FF3B30",
+  bg: token.bg,
+  surface: token.surface,
+  surface2: token.surface2,
+  border: token.line,
+  textPrimary: token.text,
+  textSecondary: token.textSoft,
+  textTertiary: token.textMute,
+  green: token.accent,
+  error: token.negative,
+  accent: token.accent,
+  accentInk: token.accentInk,
+  positive: token.positive,
 };
 
 type ExerciseType = "resistance" | "cardio";
@@ -211,9 +217,9 @@ function EmptyStateGlyph() {
 function MicGlyph() {
   return (
     <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
-      <Path d="M12 3.5C10.067 3.5 8.5 5.067 8.5 7V12C8.5 13.933 10.067 15.5 12 15.5C13.933 15.5 15.5 13.933 15.5 12V7C15.5 5.067 13.933 3.5 12 3.5Z" stroke="#FFFFFF" strokeWidth={2} />
-      <Path d="M5.5 11.5C5.5 15.09 8.41 18 12 18C15.59 18 18.5 15.09 18.5 11.5" stroke="#FFFFFF" strokeWidth={2} strokeLinecap="round" />
-      <Path d="M12 18V21" stroke="#FFFFFF" strokeWidth={2} strokeLinecap="round" />
+      <Path d="M12 3.5C10.067 3.5 8.5 5.067 8.5 7V12C8.5 13.933 10.067 15.5 12 15.5C13.933 15.5 15.5 13.933 15.5 12V7C15.5 5.067 13.933 3.5 12 3.5Z" stroke={token.accentInk} strokeWidth={2} />
+      <Path d="M5.5 11.5C5.5 15.09 8.41 18 12 18C15.59 18 18.5 15.09 18.5 11.5" stroke={token.accentInk} strokeWidth={2} strokeLinecap="round" />
+      <Path d="M12 18V21" stroke={token.accentInk} strokeWidth={2} strokeLinecap="round" />
     </Svg>
   );
 }
@@ -295,8 +301,8 @@ function appendPreviewExercise(
 
 function CheckGlyph() {
   return (
-    <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
-      <Path d="M6 12.5L10 16.5L18 8.5" stroke="#FFFFFF" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
+    <Svg width={14} height={12} viewBox="0 0 14 12" fill="none">
+      <Path d="M1 6L4.5 9.5L13 1" stroke={token.accentInk} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" fill="none" />
     </Svg>
   );
 }
@@ -425,6 +431,7 @@ export default function WorkoutSessionScreen() {
   const [previewSession, setPreviewSession] = useState<SessionViewModel | null>(() => getPreviewSession(sessionId));
   const [drafts, setDrafts] = useState<Record<string, SetDraft>>({});
   const [liveError, setLiveError] = useState<string | null>(null);
+  const [pendingDeleteSet, setPendingDeleteSet] = useState<{ setId: string; previous: WorkoutSessionDetail | undefined } | null>(null);
   const [now, setNow] = useState(Date.now());
   const handledPickerNonceRef = useRef<string | null>(null);
   const [renameModalVisible, setRenameModalVisible] = useState(false);
@@ -994,18 +1001,34 @@ export default function WorkoutSessionScreen() {
       Alert.alert("Still saving", "Hang on a moment, then try again.");
       return;
     }
-    Alert.alert(
-      "Delete this set?",
-      "This cannot be undone.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => void deleteSetMutation.mutateAsync(set.id),
-        },
-      ]
+    if (!sessionId) return;
+    // If a previous undo is still in flight, finalize it first so we don't
+    // stack two snapshots.
+    if (pendingDeleteSet) {
+      void deleteSetMutation.mutateAsync(pendingDeleteSet.setId);
+    }
+    const queryKey = ["workout-session-detail", sessionId];
+    const previous = queryClient.getQueryData<WorkoutSessionDetail>(queryKey);
+    queryClient.setQueryData<WorkoutSessionDetail>(queryKey, (data) =>
+      data ? { ...data, sets: data.sets.filter((s) => s.id !== set.id) } : data,
     );
+    setPendingDeleteSet({ setId: set.id, previous });
+  };
+
+  const handleUndoDelete = () => {
+    if (!pendingDeleteSet || !sessionId) return;
+    const queryKey = ["workout-session-detail", sessionId];
+    if (pendingDeleteSet.previous) {
+      queryClient.setQueryData(queryKey, pendingDeleteSet.previous);
+    }
+    setPendingDeleteSet(null);
+  };
+
+  const handleConfirmDelete = () => {
+    if (!pendingDeleteSet) return;
+    const setId = pendingDeleteSet.setId;
+    setPendingDeleteSet(null);
+    void deleteSetMutation.mutateAsync(setId);
   };
 
   const handleSaveLiveSet = async (set: WorkoutSet) => {
@@ -1039,8 +1062,9 @@ export default function WorkoutSessionScreen() {
             <BackGlyph />
           </Pressable>
           <View style={styles.headerCenter}>
-            <Text style={styles.sessionTitle}>{session?.title ?? "Workout Session"}</Text>
-            <Text style={styles.sessionSubtitle}>{session?.subtitle ?? "Loading..."}</Text>
+            <Text style={styles.sessionEyebrow}>{session?.finished ? "Done" : "Live · Session"}</Text>
+            <Text style={styles.sessionTitle}>{session?.title ?? "Workout session"}</Text>
+            <Text style={styles.sessionSubtitle}>{session?.subtitle ?? "Loading…"}</Text>
           </View>
           <View style={styles.headerRight}>
             {!isPreviewId && !isWebPreview && session ? (
@@ -1310,12 +1334,18 @@ export default function WorkoutSessionScreen() {
 
       {!session?.finished && (
         <FloatingCommandBar
-          hint={session?.empty ? '"Did 3 sets of squats at 100kg..."' : '"Add 3 sets of curls at 15kg..."'}
+          hint={session?.empty ? "Did 3 sets of squats at 100kg…" : "80 kilos for 10 reps…"}
           onPress={() => cc.open()}
           onMicPress={() => cc.startRecording()}
           bottomOffset={91}
         />
       )}
+      <UndoToast
+        visible={!!pendingDeleteSet}
+        message="Set deleted"
+        onUndo={handleUndoDelete}
+        onDismiss={handleConfirmDelete}
+      />
       <FakeTabBar active="workouts" />
 
       <Modal
@@ -1409,8 +1439,8 @@ export default function WorkoutSessionScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: COLORS.bg },
-  center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: COLORS.bg },
+  root: { flex: 1, backgroundColor: token.bg },
+  center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: token.bg },
   scroll: { flex: 1 },
   scrollContent: { paddingBottom: 178 },
   header: {
@@ -1420,52 +1450,197 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 8,
     paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
   },
-  iconButton: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
+  iconButton: {
+    width: 32,
+    height: 32,
+    borderRadius: rad.pill,
+    backgroundColor: token.surface,
+    borderWidth: 1,
+    borderColor: token.line,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   headerRight: { flexDirection: "row", alignItems: "center", gap: 4 },
   headerCenter: { flex: 1, alignItems: "center" },
-  sessionTitle: { fontSize: 18, fontWeight: "700", color: COLORS.textPrimary },
-  sessionSubtitle: { marginTop: 2, fontSize: 12, color: COLORS.textSecondary },
-  finishButton: { minWidth: 72, borderRadius: 999, paddingHorizontal: 16, paddingVertical: 8, alignItems: "center" },
-  finishButtonActive: { backgroundColor: COLORS.green },
-  finishButtonDisabled: { backgroundColor: COLORS.border },
-  finishButtonText: { fontSize: 16, fontWeight: "700", color: "#FFFFFF" },
-  finishButtonTextDisabled: { color: COLORS.textSecondary },
-  statsStrip: { flexDirection: "row", backgroundColor: COLORS.surface, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  statCell: { flex: 1, alignItems: "center", paddingVertical: 12 },
-  statValue: { fontSize: 14, fontWeight: "700", color: COLORS.textPrimary },
-  statLabel: { marginTop: 3, fontSize: 11, fontWeight: "600", letterSpacing: 0.4, textTransform: "uppercase", color: COLORS.textSecondary },
-  errorBanner: { marginHorizontal: 16, marginTop: 12, color: COLORS.error, fontSize: 13, fontWeight: "600" },
+  sessionEyebrow: {
+    fontFamily: font.sans[600],
+    fontSize: 10.5,
+    fontWeight: "600",
+    letterSpacing: 1.68,
+    textTransform: "uppercase",
+    color: token.accent,
+  },
+  sessionTitle: {
+    fontFamily: font.sans[600],
+    fontSize: 16,
+    fontWeight: "600",
+    letterSpacing: -0.16,
+    color: token.text,
+    marginTop: 2,
+  },
+  sessionSubtitle: {
+    marginTop: 2,
+    fontFamily: font.sans[400],
+    fontSize: 12,
+    color: token.textMute,
+  },
+  finishButton: {
+    height: 32,
+    paddingHorizontal: 14,
+    borderRadius: rad.pill,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  finishButtonActive: { backgroundColor: token.accent },
+  finishButtonDisabled: { backgroundColor: token.surface, borderWidth: 1, borderColor: token.line },
+  finishButtonText: {
+    fontFamily: font.sans[700],
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 0.48,
+    color: token.accentInk,
+  },
+  finishButtonTextDisabled: { color: token.textMute },
+  statsStrip: {
+    flexDirection: "row",
+    gap: 10,
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+  },
+  statCell: {
+    flex: 1,
+    backgroundColor: token.surface,
+    borderWidth: 1,
+    borderColor: token.line,
+    borderRadius: rad.sm,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    alignItems: "flex-start",
+  },
+  statValue: {
+    fontFamily: font.mono[500],
+    fontSize: 20,
+    fontWeight: "500",
+    letterSpacing: -0.6,
+    color: token.text,
+  },
+  statLabel: {
+    marginBottom: 4,
+    fontFamily: font.sans[600],
+    fontSize: 9.5,
+    fontWeight: "600",
+    letterSpacing: 1.52,
+    textTransform: "uppercase",
+    color: token.textMute,
+  },
+  errorBanner: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    fontFamily: font.sans[600],
+    color: token.negative,
+    fontSize: 13,
+    fontWeight: "600",
+  },
   loadingWrap: { paddingVertical: 48, alignItems: "center" },
-  cardsWrap: { paddingHorizontal: 16, paddingTop: 14, gap: 14 },
-  exerciseCard: { borderRadius: 18, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.bg, overflow: "hidden" },
-  exerciseHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 14, paddingTop: 14, paddingBottom: 10 },
-  exerciseTitle: { fontSize: 16, fontWeight: "700", color: COLORS.textPrimary },
-  exerciseMetaRow: { marginTop: 4, flexDirection: "row", alignItems: "center", gap: 6 },
-  exerciseMetaDot: { width: 6, height: 6, borderRadius: 999, backgroundColor: "#AF52DE" },
-  exerciseMeta: { fontSize: 13, color: COLORS.textSecondary },
-  tableHeader: { flexDirection: "row", alignItems: "center", paddingHorizontal: 14, paddingVertical: 10, borderTopWidth: 1, borderTopColor: COLORS.border, backgroundColor: COLORS.surface },
-  tableHeaderLabel: { fontSize: 11, fontWeight: "700", letterSpacing: 0.4, textTransform: "uppercase", color: COLORS.textSecondary },
+  cardsWrap: { paddingHorizontal: 20, paddingTop: 4, gap: 24 },
+  exerciseCard: {
+    borderRadius: rad.md,
+    backgroundColor: "transparent",
+    overflow: "hidden",
+  },
+  exerciseHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingBottom: 10,
+  },
+  exerciseTitle: {
+    fontFamily: font.sans[600],
+    fontSize: 18,
+    fontWeight: "600",
+    letterSpacing: -0.27,
+    color: token.text,
+  },
+  exerciseMetaRow: {
+    marginTop: 3,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  exerciseMetaDot: { width: 4, height: 4, borderRadius: rad.pill, backgroundColor: token.textMute },
+  exerciseMeta: {
+    fontFamily: font.sans[600],
+    fontSize: 10.5,
+    fontWeight: "600",
+    letterSpacing: 1.47,
+    textTransform: "uppercase",
+    color: token.textMute,
+  },
+  tableHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingTop: 6,
+    paddingBottom: 4,
+  },
+  tableHeaderLabel: {
+    fontFamily: font.sans[600],
+    fontSize: 9.5,
+    fontWeight: "600",
+    letterSpacing: 1.52,
+    textTransform: "uppercase",
+    color: token.textMute,
+  },
   colSet: { width: 32 },
   colPrevious: { flex: 1.1 },
   colValue: { flex: 0.75, textAlign: "center" },
   colCheck: { width: 38, alignItems: "flex-end" },
-  setRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: 14, paddingVertical: 8, borderTopWidth: 1, borderTopColor: COLORS.border },
-  setRowChecked: { backgroundColor: "rgba(52,199,89,0.10)" },
-  setChip: { width: 28, height: 28, borderRadius: 8, backgroundColor: COLORS.surface, alignItems: "center", justifyContent: "center", marginRight: 4 },
-  warmupChip: { backgroundColor: "rgba(52,199,89,0.16)" },
-  setChipText: { fontSize: 14, fontWeight: "700", color: COLORS.textPrimary },
-  warmupChipText: { color: COLORS.green },
-  rowText: { fontSize: 14, fontWeight: "600", color: COLORS.textPrimary },
+  setRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: token.surface,
+    borderWidth: 1,
+    borderColor: token.line,
+    marginBottom: 6,
+  },
+  setRowChecked: {
+    backgroundColor: token.accentTintBg,
+    borderColor: token.accentTintBorder,
+  },
+  setChip: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 4,
+  },
+  warmupChip: {},
+  setChipText: {
+    fontFamily: font.mono[500],
+    fontSize: 14,
+    fontWeight: "500",
+    color: token.text,
+  },
+  warmupChipText: { color: token.accent },
+  rowText: {
+    fontFamily: font.mono[400],
+    fontSize: 12,
+    fontWeight: "400",
+    color: token.textMute,
+  },
   rowInput: {
     minHeight: 30,
     borderRadius: 8,
-    backgroundColor: COLORS.surface,
-    fontSize: 14,
-    fontWeight: "600",
-    color: COLORS.textPrimary,
+    backgroundColor: "transparent",
+    fontFamily: font.mono[500],
+    fontSize: 16,
+    fontWeight: "500",
+    color: token.text,
     textAlign: "center",
     paddingHorizontal: 8,
     paddingVertical: 6,
@@ -1473,63 +1648,176 @@ const styles = StyleSheet.create({
   previewInputPill: {
     minHeight: 30,
     borderRadius: 8,
-    backgroundColor: COLORS.surface,
+    backgroundColor: "transparent",
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 8,
     paddingVertical: 6,
   },
   previewInputText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: COLORS.textPrimary,
+    fontFamily: font.mono[500],
+    fontSize: 16,
+    fontWeight: "500",
+    color: token.text,
   },
-  checkCell: { width: 30, height: 30, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, alignItems: "center", justifyContent: "center", marginLeft: 8 },
-  checkCellFilled: { backgroundColor: COLORS.green, borderColor: COLORS.green },
+  checkCell: {
+    width: 26,
+    height: 26,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: token.line2,
+    alignItems: "center",
+    justifyContent: "center",
+    marginLeft: 8,
+  },
+  checkCellFilled: {
+    backgroundColor: token.accent,
+    borderColor: token.accent,
+  },
   exerciseNoteRow: {
-    paddingHorizontal: 18,
-    paddingTop: 2,
-    paddingBottom: 14,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    marginBottom: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: token.surface,
+    borderWidth: 1,
+    borderColor: token.line,
+    borderRadius: 12,
   },
   exerciseNoteText: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
-    fontStyle: "italic",
-    lineHeight: 18,
+    flex: 1,
+    fontFamily: font.sans[400],
+    fontSize: 12.5,
+    color: token.text,
+    lineHeight: 19,
+    letterSpacing: -0.06,
   },
   exerciseNoteAdd: {
-    fontSize: 13,
-    color: COLORS.textTertiary,
-    fontWeight: "500",
+    flex: 1,
+    fontFamily: font.sans[400],
+    fontSize: 12.5,
+    color: token.textMute,
+    lineHeight: 19,
   },
-  addSetRow: { alignItems: "center", justifyContent: "center", paddingVertical: 14, borderTopWidth: 1, borderTopColor: COLORS.border },
-  addSetText: { fontSize: 16, fontWeight: "600", color: COLORS.textSecondary },
-  emptyWrap: { alignItems: "center", paddingHorizontal: 24, paddingTop: 100 },
-  emptyIcon: { width: 96, height: 96, borderRadius: 48, backgroundColor: COLORS.surface, alignItems: "center", justifyContent: "center", marginBottom: 20 },
-  emptyTitle: { fontSize: 18, fontWeight: "700", color: COLORS.textPrimary },
-  emptyBody: { marginTop: 8, textAlign: "center", fontSize: 14, lineHeight: 22, color: COLORS.textSecondary },
-  addExerciseButton: { width: "100%", marginTop: 28, borderRadius: 16, backgroundColor: COLORS.textPrimary, paddingVertical: 16, alignItems: "center" },
-  addExerciseText: { fontSize: 16, fontWeight: "700", color: "#FFFFFF" },
-  orRow: { flexDirection: "row", alignItems: "center", gap: 12, width: "100%", marginVertical: 18 },
-  orLine: { flex: 1, height: 1, backgroundColor: COLORS.border },
-  orText: { fontSize: 12, fontWeight: "700", textTransform: "uppercase", color: COLORS.textTertiary },
-  voicePrompt: { width: "100%", flexDirection: "row", alignItems: "center", gap: 12, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.bg, paddingHorizontal: 14, paddingVertical: 14 },
-  voicePromptMic: { width: 32, height: 32, borderRadius: 16, backgroundColor: COLORS.textPrimary, alignItems: "center", justifyContent: "center" },
-  voicePromptText: { flex: 1, fontSize: 15, fontWeight: "500", color: COLORS.textSecondary },
+  addSetRow: {
+    paddingTop: 10,
+    paddingHorizontal: 14,
+  },
+  addSetText: {
+    fontFamily: font.sans[600],
+    fontSize: 12,
+    fontWeight: "600",
+    letterSpacing: 0.48,
+    color: token.accent,
+  },
+  emptyWrap: {
+    alignItems: "center",
+    paddingHorizontal: 24,
+    paddingTop: 80,
+  },
+  emptyIcon: {
+    width: 88,
+    height: 88,
+    borderRadius: rad.pill,
+    backgroundColor: token.surface,
+    borderWidth: 1,
+    borderColor: token.line,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 20,
+  },
+  emptyTitle: {
+    fontFamily: font.sans[600],
+    fontSize: 18,
+    fontWeight: "600",
+    letterSpacing: -0.27,
+    color: token.text,
+  },
+  emptyBody: {
+    marginTop: 8,
+    textAlign: "center",
+    fontFamily: font.sans[400],
+    fontSize: 14,
+    lineHeight: 22,
+    color: token.textSoft,
+  },
+  addExerciseButton: {
+    width: "100%",
+    marginTop: 24,
+    height: 56,
+    borderRadius: rad.sm,
+    backgroundColor: token.accent,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  addExerciseText: {
+    fontFamily: font.sans[700],
+    fontSize: 15,
+    fontWeight: "700",
+    letterSpacing: 0.3,
+    color: token.accentInk,
+  },
+  orRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    width: "100%",
+    marginVertical: 18,
+  },
+  orLine: { flex: 1, height: 1, backgroundColor: token.line },
+  orText: {
+    fontFamily: font.sans[600],
+    fontSize: 10.5,
+    fontWeight: "600",
+    letterSpacing: 1.68,
+    textTransform: "uppercase",
+    color: token.textMute,
+  },
+  voicePrompt: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderRadius: rad.sm,
+    backgroundColor: token.surface,
+    borderWidth: 1,
+    borderColor: token.line,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+  },
+  voicePromptMic: {
+    width: 32,
+    height: 32,
+    borderRadius: rad.pill,
+    backgroundColor: token.accent,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  voicePromptText: {
+    flex: 1,
+    fontFamily: font.sans[400],
+    fontSize: 14,
+    color: token.textSoft,
+  },
   addExerciseGhostButton: {
-    marginTop: 2,
-    borderRadius: 14,
-    borderWidth: 2,
+    marginTop: 4,
+    borderRadius: 12,
+    borderWidth: 1,
     borderStyle: "dashed",
-    borderColor: COLORS.border,
+    borderColor: token.line2,
     paddingVertical: 14,
     alignItems: "center",
     justifyContent: "center",
   },
   addExerciseGhostText: {
-    fontSize: 15,
+    fontFamily: font.sans[600],
+    fontSize: 12,
     fontWeight: "600",
-    color: COLORS.textSecondary,
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+    color: token.textSoft,
   },
   activeVoicePrompt: {
     alignItems: "center",
@@ -1537,16 +1825,18 @@ const styles = StyleSheet.create({
     paddingBottom: 4,
   },
   activeVoicePromptText: {
-    fontSize: 13,
-    color: COLORS.textTertiary,
+    fontFamily: font.sans[400],
+    fontSize: 12,
+    color: token.textMute,
   },
   activeVoicePromptTextStrong: {
-    color: COLORS.textSecondary,
+    fontFamily: font.sans[600],
+    color: token.textSoft,
     fontWeight: "600",
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.4)",
+    backgroundColor: "rgba(0,0,0,0.6)",
     justifyContent: "center",
     alignItems: "center",
     padding: 32,
@@ -1554,24 +1844,29 @@ const styles = StyleSheet.create({
   modalCard: {
     width: "100%",
     maxWidth: 340,
-    backgroundColor: COLORS.bg,
-    borderRadius: 18,
+    backgroundColor: token.surface,
+    borderWidth: 1,
+    borderColor: token.line2,
+    borderRadius: rad.md,
     padding: 24,
   },
   modalTitle: {
+    fontFamily: font.sans[600],
     fontSize: 18,
-    fontWeight: "700",
-    color: COLORS.textPrimary,
+    fontWeight: "600",
+    letterSpacing: -0.27,
+    color: token.text,
     marginBottom: 16,
   },
   modalInput: {
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.surface,
-    fontSize: 16,
-    fontWeight: "500",
-    color: COLORS.textPrimary,
+    borderColor: token.line,
+    backgroundColor: token.surface2,
+    fontFamily: font.sans[400],
+    fontSize: 15,
+    fontWeight: "400",
+    color: token.text,
     paddingHorizontal: 14,
     paddingVertical: 12,
     marginBottom: 20,
@@ -1591,22 +1886,24 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   modalButtonCancelText: {
-    fontSize: 16,
+    fontFamily: font.sans[600],
+    fontSize: 14,
     fontWeight: "600",
-    color: COLORS.textSecondary,
+    color: token.textSoft,
   },
   modalButtonConfirm: {
     paddingHorizontal: 18,
     paddingVertical: 10,
     borderRadius: 10,
-    backgroundColor: COLORS.textPrimary,
+    backgroundColor: token.accent,
   },
   modalButtonDisabled: {
     opacity: 0.4,
   },
   modalButtonConfirmText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#FFFFFF",
+    fontFamily: font.sans[700],
+    fontSize: 14,
+    fontWeight: "700",
+    color: token.accentInk,
   },
 });

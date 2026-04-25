@@ -1,5 +1,6 @@
 import type { InterpretEntryResponse } from "@voicefit/contracts/types";
 import { apiRequest } from "../../lib/api-client";
+import { color as token } from "../../lib/tokens";
 import type {
   CommandErrorSubtype,
   EntrySource,
@@ -16,19 +17,27 @@ import type {
 // Constants
 // ---------------------------------------------------------------------------
 
+// Legacy color bridge — mapped onto the Pulse design tokens so every existing
+// screen that imports COLORS instantly cascades to the dark theme. Prefer
+// importing from `lib/tokens.ts` directly in new code.
 export const COLORS = {
-  bg: "#FFFFFF",
-  surface: "#F8F8F8",
-  border: "#E8E8E8",
-  textPrimary: "#1A1A1A",
-  textSecondary: "#8E8E93",
-  textTertiary: "#AEAEB2",
-  calories: "#FF9500",
-  steps: "#34C759",
-  weight: "#007AFF",
-  error: "#FF3B30",
-  ringTrack: "#F0F0F0",
-  black: "#111111",
+  bg: token.bg,
+  surface: token.surface,
+  border: token.line,
+  textPrimary: token.text,
+  textSecondary: token.textSoft,
+  textTertiary: token.textMute,
+  calories: token.accent,
+  steps: token.positive,
+  weight: token.accent,
+  error: token.negative,
+  ringTrack: token.accentRingTrack,
+  black: token.accent,
+  accent: token.accent,
+  accentInk: token.accentInk,
+  surface2: token.surface2,
+  line: token.line,
+  line2: token.line2,
 };
 
 export const MIN_RECORDING_DURATION_MS = 1000;

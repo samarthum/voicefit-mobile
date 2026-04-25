@@ -22,15 +22,15 @@ import { MealGlyph } from "../../components/MealGlyph";
 import { apiRequest } from "../../lib/api-client";
 
 const COLORS = {
-  bg: "#FFFFFF",
-  surface: "#F8F8F8",
-  border: "#E8E8E8",
-  textPrimary: "#1A1A1A",
-  textSecondary: "#8E8E93",
-  textTertiary: "#AEAEB2",
-  calories: "#FF9500",
-  error: "#FF3B30",
-  blue: "#007AFF",
+  bg: "#0A0B0A",
+  surface: "#141614",
+  border: "rgba(255,255,255,0.08)",
+  textPrimary: "#F3F4F1",
+  textSecondary: "rgba(243,244,241,0.68)",
+  textTertiary: "rgba(243,244,241,0.42)",
+  calories: "#C7FB41",
+  error: "#FF6B6B",
+  blue: "#C7FB41",
 };
 
 type MealType = "breakfast" | "lunch" | "dinner" | "snack";
@@ -489,14 +489,14 @@ const styles = StyleSheet.create({
   },
   filterPrimary: {
     borderRadius: 12,
-    backgroundColor: COLORS.textPrimary,
+    backgroundColor: COLORS.calories,
     paddingHorizontal: 16,
     paddingVertical: 10,
   },
   filterPrimaryText: {
     fontSize: 14,
     fontWeight: "600",
-    color: "#FFFFFF",
+    color: "#0A0B0A",
   },
   filterSecondary: {
     borderRadius: 12,
@@ -607,8 +607,8 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.bg,
   },
   typeChipActive: {
-    backgroundColor: COLORS.textPrimary,
-    borderColor: COLORS.textPrimary,
+    backgroundColor: COLORS.calories,
+    borderColor: COLORS.calories,
   },
   typeChipText: {
     fontSize: 13,
@@ -617,7 +617,7 @@ const styles = StyleSheet.create({
     textTransform: "capitalize",
   },
   typeChipTextActive: {
-    color: "#FFFFFF",
+    color: "#0A0B0A",
   },
   errorText: {
     fontSize: 13,
@@ -628,7 +628,7 @@ const styles = StyleSheet.create({
   successText: {
     fontSize: 13,
     fontWeight: "600",
-    color: "#047857",
+    color: "#7CE08A",
     marginTop: 6,
   },
   detailActions: {
@@ -653,7 +653,7 @@ const styles = StyleSheet.create({
   saveButton: {
     flex: 1.6,
     borderRadius: 14,
-    backgroundColor: COLORS.textPrimary,
+    backgroundColor: COLORS.calories,
     paddingVertical: 14,
     alignItems: "center",
   },
@@ -663,7 +663,7 @@ const styles = StyleSheet.create({
   saveButtonText: {
     fontSize: 15,
     fontWeight: "700",
-    color: "#FFFFFF",
+    color: "#0A0B0A",
   },
   emptyCard: {
     borderRadius: 16,

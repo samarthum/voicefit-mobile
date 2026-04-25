@@ -1,39 +1,28 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import Svg, { Path } from "react-native-svg";
+import Svg, { Circle, Path, Rect } from "react-native-svg";
+import { color, font, radius } from "../lib/tokens";
 
-const COLORS = {
-  bg: "#FFFFFF",
-  border: "#E8E8E8",
-  textPrimary: "#1A1A1A",
-  textTertiary: "#AEAEB2",
-};
-
-function SparkleGlyph() {
+function PulseDot() {
   return (
-    <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
-      <Path
-        d="M12 2L14.2 8.2L20.4 10.4L14.2 12.6L12 18.8L9.8 12.6L3.6 10.4L9.8 8.2L12 2Z"
-        fill="#D6D6DB"
-      />
+    <Svg width={14} height={14} viewBox="0 0 14 14">
+      <Circle cx={7} cy={7} r={6} stroke={color.accent} strokeOpacity={0.35} fill="none" />
+      <Circle cx={7} cy={7} r={2.5} fill={color.accent} />
     </Svg>
   );
 }
 
 function MicGlyph() {
   return (
-    <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
+    <Svg width={14} height={18} viewBox="0 0 14 18" fill="none">
+      <Rect x={4} y={0} width={6} height={10} rx={3} fill={color.accentInk} />
       <Path
-        d="M12 3.5C10.067 3.5 8.5 5.067 8.5 7V12C8.5 13.933 10.067 15.5 12 15.5C13.933 15.5 15.5 13.933 15.5 12V7C15.5 5.067 13.933 3.5 12 3.5Z"
-        stroke="#FFFFFF"
-        strokeWidth={2}
-      />
-      <Path
-        d="M5.5 11.5C5.5 15.09 8.41 18 12 18C15.59 18 18.5 15.09 18.5 11.5"
-        stroke="#FFFFFF"
-        strokeWidth={2}
+        d="M1 8C1 11.5 3.8 14 7 14C10.2 14 13 11.5 13 8"
+        stroke={color.accentInk}
+        strokeWidth={1.6}
         strokeLinecap="round"
+        fill="none"
       />
-      <Path d="M12 18V21" stroke="#FFFFFF" strokeWidth={2} strokeLinecap="round" />
+      <Path d="M7 14V17M4.5 17H9.5" stroke={color.accentInk} strokeWidth={1.6} strokeLinecap="round" />
     </Svg>
   );
 }
@@ -57,7 +46,7 @@ export function FloatingCommandBar({
     <View style={[styles.wrap, { bottom: bottomOffset }]} pointerEvents="box-none">
       <View style={styles.bar}>
         <Pressable style={styles.left} onPress={onPress} testID={testID}>
-          <SparkleGlyph />
+          <PulseDot />
           <Text style={styles.hint} numberOfLines={1}>
             {hint}
           </Text>
@@ -77,21 +66,16 @@ const styles = StyleSheet.create({
     right: 12,
   },
   bar: {
-    minHeight: 64,
-    borderRadius: 20,
-    backgroundColor: COLORS.bg,
+    minHeight: 58,
+    borderRadius: radius.md,
+    backgroundColor: color.surface,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: color.line,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingLeft: 18,
     paddingRight: 8,
-    shadowColor: "#000000",
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 16,
-    elevation: 2,
   },
   left: {
     flex: 1,
@@ -101,15 +85,16 @@ const styles = StyleSheet.create({
   },
   hint: {
     flex: 1,
-    fontSize: 15,
-    fontWeight: "500",
-    color: COLORS.textTertiary,
+    fontFamily: font.sans[400],
+    fontSize: 14.5,
+    color: color.textSoft,
+    letterSpacing: -0.07,
   },
   micButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: COLORS.textPrimary,
+    width: 42,
+    height: 42,
+    borderRadius: radius.pill,
+    backgroundColor: color.accent,
     alignItems: "center",
     justifyContent: "center",
   },

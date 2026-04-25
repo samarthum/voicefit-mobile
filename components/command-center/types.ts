@@ -13,6 +13,7 @@ export type CommandState =
   | "cc_saving"
   | "cc_auto_saving"
   | "cc_quick_add_saving"
+  | "cc_saved"
   | "cc_error";
 
 export type CommandErrorSubtype =

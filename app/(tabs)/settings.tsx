@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -12,25 +13,33 @@ import {
 } from "react-native";
 import { useAuth, useUser } from "@clerk/clerk-expo";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  CoachProfileForm,
+  type CoachProfileData,
+} from "../../components/CoachProfileForm";
 import { useRouter } from "expo-router";
 import Svg, { Circle, Path } from "react-native-svg";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { FloatingCommandBar } from "../../components/FloatingCommandBar";
 import { useCommandCenter } from "../../components/command-center";
 import { apiRequest } from "../../lib/api-client";
+import { color as token, font, radius as r } from "../../lib/tokens";
 
 const COLORS = {
-  bg: "#FFFFFF",
-  surface: "#F8F8F8",
-  border: "#E8E8E8",
-  textPrimary: "#1A1A1A",
-  textSecondary: "#8E8E93",
-  textTertiary: "#AEAEB2",
-  error: "#FF3B30",
-  blue: "#007AFF",
-  orange: "#FF9500",
-  green: "#34C759",
-  healthRed: "#FF6B6B",
+  bg: token.bg,
+  surface: token.surface,
+  surface2: token.surface2,
+  border: token.line,
+  textPrimary: token.text,
+  textSecondary: token.textSoft,
+  textTertiary: token.textMute,
+  error: token.negative,
+  blue: token.accent,
+  orange: token.accent,
+  green: token.positive,
+  healthRed: token.negative,
+  accent: token.accent,
+  accentInk: token.accentInk,
 };
 
 interface UserSettingsResponse {
@@ -121,16 +130,60 @@ function HealthConnectGlyph() {
   );
 }
 
+function PlayGlyph() {
+  return (
+    <Svg width={14} height={14} viewBox="0 0 14 14" fill="none">
+      <Path d="M4 10V4L11 7L4 10Z" fill={token.accent} />
+    </Svg>
+  );
+}
+
+function CalendarGlyph() {
+  return (
+    <Svg width={14} height={14} viewBox="0 0 14 14" fill="none">
+      <Path
+        d="M2 3H12V11.5C12 11.78 11.78 12 11.5 12H2.5C2.22 12 2 11.78 2 11.5V3Z"
+        stroke={token.accent}
+        strokeWidth={1.4}
+      />
+      <Path d="M2 5H12" stroke={token.accent} strokeWidth={1.4} />
+      <Path d="M5 2V4M9 2V4" stroke={token.accent} strokeWidth={1.4} strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+function BellGlyph() {
+  return (
+    <Svg width={14} height={14} viewBox="0 0 14 14" fill="none">
+      <Path
+        d="M3.5 10H10.5L9.5 8.5V6.5C9.5 4.84 8.16 3.5 6.5 3.5C4.84 3.5 3.5 4.84 3.5 6.5V8.5L2.5 10H4.5"
+        stroke={token.accent}
+        strokeWidth={1.4}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M5.5 11C5.5 11.55 5.95 12 6.5 12C7.05 12 7.5 11.55 7.5 11"
+        stroke={token.accent}
+        strokeWidth={1.4}
+        strokeLinecap="round"
+      />
+    </Svg>
+  );
+}
+
 function SettingsRow({
   iconBackground,
   icon,
   label,
   value,
+  showChevron,
 }: {
   iconBackground: string;
   icon: React.ReactNode;
   label: string;
   value: string;
+  showChevron?: boolean;
 }) {
   return (
     <View style={styles.settingRow}>
@@ -138,7 +191,10 @@ function SettingsRow({
         <View style={[styles.settingIcon, { backgroundColor: iconBackground }]}>{icon}</View>
         <Text style={styles.settingLabel}>{label}</Text>
       </View>
-      <Text style={styles.settingValue}>{value}</Text>
+      <View style={styles.settingRight}>
+        <Text style={styles.settingValue}>{value}</Text>
+        {showChevron ? <RowChevron /> : null}
+      </View>
     </View>
   );
 }
@@ -157,6 +213,35 @@ export default function SettingsScreen() {
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
   const saveSuccessTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasEditedRef = useRef(false);
+  const [showCoachProfile, setShowCoachProfile] = useState(false);
+  const [coachProfileSaving, setCoachProfileSaving] = useState(false);
+
+  const { data: coachProfile } = useQuery<CoachProfileData | null>({
+    queryKey: ["coach-profile"],
+    enabled: !isWebPreview && !!isSignedIn,
+    queryFn: async () => {
+      const token = await getToken();
+      if (!token) throw new Error("Not signed in");
+      return apiRequest<CoachProfileData | null>("/api/coach/profile", { token });
+    },
+  });
+
+  const handleCoachProfileSave = async (data: CoachProfileData) => {
+    setCoachProfileSaving(true);
+    try {
+      const token = await getToken();
+      if (!token) throw new Error("Not signed in");
+      const updated = await apiRequest<CoachProfileData>("/api/coach/profile", {
+        method: "PUT",
+        token,
+        body: JSON.stringify(data),
+      });
+      queryClient.setQueryData(["coach-profile"], updated);
+      setShowCoachProfile(false);
+    } finally {
+      setCoachProfileSaving(false);
+    }
+  };
 
   const { data, isLoading, error } = useQuery<UserSettingsResponse>({
     queryKey: ["user-settings"],
@@ -250,7 +335,8 @@ export default function SettingsScreen() {
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.pageTitle}>Settings</Text>
+        <Text style={styles.pageEyebrow}>Profile</Text>
+        <Text style={styles.pageTitle}>You</Text>
 
         <View style={styles.profileSection}>
           <View style={styles.avatar}>
@@ -314,32 +400,90 @@ export default function SettingsScreen() {
           <Text style={styles.saveButtonText}>{isSaving ? "Saving..." : "Save Goals"}</Text>
         </Pressable>
 
+        <Text style={styles.groupLabel}>Coach</Text>
+        <View style={styles.groupCard}>
+          <Pressable
+            style={styles.settingRow}
+            onPress={() => setShowCoachProfile(true)}
+          >
+            <View style={styles.settingLeft}>
+              <View style={[styles.settingIcon, { backgroundColor: token.surface2 }]}>
+                <Svg width={14} height={14} viewBox="0 0 14 14" fill="none">
+                  <Path
+                    d="M7 1L8.5 5.5L13 7L8.5 8.5L7 13L5.5 8.5L1 7L5.5 5.5L7 1Z"
+                    fill={token.accent}
+                  />
+                </Svg>
+              </View>
+              <Text style={styles.settingLabel}>Coach Profile</Text>
+            </View>
+            <View style={styles.settingRight}>
+              <Text style={styles.settingValue}>
+                {coachProfile ? "Edit" : "Set up"}
+              </Text>
+              <RowChevron />
+            </View>
+          </Pressable>
+          <SettingsRow
+            iconBackground={token.surface2}
+            icon={<PlayGlyph />}
+            label="Voice feedback"
+            value="Coming soon"
+          />
+          <SettingsRow
+            iconBackground={token.surface2}
+            icon={<CalendarGlyph />}
+            label="Weekly summary"
+            value="Coming soon"
+          />
+        </View>
+
+        <Modal
+          visible={showCoachProfile}
+          animationType="slide"
+          presentationStyle="formSheet"
+          onRequestClose={() => setShowCoachProfile(false)}
+        >
+          <CoachProfileForm
+            initialData={coachProfile}
+            onSave={handleCoachProfileSave}
+            onSkip={() => setShowCoachProfile(false)}
+            isSaving={coachProfileSaving}
+          />
+        </Modal>
+
         <Text style={styles.groupLabel}>General</Text>
         <View style={styles.groupCard}>
           <SettingsRow
-            iconBackground="rgba(0,122,255,0.12)"
+            iconBackground={token.surface2}
             icon={<UnitsGlyph />}
             label="Units"
             value="Metric"
           />
           <SettingsRow
-            iconBackground="rgba(255,149,0,0.12)"
+            iconBackground={token.surface2}
             icon={<TimeGlyph />}
             label="Timezone"
             value="Auto"
+          />
+          <SettingsRow
+            iconBackground={token.surface2}
+            icon={<BellGlyph />}
+            label="Notifications"
+            value="Coming soon"
           />
         </View>
 
         <Text style={styles.groupLabel}>Health Integration</Text>
         <View style={styles.groupCard}>
           <SettingsRow
-            iconBackground="rgba(255,107,107,0.12)"
+            iconBackground={token.surface2}
             icon={<HeartGlyph />}
             label="Apple Health"
             value="Coming Soon"
           />
           <SettingsRow
-            iconBackground="rgba(52,199,89,0.12)"
+            iconBackground={token.surface2}
             icon={<HealthConnectGlyph />}
             label="Health Connect"
             value="Coming Soon"
@@ -359,7 +503,7 @@ export default function SettingsScreen() {
       </ScrollView>
 
       <FloatingCommandBar
-        hint='"Had pasta for lunch..."'
+        hint="Log a meal, lift, or weight…"
         onPress={() => cc.open()}
         onMicPress={() => cc.startRecording()}
       />
@@ -370,7 +514,7 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: COLORS.surface,
+    backgroundColor: token.bg,
   },
   scroll: {
     flex: 1,
@@ -379,57 +523,79 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 8,
     paddingBottom: 96,
-    backgroundColor: COLORS.surface,
+  },
+  pageEyebrow: {
+    fontFamily: font.sans[600],
+    fontSize: 11,
+    fontWeight: "600",
+    letterSpacing: 1.76,
+    textTransform: "uppercase",
+    color: token.textMute,
   },
   pageTitle: {
+    marginTop: 2,
     paddingBottom: 24,
-    fontSize: 28,
-    fontWeight: "700",
-    letterSpacing: -0.5,
-    color: COLORS.textPrimary,
+    fontFamily: font.sans[600],
+    fontSize: 26,
+    fontWeight: "600",
+    letterSpacing: -0.65,
+    color: token.text,
   },
   profileSection: {
     flexDirection: "row",
     alignItems: "center",
     gap: 14,
-    paddingBottom: 24,
+    padding: 18,
+    marginBottom: 22,
+    borderRadius: r.md,
+    backgroundColor: token.surface,
+    borderWidth: 1,
+    borderColor: token.line,
   },
   avatar: {
     width: 56,
     height: 56,
-    borderRadius: 999,
-    backgroundColor: COLORS.border,
+    borderRadius: r.pill,
+    backgroundColor: token.accent,
     alignItems: "center",
     justifyContent: "center",
   },
   avatarText: {
-    fontSize: 22,
+    fontFamily: font.sans[700],
+    fontSize: 18,
     fontWeight: "700",
-    color: COLORS.textSecondary,
+    color: token.accentInk,
+    letterSpacing: -0.18,
   },
   profileName: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: COLORS.textPrimary,
+    fontFamily: font.sans[600],
+    fontSize: 16,
+    fontWeight: "600",
+    letterSpacing: -0.16,
+    color: token.text,
   },
   profileEmail: {
-    marginTop: 2,
-    fontSize: 14,
-    color: COLORS.textSecondary,
+    marginTop: 3,
+    fontFamily: font.sans[400],
+    fontSize: 12,
+    color: token.textMute,
   },
   groupLabel: {
-    paddingBottom: 8,
-    fontSize: 13,
+    paddingBottom: 10,
+    fontFamily: font.sans[600],
+    fontSize: 10.5,
     fontWeight: "600",
-    letterSpacing: 0.5,
+    letterSpacing: 1.68,
     textTransform: "uppercase",
-    color: COLORS.textSecondary,
+    color: token.text,
   },
   groupCard: {
     overflow: "hidden",
-    borderRadius: 16,
-    backgroundColor: COLORS.bg,
-    marginBottom: 24,
+    borderRadius: r.sm,
+    backgroundColor: token.surface,
+    borderWidth: 1,
+    borderColor: token.line,
+    marginBottom: 22,
   },
   loadingRow: {
     minHeight: 92,
@@ -441,61 +607,71 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: token.line,
   },
   inputRowLast: {
     borderBottomWidth: 0,
   },
   inputLabel: {
     flex: 1,
-    fontSize: 16,
-    color: COLORS.textPrimary,
+    fontFamily: font.sans[500],
+    fontSize: 14,
+    fontWeight: "500",
+    color: token.text,
   },
   goalInput: {
     width: 120,
     paddingVertical: 4,
-    fontSize: 16,
-    fontWeight: "600",
+    fontFamily: font.mono[500],
+    fontSize: 17,
+    fontWeight: "500",
+    letterSpacing: -0.34,
     textAlign: "right",
-    color: COLORS.textPrimary,
+    color: token.text,
   },
   inputUnit: {
     width: 44,
-    fontSize: 14,
-    color: COLORS.textSecondary,
+    fontFamily: font.sans[400],
+    fontSize: 11,
+    color: token.textMute,
     textAlign: "left",
   },
   inlineError: {
     marginTop: -12,
     marginBottom: 12,
+    fontFamily: font.sans[600],
     fontSize: 13,
     fontWeight: "600",
-    color: COLORS.error,
+    color: token.negative,
   },
   inlineSuccess: {
     marginTop: -12,
     marginBottom: 12,
+    fontFamily: font.sans[600],
     fontSize: 13,
     fontWeight: "600",
-    color: "#047857",
+    color: token.positive,
   },
   saveButton: {
     width: "100%",
-    marginBottom: 24,
-    borderRadius: 12,
-    backgroundColor: COLORS.textPrimary,
-    paddingVertical: 14,
+    marginBottom: 22,
+    borderRadius: r.sm,
+    backgroundColor: token.accent,
+    height: 48,
     alignItems: "center",
+    justifyContent: "center",
   },
   buttonDisabled: {
     opacity: 0.65,
   },
   saveButtonText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#FFFFFF",
+    fontFamily: font.sans[700],
+    fontSize: 14,
+    fontWeight: "700",
+    letterSpacing: 0.28,
+    color: token.accentInk,
   },
   settingRow: {
     flexDirection: "row",
@@ -504,7 +680,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: token.line,
   },
   settingLeft: {
     flexDirection: "row",
@@ -514,13 +690,16 @@ const styles = StyleSheet.create({
   settingIcon: {
     width: 32,
     height: 32,
-    borderRadius: 8,
+    borderRadius: 10,
+    backgroundColor: token.surface2,
     alignItems: "center",
     justifyContent: "center",
   },
   settingLabel: {
-    fontSize: 16,
-    color: COLORS.textPrimary,
+    fontFamily: font.sans[500],
+    fontSize: 14,
+    fontWeight: "500",
+    color: token.text,
   },
   settingRight: {
     flexDirection: "row",
@@ -528,25 +707,26 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   settingValue: {
-    fontSize: 16,
-    color: COLORS.textSecondary,
+    fontFamily: font.sans[400],
+    fontSize: 13,
+    color: token.textMute,
   },
   dangerButton: {
     width: "100%",
-    borderRadius: 12,
-    backgroundColor: COLORS.bg,
     paddingVertical: 14,
     alignItems: "center",
   },
   dangerButtonText: {
-    fontSize: 16,
+    fontFamily: font.sans[600],
+    fontSize: 13,
     fontWeight: "600",
-    color: COLORS.error,
+    color: token.negative,
   },
   version: {
-    paddingTop: 24,
+    paddingTop: 8,
     textAlign: "center",
-    fontSize: 12,
-    color: COLORS.textTertiary,
+    fontFamily: font.mono[400],
+    fontSize: 10,
+    color: token.textMute,
   },
 });

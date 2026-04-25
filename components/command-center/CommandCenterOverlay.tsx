@@ -1,8 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
 import {
-  ActivityIndicator,
-  Animated,
-  Easing,
   Modal,
   Platform,
   Pressable,
@@ -31,12 +27,12 @@ import {
   formatRecordingDuration,
   getMealVisualKind,
   SHOW_ESTIMATED_REVIEW_MACROS,
-  WAVE_BAR_COUNT,
-  WAVE_MAX,
-  WAVE_MIN,
 } from "./helpers";
 import { useCommandCenterInternal } from "./CommandCenterProvider";
 import { EXERCISE_CATALOG } from "../../lib/exercise-catalog";
+import { color as t, font, radius } from "../../lib/tokens";
+import { VoiceRing } from "../pulse/VoiceRing";
+import { Waveform } from "../pulse/Waveform";
 
 // ---------------------------------------------------------------------------
 // SVG Glyphs
@@ -50,7 +46,7 @@ function SparkleGlyph({ color = COLORS.textTertiary }: { color?: string }) {
   );
 }
 
-function MicGlyph({ color = "#FFFFFF" }: { color?: string }) {
+function MicGlyph({ color = t.accentInk }: { color?: string }) {
   return (
     <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
       <Path d="M12 15C9.79 15 8 13.21 8 11V6C8 3.79 9.79 2 12 2C14.21 2 16 3.79 16 6V11C16 13.21 14.21 15 12 15Z" stroke={color} strokeWidth={2} />
@@ -78,7 +74,7 @@ function KeyboardGlyph({ color = COLORS.textSecondary }: { color?: string }) {
   );
 }
 
-function SendGlyph({ color = "#FFFFFF" }: { color?: string }) {
+function SendGlyph({ color = t.accentInk }: { color?: string }) {
   return (
     <Svg width={18} height={18} viewBox="0 0 18 18" fill="none">
       <Path d="M5 12L2 17L16 9L2 1L5 6" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
@@ -96,55 +92,11 @@ function PlusGlyph({ color = COLORS.textSecondary }: { color?: string }) {
   );
 }
 
-function CheckGlyph({ color = "#FFFFFF" }: { color?: string }) {
+function CheckGlyph({ color = t.accentInk }: { color?: string }) {
   return (
     <Svg width={16} height={16} viewBox="0 0 16 16" fill="none">
       <Path d="M13.2 3.8L6.2 12.2L2.8 8.8" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
     </Svg>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Animated Waveform
-// ---------------------------------------------------------------------------
-
-function AnimatedWaveform({ active }: { active: boolean }) {
-  const anims = useRef(
-    Array.from({ length: WAVE_BAR_COUNT }, () => new Animated.Value(WAVE_MIN + Math.random() * (WAVE_MAX - WAVE_MIN))),
-  ).current;
-  const isMounted = useRef(true);
-
-  useEffect(() => {
-    isMounted.current = true;
-    return () => { isMounted.current = false; };
-  }, []);
-
-  const animate = useCallback(() => {
-    if (!isMounted.current) return;
-    const animations = anims.map((anim) =>
-      Animated.timing(anim, {
-        toValue: WAVE_MIN + Math.random() * (WAVE_MAX - WAVE_MIN),
-        duration: 300 + Math.random() * 200,
-        easing: Easing.inOut(Easing.sin),
-        useNativeDriver: false,
-      }),
-    );
-    Animated.parallel(animations).start(({ finished }) => {
-      if (finished && isMounted.current) animate();
-    });
-  }, [anims]);
-
-  useEffect(() => {
-    if (active) animate();
-    else anims.forEach((anim) => anim.stopAnimation());
-  }, [active, animate, anims]);
-
-  return (
-    <View style={styles.waveform}>
-      {anims.map((anim, index) => (
-        <Animated.View key={`wave-${index}`} style={[styles.waveBar, { height: anim, opacity: index % 2 === 0 ? 0.9 : 0.55 }]} />
-      ))}
-    </View>
   );
 }
 
@@ -318,8 +270,8 @@ export function CommandCenterOverlay() {
     if (commandState === "cc_submitting_typed") {
       return (
         <View style={styles.sheetContentCentered}>
-          <ActivityIndicator color={COLORS.black} />
-          <Text style={styles.processingTitle}>Interpreting entry...</Text>
+          <VoiceRing state="interpreting" size={180} />
+          <Text style={styles.processingTitle}>INTERPRETING</Text>
           <Text style={styles.processingBody}>{cc.commandText.trim()}</Text>
         </View>
       );
@@ -336,10 +288,16 @@ export function CommandCenterOverlay() {
                 <Text style={styles.recordingTimer}>{formatRecordingDuration(cc.recordingSeconds)}</Text>
               </View>
             </View>
-            <View style={styles.recordingHeaderCenter}><Text style={styles.recordingTitle}>Listening</Text></View>
+            <View style={styles.recordingHeaderCenter}><Text style={styles.recordingTitle}>LISTENING</Text></View>
             <View style={[styles.recordingHeaderSide, styles.recordingHeaderSideRight]}>
               <Pressable style={styles.sheetCloseCircle} onPress={cc.closeCommandCenter} testID="cc-recording-discard"><CloseGlyph /></Pressable>
             </View>
+          </View>
+          <View style={styles.voiceRingWrap}>
+            <VoiceRing state="listening" size={180} />
+          </View>
+          <View style={styles.waveformWrap}>
+            <Waveform active width={140} height={28} />
           </View>
           <View style={styles.liveTranscriptWrap}>
             {liveText ? (
@@ -348,7 +306,6 @@ export function CommandCenterOverlay() {
               <Text style={styles.liveTranscriptHint}>Start speaking...</Text>
             )}
           </View>
-          <AnimatedWaveform active={commandState === "cc_recording"} />
           <View style={styles.recordMicArea}>
             <Pressable style={styles.recordStopButton} onPress={() => void cc.stopRecording()} testID="cc-recording-stop">
               <View pointerEvents="none" style={styles.recordStopButtonOuter1} />
@@ -366,10 +323,12 @@ export function CommandCenterOverlay() {
         <View style={styles.sheetContent}>
           <View style={styles.interpretingHeader}>
             <View style={styles.interpretingHeaderSide} />
-            <View style={styles.interpretingTitleRow}><ActivityIndicator color={COLORS.black} size="small" /><Text style={styles.sheetTitle}>Transcribing...</Text></View>
+            <View style={styles.interpretingTitleRow}><Text style={styles.sheetTitle}>INTERPRETING</Text></View>
             <Pressable style={styles.sheetCloseCircle} onPress={cc.closeCommandCenter} testID="cc-transcribing-close"><CloseGlyph /></Pressable>
           </View>
-          <View style={styles.interpretingDivider} />
+          <View style={styles.voiceRingWrap}>
+            <VoiceRing state="interpreting" size={180} />
+          </View>
           <View style={styles.transcribingCard}>
             <View style={styles.transcribingStatusRow}>
               <View style={styles.transcribingPill}><SparkleGlyph color={COLORS.textSecondary} /><Text style={styles.transcribingPillText}>Voice note captured</Text></View>
@@ -377,7 +336,6 @@ export function CommandCenterOverlay() {
             </View>
             <Text style={styles.transcribingTitle}>Converting speech to text</Text>
             <Text style={styles.transcribingBody}>We&apos;re turning your recording into editable text before analysis.</Text>
-            <View style={styles.transcribingWaveWrap}><AnimatedWaveform active /></View>
           </View>
         </View>
       );
@@ -389,12 +347,17 @@ export function CommandCenterOverlay() {
           <View style={styles.interpretingHeader}>
             <View style={styles.interpretingHeaderSide} />
             <View style={styles.interpretingTitleRow}>
-              {cc.isInterpretingVoice ? <ActivityIndicator color={COLORS.black} size="small" /> : null}
-              <Text style={styles.sheetTitle}>Interpreting...</Text>
+              <Text style={styles.sheetTitle}>INTERPRETING</Text>
             </View>
             <Pressable style={styles.sheetCloseCircle} onPress={cc.closeCommandCenter} testID="cc-interpreting-close"><CloseGlyph /></Pressable>
           </View>
-          <View style={styles.interpretingDivider} />
+          {cc.isInterpretingVoice ? (
+            <View style={styles.voiceRingWrap}>
+              <VoiceRing state="interpreting" size={180} />
+            </View>
+          ) : (
+            <View style={styles.interpretingDivider} />
+          )}
           <View style={styles.transcribingCard}>
             <View style={styles.transcribingStatusRow}>
               <View style={styles.transcribingPill}><SparkleGlyph color={COLORS.textSecondary} /><Text style={styles.transcribingPillText}>Transcript ready</Text></View>
@@ -539,12 +502,18 @@ export function CommandCenterOverlay() {
       );
     }
 
-    if (commandState === "cc_saving" || commandState === "cc_auto_saving" || commandState === "cc_quick_add_saving") {
+    if (
+      commandState === "cc_saving" ||
+      commandState === "cc_auto_saving" ||
+      commandState === "cc_quick_add_saving" ||
+      commandState === "cc_saved"
+    ) {
+      const isSaved = commandState === "cc_saved";
       return (
         <View style={styles.sheetContentCentered}>
-          <ActivityIndicator color={COLORS.black} />
-          <Text style={styles.processingTitle}>Saving entry...</Text>
-          <Text style={styles.processingBody}>Refreshing data</Text>
+          <VoiceRing state={isSaved ? "saved" : "interpreting"} size={180} />
+          <Text style={styles.processingTitle}>{isSaved ? "Saved" : "Saving entry..."}</Text>
+          {!isSaved ? <Text style={styles.processingBody}>Refreshing data</Text> : null}
         </View>
       );
     }
@@ -552,6 +521,11 @@ export function CommandCenterOverlay() {
     if (commandState === "cc_error" && cc.activeErrorCopy) {
       return (
         <View style={styles.sheetContent}>
+          {cc.commandErrorSubtype === "mic_permission_denied" ? (
+            <View style={styles.voiceRingWrap}>
+              <VoiceRing state="error" size={180} />
+            </View>
+          ) : null}
           <Text style={styles.errorTitle}>{cc.activeErrorCopy.title}</Text>
           <Text style={styles.errorBody}>{cc.activeErrorCopy.body}</Text>
           {cc.commandErrorDetail ? <Text style={styles.errorDetail}>{cc.commandErrorDetail}</Text> : null}
@@ -600,24 +574,24 @@ export function CommandCenterOverlay() {
 
 const styles = StyleSheet.create({
   modalRoot: { flex: 1, justifyContent: "flex-end" },
-  modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.4)" },
-  sheetWrap: { backgroundColor: COLORS.bg, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 20, paddingTop: 0, minHeight: 260 },
-  sheetHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: COLORS.border, alignSelf: "center", marginTop: 10, marginBottom: 14 },
+  modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.6)" },
+  sheetWrap: { backgroundColor: t.surface, borderTopLeftRadius: radius.sheet, borderTopRightRadius: radius.sheet, paddingHorizontal: 20, paddingTop: 0, minHeight: 260 },
+  sheetHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: t.line2, alignSelf: "center", marginTop: 10, marginBottom: 14 },
   sheetContent: { gap: 0 },
   sheetContentCentered: { minHeight: 180, alignItems: "center", justifyContent: "center", gap: 10 },
   sheetHeaderExpanded: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingBottom: 14 },
-  sheetTitleExpanded: { fontSize: 20, fontWeight: "700", color: COLORS.textPrimary, letterSpacing: -0.3 },
+  sheetTitleExpanded: { fontFamily: font.sans[700], fontSize: 20, fontWeight: "700", color: COLORS.textPrimary, letterSpacing: -0.3 },
   sheetCloseCircle: { width: 32, height: 32, borderRadius: 999, backgroundColor: COLORS.surface, alignItems: "center", justifyContent: "center" },
-  sheetTitle: { fontSize: 18, fontWeight: "700", color: COLORS.textPrimary },
+  sheetTitle: { fontFamily: font.sans[700], fontSize: 18, fontWeight: "700", color: COLORS.textPrimary },
   commandInputArea: { paddingBottom: 14 },
   commandInputExpanded: { minHeight: 92, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.bg, paddingHorizontal: 16, paddingVertical: 14, color: COLORS.textPrimary, fontSize: 16, lineHeight: 24, textAlignVertical: "top" },
   ccActionsRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingBottom: 8 },
   ccActionsSide: { width: 64, alignItems: "flex-start" },
   ccActionsSideRight: { alignItems: "flex-end" },
   ccActionBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.surface, alignItems: "center", justifyContent: "center" },
-  ccMicBig: { width: 56, height: 56, borderRadius: 28, backgroundColor: COLORS.textPrimary, alignItems: "center", justifyContent: "center", position: "relative" },
-  ccMicBigPulse: { position: "absolute", inset: -5, borderRadius: 999, borderWidth: 2.5, borderColor: "rgba(26,26,26,0.08)" },
-  ccSendCircle: { width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.textPrimary, alignItems: "center", justifyContent: "center" },
+  ccMicBig: { width: 56, height: 56, borderRadius: 28, backgroundColor: t.accent, alignItems: "center", justifyContent: "center", position: "relative" },
+  ccMicBigPulse: { position: "absolute", inset: -5, borderRadius: 999, borderWidth: 2.5, borderColor: "rgba(199,251,65,0.18)" },
+  ccSendCircle: { width: 40, height: 40, borderRadius: 20, backgroundColor: t.accent, alignItems: "center", justifyContent: "center" },
   ccSendCircleDisabled: { opacity: 0.3 },
   quickAddLabelExpanded: { fontSize: 13, fontWeight: "600", letterSpacing: 0.5, textTransform: "uppercase", color: COLORS.textSecondary, paddingTop: 4, paddingBottom: 10 },
   quickAddRows: { gap: 0 },
@@ -683,9 +657,9 @@ const styles = StyleSheet.create({
   reviewActions: { flexDirection: "row", gap: 12 },
   reviewSecondaryButton: { flex: 1, minHeight: 50, borderRadius: 14, borderWidth: 1.5, borderColor: COLORS.border, alignItems: "center", justifyContent: "center", backgroundColor: COLORS.bg },
   reviewSecondaryText: { fontSize: 16, fontWeight: "600", color: COLORS.textSecondary },
-  reviewPrimaryButton: { flex: 2, minHeight: 52, borderRadius: 14, backgroundColor: COLORS.textPrimary, alignItems: "center", justifyContent: "center" },
+  reviewPrimaryButton: { flex: 2, minHeight: 52, borderRadius: 14, backgroundColor: t.accent, alignItems: "center", justifyContent: "center" },
   reviewPrimaryContent: { flexDirection: "row", alignItems: "center", gap: 8 },
-  reviewPrimaryText: { fontSize: 16, fontWeight: "700", color: COLORS.bg, letterSpacing: -0.2 },
+  reviewPrimaryText: { fontFamily: font.sans[700], fontSize: 16, fontWeight: "700", color: t.accentInk, letterSpacing: -0.2 },
   processingTitle: { fontSize: 18, fontWeight: "700", color: COLORS.textPrimary },
   processingBody: { fontSize: 14, color: COLORS.textSecondary },
   recordingSheet: { alignItems: "center", paddingHorizontal: 8 },
@@ -694,15 +668,15 @@ const styles = StyleSheet.create({
   recordingHeaderSideRight: { alignItems: "flex-end" },
   recordingHeaderCenter: { flex: 1, alignItems: "center", justifyContent: "center" },
   recordingTimerWrap: { flexDirection: "row", alignItems: "center", gap: 6 },
-  recordingDot: { width: 8, height: 8, borderRadius: 999, backgroundColor: COLORS.error },
-  recordingTimer: { fontSize: 14, fontWeight: "600", color: COLORS.error },
-  recordingTitle: { fontSize: 18, fontWeight: "700", color: COLORS.textPrimary, letterSpacing: -0.3 },
+  recordingDot: { width: 8, height: 8, borderRadius: 999, backgroundColor: t.accent },
+  recordingTimer: { fontFamily: font.mono[500], fontSize: 13, fontWeight: "500", color: t.text },
+  recordingTitle: { fontFamily: font.sans[600], fontSize: 16, fontWeight: "600", color: t.text, letterSpacing: 1.2, textTransform: "uppercase" as const },
   liveTranscriptWrap: { width: "100%", minHeight: 60, marginBottom: 24, paddingHorizontal: 8, alignItems: "center" },
   liveTranscriptText: { fontSize: 20, fontWeight: "500", color: COLORS.textPrimary, lineHeight: 30, letterSpacing: -0.3, textAlign: "center" },
   liveTranscriptCursor: { color: COLORS.textPrimary },
   liveTranscriptHint: { fontSize: 16, color: COLORS.textTertiary, fontStyle: "italic" },
-  waveform: { width: "100%", height: 60, marginBottom: 28, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 3 },
-  waveBar: { width: 4, borderRadius: 999, backgroundColor: COLORS.textPrimary },
+  voiceRingWrap: { alignItems: "center", justifyContent: "center", paddingVertical: 16 },
+  waveformWrap: { alignItems: "center", justifyContent: "center", paddingVertical: 8 },
   recordMicArea: { alignItems: "center", gap: 16, marginBottom: 6 },
   recordStopButton: { width: 80, height: 80, borderRadius: 999, backgroundColor: COLORS.error, alignItems: "center", justifyContent: "center", position: "relative" },
   recordStopButtonOuter1: { position: "absolute", inset: -8, borderRadius: 999, borderWidth: 2.5, borderColor: "rgba(255,59,48,0.15)" },
@@ -716,7 +690,6 @@ const styles = StyleSheet.create({
   transcribingDuration: { fontSize: 13, fontWeight: "600", color: COLORS.textTertiary },
   transcribingTitle: { fontSize: 22, fontWeight: "700", letterSpacing: -0.4, color: COLORS.textPrimary },
   transcribingBody: { marginTop: 6, fontSize: 15, lineHeight: 22, color: COLORS.textSecondary },
-  transcribingWaveWrap: { alignItems: "center", justifyContent: "center", paddingTop: 18, paddingBottom: 2 },
   interpretingTranscriptCard: { marginTop: 16, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.bg, overflow: "hidden" },
   interpretingHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
   interpretingHeaderSide: { width: 32 },
@@ -724,8 +697,8 @@ const styles = StyleSheet.create({
   interpretingDivider: { height: 1, backgroundColor: COLORS.border, marginBottom: 12 },
   voiceTranscriptInput: { minHeight: 96, backgroundColor: COLORS.bg, paddingHorizontal: 16, paddingVertical: 14, color: COLORS.textPrimary, fontSize: 16, lineHeight: 25, textAlignVertical: "top" },
   interpretingActions: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 16 },
-  primaryActionButton: { borderRadius: 13, backgroundColor: COLORS.textPrimary, paddingHorizontal: 18, minHeight: 42, alignItems: "center", justifyContent: "center" },
-  primaryActionText: { color: COLORS.bg, fontSize: 14, fontWeight: "700" },
+  primaryActionButton: { borderRadius: 13, backgroundColor: t.accent, paddingHorizontal: 18, minHeight: 42, alignItems: "center", justifyContent: "center" },
+  primaryActionText: { fontFamily: font.sans[700], color: t.accentInk, fontSize: 14, fontWeight: "700" },
   secondaryActionButton: { borderRadius: 13, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.bg, paddingHorizontal: 16, minHeight: 42, alignItems: "center", justifyContent: "center", flexShrink: 1 },
   secondaryActionText: { color: COLORS.textPrimary, fontSize: 14, fontWeight: "600" },
   tertiaryActionButton: { minHeight: 40, justifyContent: "center", alignItems: "center", paddingHorizontal: 8, alignSelf: "center" },
@@ -733,6 +706,6 @@ const styles = StyleSheet.create({
   errorTitle: { fontSize: 22, fontWeight: "700", color: COLORS.textPrimary },
   errorBody: { marginTop: -2, fontSize: 14, color: COLORS.textSecondary },
   errorDetail: { fontSize: 13, color: COLORS.error, fontWeight: "600" },
-  toastWrap: { position: "absolute", bottom: 136, alignSelf: "center", backgroundColor: COLORS.textPrimary, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8 },
-  toastText: { fontSize: 13, color: COLORS.bg, fontWeight: "700" },
+  toastWrap: { position: "absolute", bottom: 136, alignSelf: "center", backgroundColor: t.accent, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8 },
+  toastText: { fontFamily: font.sans[700], fontSize: 13, color: t.accentInk, fontWeight: "700" },
 });

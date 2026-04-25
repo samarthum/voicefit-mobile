@@ -196,6 +196,14 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
     setReviewDraft(null);
   }, [recording]);
 
+  // Holds the saved ring visible for 600ms after a successful write so the
+  // user gets the emph-easing scale-in confirmation before the sheet closes.
+  const finishWithSaved = useCallback((toast: string) => {
+    setCommandToast(toast);
+    setCommandState("cc_saved");
+    setTimeout(() => closeCommandCenter(), 600);
+  }, [closeCommandCenter]);
+
   const openCommandCenter = useCallback(() => {
     setCommandText("");
     setVoiceTranscript("");
@@ -270,8 +278,7 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
         if (action.kind === "quick_add" && hasWebPreviewFlag("quick_add_fail")) throw new Error("Mock quick-add save failure.");
         await new Promise((resolve) => setTimeout(resolve, 550));
         await refreshAfterSave();
-        setCommandToast("Saved");
-        closeCommandCenter();
+        finishWithSaved("Saved");
         return;
       }
 
@@ -349,22 +356,20 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
             }),
           });
           await refreshAfterSave();
-          setCommandToast(interpreted.payload.answer);
-          closeCommandCenter();
+          finishWithSaved(interpreted.payload.answer);
           return;
         }
       }
 
       await refreshAfterSave();
-      setCommandToast("Saved");
-      closeCommandCenter();
+      finishWithSaved("Saved");
     } catch (error) {
       setCommandError(
         action.kind === "quick_add" ? "quick_add_failure" : "auto_save_failure",
         getErrorMessage(error),
       );
     }
-  }, [isWebPreview, getToken, refreshAfterSave, closeCommandCenter, setCommandError, screenContext.sessionId]);
+  }, [isWebPreview, getToken, refreshAfterSave, finishWithSaved, setCommandError, screenContext.sessionId]);
 
   const routeInterpretedEntry = useCallback(async (interpreted: InterpretEntryResponse, transcript: string, source: EntrySource) => {
     if (interpreted.intent === "meal") {
