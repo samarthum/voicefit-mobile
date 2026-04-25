@@ -277,16 +277,6 @@ export function inferCalories(transcript: string) {
   return Math.max(80, value);
 }
 
-export type MealVisualKind = "salad" | "oats" | "salmon" | "generic";
-
-export function getMealVisualKind(description: string): MealVisualKind {
-  const text = description.toLowerCase();
-  if (text.includes("oat")) return "oats";
-  if (text.includes("salmon")) return "salmon";
-  if (text.includes("salad") || text.includes("chicken")) return "salad";
-  return "generic";
-}
-
 // ---------------------------------------------------------------------------
 // Quick-add items from dashboard data
 // ---------------------------------------------------------------------------

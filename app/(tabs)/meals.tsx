@@ -13,25 +13,12 @@ import {
 } from "react-native";
 import { useAuth } from "@clerk/clerk-expo";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRouter } from "expo-router";
 import Svg, { Path } from "react-native-svg";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { FloatingCommandBar } from "../../components/FloatingCommandBar";
-import { useCommandCenter } from "../../components/command-center";
-import { MealGlyph } from "../../components/MealGlyph";
+import { useCommandCenter, toLocalDateString } from "../../components/command-center";
 import { apiRequest } from "../../lib/api-client";
-
-const COLORS = {
-  bg: "#0A0B0A",
-  surface: "#141614",
-  border: "rgba(255,255,255,0.08)",
-  textPrimary: "#F3F4F1",
-  textSecondary: "rgba(243,244,241,0.68)",
-  textTertiary: "rgba(243,244,241,0.42)",
-  calories: "#C7FB41",
-  error: "#FF6B6B",
-  blue: "#C7FB41",
-};
+import { color as token, font, radius as r } from "../../lib/tokens";
 
 type MealType = "breakfast" | "lunch" | "dinner" | "snack";
 
@@ -54,50 +41,65 @@ interface MealsListResponse {
   offset: number;
 }
 
+const MEAL_TYPES: MealType[] = ["breakfast", "lunch", "dinner", "snack"];
+
 const SAMPLE_MEALS: MealItem[] = [
   {
     id: "meal-preview-1",
     userId: "preview",
     eatenAt: new Date().toISOString(),
     mealType: "lunch",
-    description: "Chicken Salad",
-    transcriptRaw: "Chicken salad 450 calories",
-    calories: 450,
+    description: "Chicken caesar",
+    transcriptRaw: null,
+    calories: 520,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   },
   {
     id: "meal-preview-2",
     userId: "preview",
-    eatenAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+    eatenAt: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
     mealType: "breakfast",
-    description: "Overnight Oats",
-    transcriptRaw: "Overnight oats 320 calories",
-    calories: 320,
+    description: "Oats, blueberries, whey",
+    transcriptRaw: null,
+    calories: 420,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   },
   {
     id: "meal-preview-3",
     userId: "preview",
-    eatenAt: new Date(Date.now() - 18 * 60 * 60 * 1000).toISOString(),
+    eatenAt: new Date(Date.now() - 19 * 60 * 60 * 1000).toISOString(),
     mealType: "dinner",
-    description: "Grilled Salmon & Rice",
-    transcriptRaw: "Grilled salmon and rice 620 calories",
+    description: "Grilled salmon, rice",
+    transcriptRaw: null,
     calories: 620,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   },
 ];
 
-const mealTypes: MealType[] = ["breakfast", "lunch", "dinner", "snack"];
+function getLastSevenDaysEndingToday() {
+  const today = new Date();
+  const items: { date: string; dayNum: string; dayLabel: string }[] = [];
+  for (let i = 6; i >= 0; i -= 1) {
+    const d = new Date(today);
+    d.setDate(today.getDate() - i);
+    items.push({
+      date: toLocalDateString(d),
+      dayNum: String(d.getDate()),
+      dayLabel: d.toLocaleDateString("en-US", { weekday: "short" }).slice(0, 1).toUpperCase(),
+    });
+  }
+  return items;
+}
 
 function ChevronGlyph() {
   return (
     <Svg width={8} height={14} viewBox="0 0 8 14" fill="none">
       <Path
         d="M1 1L7 7L1 13"
-        stroke={COLORS.textTertiary}
+        stroke={token.textMute}
         strokeWidth={2}
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -109,17 +111,36 @@ function ChevronGlyph() {
 function formatMealTime(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  const hh = String(date.getHours()).padStart(2, "0");
+  const mm = String(date.getMinutes()).padStart(2, "0");
+  return `${hh}:${mm}`;
+}
+
+function formatHeaderDate(date: string) {
+  const today = toLocalDateString(new Date());
+  if (date === today) return "Today";
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (date === toLocalDateString(yesterday)) return "Yesterday";
+  return new Date(date + "T00:00:00").toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
 }
 
 export default function MealsScreen() {
-  const router = useRouter();
   const cc = useCommandCenter();
   const { getToken, isSignedIn } = useAuth();
   const queryClient = useQueryClient();
   const isWebPreview = __DEV__ && Platform.OS === "web";
-  const [dateInput, setDateInput] = useState("");
-  const [appliedDate, setAppliedDate] = useState("");
+
+  const today = toLocalDateString(new Date());
+  const dayOptions = useMemo(() => getLastSevenDaysEndingToday(), [today]);
+
+  const [filterMode, setFilterMode] = useState<"all" | "date">("all");
+  const [selectedDate, setSelectedDate] = useState<string>(today);
+
   const [selectedMealId, setSelectedMealId] = useState<string | null>(null);
   const [editDescription, setEditDescription] = useState("");
   const [editCalories, setEditCalories] = useState("");
@@ -127,46 +148,41 @@ export default function MealsScreen() {
   const [editError, setEditError] = useState<string | null>(null);
   const [editSuccess, setEditSuccess] = useState<string | null>(null);
 
+  const appliedDate = filterMode === "date" ? selectedDate : "";
+
   const mealsQuery = useQuery({
     queryKey: ["meals", appliedDate],
     enabled: !isWebPreview && !!isSignedIn,
     queryFn: async () => {
-      const token = await getToken();
-      if (!token) throw new Error("Not signed in");
+      const t = await getToken();
+      if (!t) throw new Error("Not signed in");
       const query = new URLSearchParams({ limit: "50", offset: "0" });
       if (appliedDate) query.set("date", appliedDate);
-      return apiRequest<MealsListResponse>(`/api/meals?${query.toString()}`, { token });
+      return apiRequest<MealsListResponse>(`/api/meals?${query.toString()}`, { token: t });
     },
   });
 
   const meals = isWebPreview ? SAMPLE_MEALS : mealsQuery.data?.meals ?? [];
 
   useEffect(() => {
-    if (!meals.length) return;
-    if (selectedMealId) return;
-    if (!isWebPreview) return;
-    setSelectedMealId(meals[0].id);
-  }, [isWebPreview, meals, selectedMealId]);
-
-  useEffect(() => {
     setEditError(null);
     setEditSuccess(null);
     if (!selectedMealId || !meals.length) return;
-    const selected = meals.find((meal) => meal.id === selectedMealId);
-    if (!selected) return;
-    setEditDescription(selected.description);
-    setEditCalories(String(selected.calories));
-    setEditMealType(selected.mealType);
+    const sel = meals.find((m) => m.id === selectedMealId);
+    if (!sel) return;
+    setEditDescription(sel.description);
+    setEditCalories(String(sel.calories));
+    setEditMealType(sel.mealType);
   }, [meals, selectedMealId]);
 
   const updateMealMutation = useMutation({
     mutationFn: async () => {
       if (!selectedMealId) throw new Error("Select a meal first");
-      const token = await getToken();
-      if (!token) throw new Error("Not signed in");
+      const t = await getToken();
+      if (!t) throw new Error("Not signed in");
       return apiRequest<MealItem>(`/api/meals/${selectedMealId}`, {
         method: "PUT",
-        token,
+        token: t,
         body: JSON.stringify({
           description: editDescription.trim(),
           calories: Number(editCalories.trim()),
@@ -193,11 +209,11 @@ export default function MealsScreen() {
   const deleteMealMutation = useMutation({
     mutationFn: async () => {
       if (!selectedMealId) throw new Error("Select a meal first");
-      const token = await getToken();
-      if (!token) throw new Error("Not signed in");
+      const t = await getToken();
+      if (!t) throw new Error("Not signed in");
       return apiRequest<{ deleted: boolean }>(`/api/meals/${selectedMealId}`, {
         method: "DELETE",
-        token,
+        token: t,
       });
     },
     onSuccess: async () => {
@@ -213,20 +229,18 @@ export default function MealsScreen() {
     },
   });
 
-  const selectedMeal = meals.find((meal) => meal.id === selectedMealId) ?? null;
-  const totalCalories = meals.reduce((sum, meal) => sum + meal.calories, 0);
-  const summaryDateLabel = appliedDate || "Today";
+  const grouped = useMemo(() => {
+    const map = new Map<string, MealItem[]>();
+    for (const m of meals) {
+      const key = toLocalDateString(new Date(m.eatenAt));
+      const arr = map.get(key) ?? [];
+      arr.push(m);
+      map.set(key, arr);
+    }
+    return Array.from(map.entries()).sort(([a], [b]) => (a < b ? 1 : -1));
+  }, [meals]);
 
-  const handleApplyDate = () => {
-    setAppliedDate(dateInput.trim());
-    setSelectedMealId(null);
-  };
-
-  const handleClearDate = () => {
-    setDateInput("");
-    setAppliedDate("");
-    setSelectedMealId(null);
-  };
+  const totalCalories = meals.reduce((sum, m) => sum + m.calories, 0);
 
   const handleSave = async () => {
     if (!selectedMealId) return;
@@ -238,13 +252,11 @@ export default function MealsScreen() {
       setEditError("Calories must be a whole number.");
       return;
     }
-
     if (isWebPreview) {
       setEditError(null);
       setEditSuccess("Preview updated.");
       return;
     }
-
     await updateMealMutation.mutateAsync();
   };
 
@@ -261,112 +273,137 @@ export default function MealsScreen() {
 
   return (
     <SafeAreaView style={styles.root} edges={["top"]}>
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        keyboardDismissMode="on-drag"
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={styles.header}>
-          <Text style={styles.title}>Meals</Text>
-          <Text style={styles.subtitle}>Review and edit your recent entries.</Text>
+          <Text style={styles.eyebrow}>Meals</Text>
+          <Text style={styles.title}>Log</Text>
         </View>
 
-        <View style={styles.summaryRow}>
-          <View style={styles.summaryCard}>
-            <Text style={styles.summaryLabel}>{summaryDateLabel}</Text>
-            <Text style={styles.summaryValue}>{totalCalories.toLocaleString("en-US")}</Text>
-            <Text style={styles.summaryMeta}>calories logged</Text>
+        <View style={styles.statsRow}>
+          <View style={styles.statPill}>
+            <Text style={styles.statLabel}>Calories</Text>
+            <Text style={styles.statValue}>{totalCalories.toLocaleString()}</Text>
+            <Text style={styles.statSub}>kcal</Text>
           </View>
-          <View style={styles.summaryCard}>
-            <Text style={styles.summaryLabel}>Entries</Text>
-            <Text style={styles.summaryValue}>{meals.length}</Text>
-            <Text style={styles.summaryMeta}>recent meals</Text>
-          </View>
-        </View>
-
-        <View style={styles.filterCard}>
-          <Text style={styles.filterLabel}>Date filter (YYYY-MM-DD)</Text>
-          <TextInput
-            style={styles.filterInput}
-            value={dateInput}
-            onChangeText={setDateInput}
-            placeholder="Optional date filter"
-            placeholderTextColor={COLORS.textTertiary}
-            autoCapitalize="none"
-          />
-          <View style={styles.filterActions}>
-            <Pressable style={styles.filterPrimary} onPress={handleApplyDate}>
-              <Text style={styles.filterPrimaryText}>Apply</Text>
-            </Pressable>
-            <Pressable style={styles.filterSecondary} onPress={handleClearDate}>
-              <Text style={styles.filterSecondaryText}>Clear</Text>
-            </Pressable>
+          <View style={styles.statPill}>
+            <Text style={styles.statLabel}>Entries</Text>
+            <Text style={styles.statValue}>{meals.length}</Text>
+            <Text style={styles.statSub}>{filterMode === "date" ? "this day" : "recent"}</Text>
           </View>
         </View>
 
-        <View style={styles.listSection}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Recent Meals</Text>
-            {mealsQuery.isLoading && !isWebPreview ? <ActivityIndicator size="small" /> : null}
-          </View>
-
-          {meals.map((meal) => {
-            const selected = meal.id === selectedMealId;
+        <View style={styles.filterRow}>
+          <Pressable
+            style={[styles.filterChip, filterMode === "all" && styles.filterChipActive]}
+            onPress={() => {
+              setFilterMode("all");
+              setSelectedMealId(null);
+            }}
+          >
+            <Text style={[styles.filterChipText, filterMode === "all" && styles.filterChipTextActive]}>
+              All
+            </Text>
+          </Pressable>
+          {dayOptions.map((day) => {
+            const active = filterMode === "date" && selectedDate === day.date;
             return (
               <Pressable
-                key={meal.id}
-                style={[styles.mealRow, selected ? styles.mealRowSelected : null]}
-                onPress={() => setSelectedMealId(selected ? null : meal.id)}
+                key={day.date}
+                style={[styles.dayItem, active && styles.dayItemActive]}
+                onPress={() => {
+                  setFilterMode("date");
+                  setSelectedDate(day.date);
+                  setSelectedMealId(null);
+                }}
               >
-                <View style={styles.mealLeft}>
-                  <MealGlyph description={meal.description} />
-                  <View style={styles.mealCopy}>
-                    <Text style={styles.mealTitle}>{meal.description}</Text>
-                    <Text style={styles.mealMeta}>
-                      {meal.mealType} · {formatMealTime(meal.eatenAt)}
-                    </Text>
-                  </View>
-                </View>
-                <View style={styles.mealRight}>
-                  <Text style={styles.mealCalories}>{meal.calories} kcal</Text>
-                  <ChevronGlyph />
-                </View>
+                <Text style={[styles.dayLabel, active && styles.dayLabelActive]}>{day.dayLabel}</Text>
+                <Text style={[styles.dayNum, active && styles.dayNumActive]}>{day.dayNum}</Text>
               </Pressable>
             );
           })}
-
-          {!meals.length && !mealsQuery.isLoading ? (
-            <View style={styles.emptyCard}>
-              <Text style={styles.emptyTitle}>No meals yet</Text>
-              <Text style={styles.emptyBody}>
-                Log something from Home to see it here, then come back to edit the details.
-              </Text>
-            </View>
-          ) : null}
         </View>
 
-        {selectedMeal ? (
-          <View style={styles.detailCard}>
-            <Text style={styles.detailTitle}>Edit Meal</Text>
+        {mealsQuery.isLoading && !isWebPreview ? (
+          <View style={styles.loadingWrap}>
+            <ActivityIndicator color={token.accent} />
+          </View>
+        ) : null}
+
+        {!meals.length && !mealsQuery.isLoading ? (
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyTitle}>No meals yet</Text>
+            <Text style={styles.emptyBody}>
+              Hold the mic below to log a meal. It’ll appear here so you can edit or delete it.
+            </Text>
+          </View>
+        ) : null}
+
+        {grouped.map(([date, items]) => (
+          <View key={date} style={styles.daySection}>
+            <Text style={styles.dayHeading}>{formatHeaderDate(date)}</Text>
+            <View style={styles.mealsCard}>
+              {items.map((meal, idx) => {
+                const isSelected = meal.id === selectedMealId;
+                return (
+                  <Pressable
+                    key={meal.id}
+                    onPress={() => setSelectedMealId(isSelected ? null : meal.id)}
+                    style={[
+                      styles.mealRow,
+                      idx > 0 ? styles.mealRowDivider : null,
+                      isSelected ? styles.mealRowSelected : null,
+                    ]}
+                  >
+                    <Text style={styles.mealTime}>{formatMealTime(meal.eatenAt)}</Text>
+                    <View style={styles.mealCopy}>
+                      <Text style={styles.mealName} numberOfLines={1}>{meal.description}</Text>
+                      <Text style={styles.mealMeta}>{meal.mealType}</Text>
+                    </View>
+                    <View style={styles.mealKcalRow}>
+                      <Text style={styles.mealKcalNum}>{meal.calories}</Text>
+                      <Text style={styles.mealKcalUnit}>kcal</Text>
+                    </View>
+                    <View style={styles.mealChevron}>
+                      <ChevronGlyph />
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        ))}
+
+        {selectedMealId ? (
+          <View style={styles.editCard}>
+            <Text style={styles.editTitle}>Edit meal</Text>
             <TextInput
-              style={styles.detailInput}
+              style={styles.editInput}
               value={editDescription}
               onChangeText={setEditDescription}
               placeholder="Meal description"
-              placeholderTextColor={COLORS.textTertiary}
+              placeholderTextColor={token.textMute}
             />
             <TextInput
-              style={styles.detailInput}
+              style={styles.editInput}
               value={editCalories}
-              onChangeText={(value) => setEditCalories(value.replace(/[^\d]/g, ""))}
+              onChangeText={(v) => setEditCalories(v.replace(/[^\d]/g, ""))}
               keyboardType="number-pad"
               placeholder="Calories"
-              placeholderTextColor={COLORS.textTertiary}
+              placeholderTextColor={token.textMute}
             />
             <View style={styles.typeRow}>
-              {mealTypes.map((type) => (
+              {MEAL_TYPES.map((type) => (
                 <Pressable
                   key={type}
-                  style={[styles.typeChip, editMealType === type ? styles.typeChipActive : null]}
+                  style={[styles.typeChip, editMealType === type && styles.typeChipActive]}
                   onPress={() => setEditMealType(type)}
                 >
-                  <Text style={[styles.typeChipText, editMealType === type ? styles.typeChipTextActive : null]}>
+                  <Text style={[styles.typeChipText, editMealType === type && styles.typeChipTextActive]}>
                     {type}
                   </Text>
                 </Pressable>
@@ -374,20 +411,17 @@ export default function MealsScreen() {
             </View>
             {editError ? <Text style={styles.errorText}>{editError}</Text> : null}
             {editSuccess ? <Text style={styles.successText}>{editSuccess}</Text> : null}
-            <View style={styles.detailActions}>
+            <View style={styles.editActions}>
               <Pressable style={styles.deleteButton} onPress={handleDelete}>
                 <Text style={styles.deleteButtonText}>Delete</Text>
               </Pressable>
               <Pressable
-                style={[
-                  styles.saveButton,
-                  updateMealMutation.isPending ? styles.saveButtonDisabled : null,
-                ]}
+                style={[styles.saveButton, updateMealMutation.isPending && styles.saveButtonDisabled]}
                 onPress={() => void handleSave()}
                 disabled={updateMealMutation.isPending}
               >
                 <Text style={styles.saveButtonText}>
-                  {updateMealMutation.isPending ? "Saving..." : "Save Meal"}
+                  {updateMealMutation.isPending ? "Saving…" : "Save"}
                 </Text>
               </Pressable>
             </View>
@@ -396,7 +430,7 @@ export default function MealsScreen() {
       </ScrollView>
 
       <FloatingCommandBar
-        hint='"Had pasta for lunch..."'
+        hint='"Had pasta for lunch…"'
         onPress={() => cc.open()}
         onMicPress={() => cc.startRecording()}
       />
@@ -407,7 +441,7 @@ export default function MealsScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: COLORS.bg,
+    backgroundColor: token.bg,
   },
   scroll: {
     flex: 1,
@@ -420,175 +454,245 @@ const styles = StyleSheet.create({
   header: {
     paddingBottom: 20,
   },
+  eyebrow: {
+    fontFamily: font.sans[600],
+    fontSize: 11,
+    fontWeight: "600",
+    letterSpacing: 1.76,
+    textTransform: "uppercase",
+    color: token.textMute,
+  },
   title: {
-    fontSize: 28,
-    fontWeight: "700",
-    letterSpacing: -0.5,
-    color: COLORS.textPrimary,
+    marginTop: 2,
+    fontFamily: font.sans[600],
+    fontSize: 26,
+    fontWeight: "600",
+    letterSpacing: -0.65,
+    color: token.text,
   },
-  subtitle: {
-    marginTop: 4,
-    fontSize: 14,
-    color: COLORS.textSecondary,
-  },
-  summaryRow: {
+  statsRow: {
     flexDirection: "row",
     gap: 10,
-    marginBottom: 16,
+    marginBottom: 14,
   },
-  summaryCard: {
+  statPill: {
     flex: 1,
-    borderRadius: 16,
-    backgroundColor: COLORS.surface,
-    padding: 16,
-  },
-  summaryLabel: {
-    fontSize: 12,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 0.4,
-    color: COLORS.textSecondary,
-  },
-  summaryValue: {
-    marginTop: 8,
-    fontSize: 28,
-    fontWeight: "700",
-    color: COLORS.textPrimary,
-  },
-  summaryMeta: {
-    marginTop: 2,
-    fontSize: 13,
-    color: COLORS.textSecondary,
-  },
-  filterCard: {
-    borderRadius: 16,
-    backgroundColor: COLORS.surface,
-    padding: 16,
-    marginBottom: 20,
-  },
-  filterLabel: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: COLORS.textSecondary,
-    marginBottom: 10,
-  },
-  filterInput: {
-    borderRadius: 12,
+    borderRadius: r.sm,
+    backgroundColor: token.surface,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.bg,
+    borderColor: token.line,
     paddingHorizontal: 14,
     paddingVertical: 12,
-    fontSize: 15,
-    color: COLORS.textPrimary,
   },
-  filterActions: {
-    flexDirection: "row",
-    gap: 10,
-    marginTop: 12,
-  },
-  filterPrimary: {
-    borderRadius: 12,
-    backgroundColor: COLORS.calories,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-  },
-  filterPrimaryText: {
-    fontSize: 14,
+  statLabel: {
+    fontFamily: font.sans[600],
+    fontSize: 9.5,
     fontWeight: "600",
-    color: "#0A0B0A",
+    letterSpacing: 1.52,
+    textTransform: "uppercase",
+    color: token.textMute,
   },
-  filterSecondary: {
+  statValue: {
+    marginTop: 4,
+    fontFamily: font.mono[500],
+    fontSize: 22,
+    fontWeight: "500",
+    letterSpacing: -0.66,
+    color: token.text,
+  },
+  statSub: {
+    marginTop: 2,
+    fontFamily: font.sans[400],
+    fontSize: 10.5,
+    color: token.textMute,
+  },
+  filterRow: {
+    flexDirection: "row",
+    gap: 6,
+    marginBottom: 18,
+  },
+  filterChip: {
+    height: 48,
+    paddingHorizontal: 14,
     borderRadius: 12,
-    backgroundColor: COLORS.bg,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-  },
-  filterSecondaryText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: COLORS.textPrimary,
-  },
-  listSection: {
-    marginBottom: 20,
-  },
-  sectionHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
+    borderColor: token.line,
     alignItems: "center",
-    marginBottom: 12,
+    justifyContent: "center",
   },
-  sectionTitle: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: COLORS.textPrimary,
-    letterSpacing: -0.4,
+  filterChipActive: {
+    backgroundColor: token.accent,
+    borderColor: "transparent",
+  },
+  filterChipText: {
+    fontFamily: font.sans[600],
+    fontSize: 12,
+    fontWeight: "600",
+    color: token.textSoft,
+  },
+  filterChipTextActive: {
+    color: token.accentInk,
+  },
+  dayItem: {
+    flex: 1,
+    paddingVertical: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: token.line,
+    alignItems: "center",
+  },
+  dayItemActive: {
+    backgroundColor: token.accent,
+    borderColor: "transparent",
+  },
+  dayLabel: {
+    fontFamily: font.sans[600],
+    fontSize: 10,
+    fontWeight: "600",
+    letterSpacing: 1,
+    color: token.textMute,
+  },
+  dayLabelActive: {
+    color: token.accentInk,
+  },
+  dayNum: {
+    marginTop: 3,
+    fontFamily: font.mono[500],
+    fontSize: 16,
+    fontWeight: "500",
+    color: token.text,
+  },
+  dayNumActive: {
+    color: token.accentInk,
+  },
+  loadingWrap: {
+    paddingVertical: 24,
+    alignItems: "center",
+  },
+  daySection: {
+    marginBottom: 18,
+  },
+  dayHeading: {
+    paddingBottom: 10,
+    fontFamily: font.sans[600],
+    fontSize: 10.5,
+    fontWeight: "600",
+    letterSpacing: 1.68,
+    textTransform: "uppercase",
+    color: token.text,
+  },
+  mealsCard: {
+    backgroundColor: token.surface,
+    borderRadius: r.md,
+    borderWidth: 1,
+    borderColor: token.line,
+    overflow: "hidden",
   },
   mealRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    borderRadius: 16,
-    backgroundColor: COLORS.surface,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    marginBottom: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 12,
+  },
+  mealRowDivider: {
+    borderTopWidth: 1,
+    borderTopColor: token.line,
   },
   mealRowSelected: {
-    borderWidth: 1,
-    borderColor: COLORS.blue,
+    backgroundColor: "rgba(199,251,65,0.06)",
   },
-  mealLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    flex: 1,
+  mealTime: {
+    width: 44,
+    fontFamily: font.mono[400],
+    fontSize: 11,
+    color: token.textMute,
   },
   mealCopy: {
     flex: 1,
   },
-  mealTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: COLORS.textPrimary,
+  mealName: {
+    fontFamily: font.sans[500],
+    fontSize: 14,
+    fontWeight: "500",
+    color: token.text,
   },
   mealMeta: {
     marginTop: 2,
-    fontSize: 13,
-    color: COLORS.textSecondary,
+    fontFamily: font.sans[600],
+    fontSize: 10.5,
+    fontWeight: "600",
+    letterSpacing: 0.84,
+    textTransform: "uppercase",
+    color: token.textMute,
   },
-  mealRight: {
-    alignItems: "flex-end",
-    gap: 4,
+  mealKcalRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: 3,
   },
-  mealCalories: {
+  mealKcalNum: {
+    fontFamily: font.mono[500],
     fontSize: 15,
-    fontWeight: "700",
-    color: COLORS.textPrimary,
+    fontWeight: "500",
+    color: token.text,
   },
-  detailCard: {
-    borderRadius: 20,
-    backgroundColor: COLORS.surface,
+  mealKcalUnit: {
+    fontFamily: font.sans[400],
+    fontSize: 10,
+    color: token.textMute,
+  },
+  mealChevron: {
+    marginLeft: 6,
+  },
+  emptyCard: {
+    borderRadius: r.md,
+    backgroundColor: token.surface,
+    borderWidth: 1,
+    borderColor: token.line,
     padding: 18,
-    marginBottom: 16,
+    gap: 6,
+    marginBottom: 18,
   },
-  detailTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: COLORS.textPrimary,
+  emptyTitle: {
+    fontFamily: font.sans[600],
+    fontSize: 16,
+    fontWeight: "600",
+    color: token.text,
+    letterSpacing: -0.16,
+  },
+  emptyBody: {
+    fontFamily: font.sans[400],
+    fontSize: 13,
+    lineHeight: 19,
+    color: token.textSoft,
+  },
+  editCard: {
+    marginTop: 4,
+    borderRadius: r.md,
+    backgroundColor: token.surface,
+    borderWidth: 1,
+    borderColor: token.line,
+    padding: 16,
+  },
+  editTitle: {
+    fontFamily: font.sans[600],
+    fontSize: 15,
+    fontWeight: "600",
+    color: token.text,
+    letterSpacing: -0.15,
     marginBottom: 12,
   },
-  detailInput: {
+  editInput: {
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.bg,
+    borderColor: token.line,
+    backgroundColor: token.bg,
     paddingHorizontal: 14,
     paddingVertical: 12,
-    fontSize: 15,
-    color: COLORS.textPrimary,
+    fontFamily: font.sans[400],
+    fontSize: 14,
+    color: token.text,
     marginBottom: 10,
   },
   typeRow: {
@@ -601,84 +705,73 @@ const styles = StyleSheet.create({
   typeChip: {
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: token.line,
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: COLORS.bg,
+    paddingVertical: 7,
   },
   typeChipActive: {
-    backgroundColor: COLORS.calories,
-    borderColor: COLORS.calories,
+    backgroundColor: token.accent,
+    borderColor: "transparent",
   },
   typeChipText: {
-    fontSize: 13,
+    fontFamily: font.sans[600],
+    fontSize: 12,
     fontWeight: "600",
-    color: COLORS.textSecondary,
+    color: token.textSoft,
     textTransform: "capitalize",
   },
   typeChipTextActive: {
-    color: "#0A0B0A",
+    color: token.accentInk,
   },
   errorText: {
-    fontSize: 13,
+    fontFamily: font.sans[600],
+    fontSize: 12.5,
     fontWeight: "600",
-    color: COLORS.error,
+    color: token.negative,
     marginTop: 6,
   },
   successText: {
-    fontSize: 13,
+    fontFamily: font.sans[600],
+    fontSize: 12.5,
     fontWeight: "600",
-    color: "#7CE08A",
+    color: token.positive,
     marginTop: 6,
   },
-  detailActions: {
+  editActions: {
     flexDirection: "row",
     gap: 12,
     marginTop: 14,
   },
   deleteButton: {
     flex: 1,
-    borderRadius: 14,
-    backgroundColor: COLORS.bg,
+    borderRadius: 12,
+    backgroundColor: token.bg,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingVertical: 14,
+    borderColor: token.line,
+    paddingVertical: 13,
     alignItems: "center",
   },
   deleteButtonText: {
-    fontSize: 15,
+    fontFamily: font.sans[600],
+    fontSize: 14,
     fontWeight: "600",
-    color: COLORS.error,
+    color: token.negative,
   },
   saveButton: {
     flex: 1.6,
-    borderRadius: 14,
-    backgroundColor: COLORS.calories,
-    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: token.accent,
+    paddingVertical: 13,
     alignItems: "center",
   },
   saveButtonDisabled: {
-    opacity: 0.6,
+    opacity: 0.65,
   },
   saveButtonText: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#0A0B0A",
-  },
-  emptyCard: {
-    borderRadius: 16,
-    backgroundColor: COLORS.surface,
-    padding: 18,
-    gap: 6,
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: COLORS.textPrimary,
-  },
-  emptyBody: {
+    fontFamily: font.sans[700],
     fontSize: 14,
-    lineHeight: 21,
-    color: COLORS.textSecondary,
+    fontWeight: "700",
+    color: token.accentInk,
+    letterSpacing: 0.28,
   },
 });

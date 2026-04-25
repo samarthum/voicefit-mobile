@@ -16,18 +16,13 @@ import type { DashboardData } from "@voicefit/contracts/types";
 import Svg, {
   Circle as SvgCircle,
   Defs,
-  Ellipse,
-  Line,
   LinearGradient,
   Path,
-  RadialGradient,
-  Rect,
   Stop,
 } from "react-native-svg";
-import { Ionicons } from "@expo/vector-icons";
 import { apiRequest } from "../../lib/api-client";
 import { FloatingCommandBar } from "../../components/FloatingCommandBar";
-import { useCommandCenter, COLORS, toLocalDateString, getMealVisualKind } from "../../components/command-center";
+import { useCommandCenter, COLORS, toLocalDateString } from "../../components/command-center";
 import { getErrorMessage } from "../../components/command-center/helpers";
 import { color as token, font, radius as r } from "../../lib/tokens";
 import { Wordmark, LoadingBlock, OfflineBanner } from "../../components/pulse";
@@ -104,107 +99,6 @@ function StepsTrendIcon() {
       />
     </Svg>
   );
-}
-
-function SaladMealGlyph({ size = 32 }: { size?: number }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 64 64" fill="none">
-      <Defs>
-        <LinearGradient id="saladBowl" x1="32" y1="30" x2="32" y2="57" gradientUnits="userSpaceOnUse">
-          <Stop stopColor="#FFFFFF" />
-          <Stop offset={1} stopColor="#EDEEF2" />
-        </LinearGradient>
-        <RadialGradient id="leafGlow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(32 25) rotate(90) scale(16)">
-          <Stop stopColor="#8DE39D" />
-          <Stop offset={1} stopColor="#34C759" />
-        </RadialGradient>
-      </Defs>
-
-      <Path d="M12 36C12 48.15 20.4 56 32 56C43.6 56 52 48.15 52 36V34H12V36Z" fill="url(#saladBowl)" />
-      <Path d="M12 36C12 48.15 20.4 56 32 56C43.6 56 52 48.15 52 36V34H12V36Z" stroke="#1A1A1A" strokeWidth={2.2} />
-      <Path d="M17 34C17.4 26.7 23.6 21 31.2 21C39.5 21 46.3 27.8 46.3 36" fill="url(#leafGlow)" />
-      <Path d="M17 34C17.4 26.7 23.6 21 31.2 21C39.5 21 46.3 27.8 46.3 36" stroke="#1A1A1A" strokeWidth={2.2} strokeLinecap="round" />
-      <SvgCircle cx={23} cy={30} r={3.2} fill="#FF6B60" />
-      <SvgCircle cx={39} cy={29} r={3.2} fill="#FF9500" />
-      <Ellipse cx={31.5} cy={28} rx={2.8} ry={3.5} fill="#9AE7B5" />
-      <Path d="M22 41H42" stroke="#D7D9DF" strokeWidth={1.8} strokeLinecap="round" />
-    </Svg>
-  );
-}
-
-function OatsMealGlyph({ size = 32 }: { size?: number }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 64 64" fill="none">
-      <Defs>
-        <LinearGradient id="jarGlass" x1="32" y1="11" x2="32" y2="54" gradientUnits="userSpaceOnUse">
-          <Stop stopColor="#FFFFFF" />
-          <Stop offset={1} stopColor="#EEF0F4" />
-        </LinearGradient>
-        <LinearGradient id="oatFill" x1="32" y1="26" x2="32" y2="48" gradientUnits="userSpaceOnUse">
-          <Stop stopColor="#F9CF86" />
-          <Stop offset={1} stopColor="#E8B35D" />
-        </LinearGradient>
-      </Defs>
-
-      <Rect x={17} y={10} width={30} height={44} rx={10} fill="url(#jarGlass)" stroke="#1A1A1A" strokeWidth={2.2} />
-      <Rect x={22} y={22} width={20} height={24} rx={6} fill="url(#oatFill)" />
-      <Path d="M22 26H42" stroke="#E0A64F" strokeWidth={2} strokeLinecap="round" />
-      <Path d="M22 31H42" stroke="#E0A64F" strokeWidth={2} strokeLinecap="round" opacity={0.85} />
-      <Path d="M22 36H37" stroke="#E0A64F" strokeWidth={2} strokeLinecap="round" opacity={0.8} />
-      <Rect x={20} y={15} width={24} height={4} rx={2} fill="#DADDE4" />
-      <SvgCircle cx={45.5} cy={17.5} r={4.5} fill="#FF9500" />
-      <Path d="M45.5 15.4V19.6M43.4 17.5H47.6" stroke="#FFFFFF" strokeWidth={1.4} strokeLinecap="round" />
-    </Svg>
-  );
-}
-
-function SalmonMealGlyph({ size = 32 }: { size?: number }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 64 64" fill="none">
-      <Defs>
-        <LinearGradient id="plateFill" x1="32" y1="16" x2="32" y2="52" gradientUnits="userSpaceOnUse">
-          <Stop stopColor="#FFFFFF" />
-          <Stop offset={1} stopColor="#EEF0F4" />
-        </LinearGradient>
-        <LinearGradient id="salmonFill" x1="22" y1="25" x2="44" y2="39" gradientUnits="userSpaceOnUse">
-          <Stop stopColor="#FFA45B" />
-          <Stop offset={1} stopColor="#FF7E3E" />
-        </LinearGradient>
-      </Defs>
-
-      <Ellipse cx={32} cy={36} rx={22} ry={16} fill="url(#plateFill)" stroke="#1A1A1A" strokeWidth={2.2} />
-      <Path d="M18 36C19.8 30.8 24.6 27 30.2 27H40.8C42.6 27 44 28.4 44 30.2C44 33.1 41.7 35.4 38.8 35.4H30.5C27.2 35.4 24.8 37.7 24 41" fill="url(#salmonFill)" />
-      <Path d="M18 36C19.8 30.8 24.6 27 30.2 27H40.8C42.6 27 44 28.4 44 30.2C44 33.1 41.7 35.4 38.8 35.4H30.5C27.2 35.4 24.8 37.7 24 41" stroke="#1A1A1A" strokeWidth={1.8} strokeLinecap="round" />
-      <Ellipse cx={42} cy={39} rx={7} ry={5.5} fill="#FBFBFD" stroke="#DADDE4" strokeWidth={1.5} />
-      <SvgCircle cx={39.7} cy={37.8} r={0.9} fill="#D2D6DE" />
-      <SvgCircle cx={42.2} cy={40.3} r={0.9} fill="#D2D6DE" />
-      <SvgCircle cx={44.7} cy={37.8} r={0.9} fill="#D2D6DE" />
-      <SvgCircle cx={20} cy={30} r={2} fill="#34C759" />
-      <Path d="M19 30.3L20 28.2L21.1 30.3" stroke="#1A1A1A" strokeWidth={1} strokeLinecap="round" />
-    </Svg>
-  );
-}
-
-function MealGlyph({ description, size = 32 }: { description: string; size?: number }) {
-  const kind = getMealVisualKind(description);
-
-  if (kind === "salad") return <SaladMealGlyph size={size} />;
-  if (kind === "oats") return <OatsMealGlyph size={size} />;
-  if (kind === "salmon") return <SalmonMealGlyph size={size} />;
-
-  return <Ionicons name="restaurant-outline" size={Math.round(size * 0.7)} color="#8E8E93" />;
-}
-
-function MealThumb({ description }: { description: string }) {
-  return (
-    <View style={styles.mealThumb}>
-      <MealGlyph description={description} size={32} />
-    </View>
-  );
-}
-
-function QuickMealThumb({ description }: { description: string }) {
-  return <MealGlyph description={description} size={18} />;
 }
 
 function CalorieRing({ consumed, goal }: { consumed: number; goal: number }) {
@@ -417,7 +311,12 @@ export default function DashboardScreen() {
     return dates;
   }, [weeklyFull]);
 
-  const recentMeals = dashboard?.recentMeals.slice(0, 3) ?? [];
+  const recentMeals = useMemo(() => {
+    if (!dashboard?.recentMeals) return [];
+    return dashboard.recentMeals
+      .filter((meal) => toLocalDateString(new Date(meal.eatenAt)) === selectedDate)
+      .slice(0, 3);
+  }, [dashboard?.recentMeals, selectedDate]);
 
   const metricCurrentValues = useMemo(
     () =>
@@ -1211,14 +1110,6 @@ const styles = StyleSheet.create({
     fontFamily: font.mono[400],
     fontSize: 11,
     color: token.textMute,
-  },
-  mealThumb: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: token.surface2,
-    alignItems: "center",
-    justifyContent: "center",
   },
   mealInfo: {
     flex: 1,
