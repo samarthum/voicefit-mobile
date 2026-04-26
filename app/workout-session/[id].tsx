@@ -1056,11 +1056,13 @@ export default function WorkoutSessionScreen() {
     <SafeAreaView style={styles.root} edges={["top"]}>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
-          <Pressable style={styles.iconButton} onPress={() => {
-            if (router.canGoBack()) { router.back(); } else { router.replace("/(tabs)/workouts"); }
-          }}>
-            <BackGlyph />
-          </Pressable>
+          <View style={styles.headerLeft}>
+            <Pressable style={styles.iconButton} onPress={() => {
+              if (router.canGoBack()) { router.back(); } else { router.replace("/(tabs)/workouts"); }
+            }}>
+              <BackGlyph />
+            </Pressable>
+          </View>
           <View style={styles.headerCenter}>
             <Text style={styles.sessionEyebrow}>{session?.finished ? "Done" : "Live · Session"}</Text>
             <Text style={styles.sessionTitle}>{session?.title ?? "Workout session"}</Text>
@@ -1461,7 +1463,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  headerRight: { flexDirection: "row", alignItems: "center", gap: 4 },
+  headerLeft: { width: 72, alignItems: "flex-start" },
+  headerRight: { width: 72, flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 4 },
   headerCenter: { flex: 1, alignItems: "center" },
   sessionEyebrow: {
     fontFamily: font.sans[600],
