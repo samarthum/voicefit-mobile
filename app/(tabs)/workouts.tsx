@@ -234,7 +234,7 @@ export default function WorkoutsScreen() {
       subtitle: formatSessionSubtitle(session.startedAt),
       status: session.endedAt ? "done" : "active",
       setsLabel: String(session.setCount),
-      prCount: 0,
+      prCount: session.prCount,
       navigable: true,
     }));
   }, [isWebPreview, liveSessions]);
@@ -242,10 +242,11 @@ export default function WorkoutsScreen() {
   const stats = useMemo<StatsPreview>(() => {
     if (isWebPreview) return SAMPLE_STATS;
     const weeklyVolume = thisWeekSessions.reduce((sum, s) => sum + (s.volume ?? 0), 0);
+    const weeklyPRs = thisWeekSessions.reduce((sum, s) => sum + (s.prCount ?? 0), 0);
     return {
       sessions: String(thisWeekSessions.length),
       volume: weeklyVolume > 0 ? weeklyVolume.toLocaleString() : "—",
-      prs: "0",
+      prs: String(weeklyPRs),
     };
   }, [isWebPreview, thisWeekSessions]);
 
