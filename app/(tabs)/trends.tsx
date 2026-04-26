@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "@clerk/clerk-expo";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import type { DashboardData } from "@voicefit/contracts/types";
 import Svg, {
@@ -138,7 +138,10 @@ export default function TrendsScreen() {
   const today = toLocalDateString(new Date());
   const isWebPreview = isWebPreviewMode();
 
-  const [tab, setTab] = useState<TrendMetric>("calories");
+  const params = useLocalSearchParams<{ metric?: string }>();
+  const initialTab: TrendMetric =
+    params.metric === "steps" || params.metric === "weight" ? params.metric : "calories";
+  const [tab, setTab] = useState<TrendMetric>(initialTab);
   const [chartWidth, setChartWidth] = useState(320);
 
   const dashboardQuery = useQuery<DashboardData>({

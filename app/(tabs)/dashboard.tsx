@@ -529,7 +529,11 @@ export default function DashboardScreen() {
             </Pressable>
 
             <View style={styles.metricsRow}>
-              <View style={styles.metricCard}>
+              <Pressable
+                style={styles.metricCard}
+                onPress={() => router.push({ pathname: "/(tabs)/trends", params: { metric: "steps" } })}
+                testID="home-steps-card"
+              >
                 <View style={styles.metricTopRow}>
                   <Text style={styles.metricLabel}>Steps</Text>
                   <StepsTrendIcon />
@@ -545,9 +549,13 @@ export default function DashboardScreen() {
                 <View style={styles.metricThinTrack}>
                   <View style={[styles.metricThinFill, { width: `${progressPercent(todaySteps, todayStepsGoal) * 100}%` }]} />
                 </View>
-              </View>
+              </Pressable>
 
-              <View style={styles.metricCard}>
+              <Pressable
+                style={styles.metricCard}
+                onPress={() => router.push({ pathname: "/(tabs)/trends", params: { metric: "weight" } })}
+                testID="home-weight-card"
+              >
                 <View style={styles.metricTopRow}>
                   <Text style={styles.metricLabel}>Weight</Text>
                   {weightDelta != null && weightDelta !== 0 ? (
@@ -569,7 +577,7 @@ export default function DashboardScreen() {
                 <View style={styles.weightSparklineWrap}>
                   <WeightSparkline />
                 </View>
-              </View>
+              </Pressable>
             </View>
 
             <Pressable style={styles.coachCard} onPress={() => router.push("/(tabs)/coach")} testID="home-ask-coach">
