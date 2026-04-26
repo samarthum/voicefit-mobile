@@ -5,7 +5,6 @@ Status as of **2026-04-26**, end of the design-parity & Command Center redesign 
 ## Read first
 
 - `CLAUDE.md` at the monorepo root — project structure, API endpoints, DB schema, patterns.
-- `voicefit-mobile/docs/redesign-handoff.md` — the original Pulse redesign brief (foundation, tokens, primitives). Most of the per-screen "open gaps" listed there are now closed; treat it as design-system reference, not a punch list.
 - This file — current state and next actions.
 
 ## What this session set out to do
