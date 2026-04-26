@@ -19,6 +19,7 @@ import { FloatingCommandBar } from "../../components/FloatingCommandBar";
 import { useCommandCenter } from "../../components/command-center";
 import { apiRequest } from "../../lib/api-client";
 import { color as token, font, radius as r } from "../../lib/tokens";
+import type { WorkoutSessionsListResponse } from "@voicefit/contracts/types";
 
 const COLORS = {
   bg: token.bg,
@@ -33,24 +34,6 @@ const COLORS = {
   accent: token.accent,
   accentInk: token.accentInk,
 };
-
-interface WorkoutSessionListItem {
-  id: string;
-  userId: string;
-  title: string;
-  startedAt: string;
-  endedAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-  setCount: number;
-}
-
-interface WorkoutSessionsResponse {
-  sessions: WorkoutSessionListItem[];
-  total: number;
-  limit: number;
-  offset: number;
-}
 
 type SessionPreview = {
   id: string;
@@ -189,7 +172,7 @@ export default function WorkoutsScreen() {
     queryFn: async ({ pageParam }) => {
       const token = await getToken();
       if (!token) throw new Error("Not signed in");
-      return apiRequest<WorkoutSessionsResponse>(
+      return apiRequest<WorkoutSessionsListResponse>(
         `/api/workout-sessions?limit=${PAGE_SIZE}&offset=${pageParam as number}`,
         { token },
       );
@@ -204,7 +187,7 @@ export default function WorkoutsScreen() {
     mutationFn: async () => {
       const token = await getToken();
       if (!token) throw new Error("Not signed in");
-      return apiRequest<WorkoutSessionListItem>("/api/workout-sessions", {
+      return apiRequest<{ id: string }>("/api/workout-sessions", {
         method: "POST",
         token,
         body: JSON.stringify({ title: "New Session" }),
@@ -258,9 +241,10 @@ export default function WorkoutsScreen() {
 
   const stats = useMemo<StatsPreview>(() => {
     if (isWebPreview) return SAMPLE_STATS;
+    const weeklyVolume = thisWeekSessions.reduce((sum, s) => sum + (s.volume ?? 0), 0);
     return {
       sessions: String(thisWeekSessions.length),
-      volume: "—",
+      volume: weeklyVolume > 0 ? weeklyVolume.toLocaleString() : "—",
       prs: "0",
     };
   }, [isWebPreview, thisWeekSessions]);

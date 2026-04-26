@@ -110,6 +110,7 @@ function mockDashboard(date: string): DashboardData {
   return {
     today: {
       calories: { consumed: 1820, goal: 2100 },
+      macros: { protein: 105, carbs: 180, fat: 58 },
       steps: { count: 7420, goal: 10000 },
       weight: 72.4,
       workoutSessions: 0,

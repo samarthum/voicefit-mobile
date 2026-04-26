@@ -824,9 +824,11 @@ export function CommandCenterOverlay() {
 
     if (commandState === "cc_error" && cc.activeErrorCopy) {
       const isMicError = cc.commandErrorSubtype === "mic_permission_denied";
+      const isVoiceError = cc.commandErrorSubtype === "voice_interpret_failure";
       const tone = isMicError ? t.warn : t.negative;
       const toneTintBg = isMicError ? "rgba(255,179,71,0.12)" : "rgba(255,107,107,0.12)";
       const toneTintBorder = isMicError ? "rgba(255,179,71,0.35)" : "rgba(255,107,107,0.35)";
+      const recBars = [4, 6, 3, 5, 4, 6, 5, 3, 4, 5, 4, 3];
       return (
         <Sheet
           title={null}
@@ -862,12 +864,36 @@ export function CommandCenterOverlay() {
               </Text>
             ) : null}
 
+            {isVoiceError ? (
+              <View style={styles.errorRecStrip} testID="cc-error-rec-strip">
+                <Text style={styles.errorRecLabel}>REC</Text>
+                <View style={styles.errorRecBars}>
+                  {recBars.map((h, i) => (
+                    <View key={i} style={[styles.errorRecBar, { height: h }]} />
+                  ))}
+                </View>
+                <Text style={[styles.errorRecDuration, { color: tone }]}>
+                  {formatRecordingDuration(cc.recordingSeconds)}
+                </Text>
+              </View>
+            ) : null}
+
             <View style={styles.errorActions}>
               <Pressable
                 style={styles.errorPrimaryButton}
                 onPress={() => void cc.handleErrorPrimary()}
                 testID="cc-error-primary"
               >
+                <Svg width={14} height={14} viewBox="0 0 14 14">
+                  <Path
+                    d="M3 3V1L0 4L3 7V5C6 5 8 7 8 10H10C10 6 7 3 3 3Z"
+                    fill={t.accentInk}
+                  />
+                  <Path
+                    d="M11 11V13L14 10L11 7V9C8 9 6 7 6 4H4C4 8 7 11 11 11Z"
+                    fill={t.accentInk}
+                  />
+                </Svg>
                 <Text style={styles.errorPrimaryText}>{cc.activeErrorCopy.primary}</Text>
               </Pressable>
               {cc.activeErrorCopy.secondary ? (
@@ -876,6 +902,15 @@ export function CommandCenterOverlay() {
                   onPress={cc.handleErrorSecondary}
                   testID="cc-error-secondary"
                 >
+                  <Svg width={14} height={14} viewBox="0 0 14 14">
+                    <Path
+                      d="M2 10L10 2L13 5L5 13H2V10Z"
+                      stroke={t.text}
+                      strokeWidth={1.4}
+                      strokeLinejoin="round"
+                      fill="none"
+                    />
+                  </Svg>
                   <Text style={styles.errorSecondaryText}>{cc.activeErrorCopy.secondary}</Text>
                 </Pressable>
               ) : null}
@@ -940,7 +975,9 @@ function SavedToast() {
   const draft = cc.reviewDraft;
 
   let titleNode: ReactNode;
-  let footerLabel = "ENTRY SAVED";
+  const footerLabel = cc.lastSavedKcalLeft != null
+    ? `${cc.lastSavedKcalLeft.toLocaleString()} KCAL LEFT TODAY`
+    : "ENTRY SAVED";
 
   if (draft?.kind === "meal") {
     const { description, calories, mealType } = draft.interpreted.payload;
@@ -1525,8 +1562,10 @@ const styles = StyleSheet.create({
     height: 52,
     borderRadius: 14,
     backgroundColor: t.accent,
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    gap: 8,
   },
   errorPrimaryText: {
     fontFamily: font.sans[700],
@@ -1542,8 +1581,43 @@ const styles = StyleSheet.create({
     backgroundColor: t.surface,
     borderWidth: 1,
     borderColor: t.line,
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    gap: 8,
+  },
+  errorRecStrip: {
+    marginTop: 16,
+    backgroundColor: t.surface,
+    borderWidth: 1,
+    borderColor: t.line,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  errorRecLabel: {
+    fontFamily: font.mono[400],
+    fontSize: 11,
+    color: t.textMute,
+  },
+  errorRecBars: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+  },
+  errorRecBar: {
+    width: 3,
+    borderRadius: 2,
+    backgroundColor: t.textMute,
+  },
+  errorRecDuration: {
+    fontFamily: font.mono[600],
+    fontSize: 11,
+    fontWeight: "600",
   },
   errorSecondaryText: {
     fontFamily: font.sans[600],

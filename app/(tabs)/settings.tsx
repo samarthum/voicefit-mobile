@@ -42,14 +42,13 @@ const COLORS = {
   accentInk: token.accentInk,
 };
 
-interface UserSettingsResponse {
-  calorieGoal: number;
-  stepGoal: number;
-}
+import type { UserSettings } from "@voicefit/contracts/types";
 
-const PREVIEW_SETTINGS: UserSettingsResponse = {
+const PREVIEW_SETTINGS: UserSettings = {
   calorieGoal: 2000,
   stepGoal: 10000,
+  proteinGoal: 140,
+  weightGoalKg: null,
 };
 
 function getErrorMessage(error: unknown) {
@@ -208,6 +207,10 @@ export default function SettingsScreen() {
   const isWebPreview = __DEV__ && Platform.OS === "web";
   const [calorieGoal, setCalorieGoal] = useState(String(PREVIEW_SETTINGS.calorieGoal));
   const [stepGoal, setStepGoal] = useState(String(PREVIEW_SETTINGS.stepGoal));
+  const [proteinGoal, setProteinGoal] = useState(String(PREVIEW_SETTINGS.proteinGoal));
+  const [weightGoal, setWeightGoal] = useState(
+    PREVIEW_SETTINGS.weightGoalKg != null ? String(PREVIEW_SETTINGS.weightGoalKg) : "",
+  );
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
@@ -243,13 +246,13 @@ export default function SettingsScreen() {
     }
   };
 
-  const { data, isLoading, error } = useQuery<UserSettingsResponse>({
+  const { data, isLoading, error } = useQuery<UserSettings>({
     queryKey: ["user-settings"],
     enabled: !isWebPreview && !!isSignedIn,
     queryFn: async () => {
       const token = await getToken();
       if (!token) throw new Error("Not signed in");
-      return apiRequest<UserSettingsResponse>("/api/user/settings", { token });
+      return apiRequest<UserSettings>("/api/user/settings", { token });
     },
   });
 
@@ -259,7 +262,16 @@ export default function SettingsScreen() {
     if (hasEditedRef.current) return;
     setCalorieGoal(String(effectiveData.calorieGoal));
     setStepGoal(String(effectiveData.stepGoal));
-  }, [effectiveData.calorieGoal, effectiveData.stepGoal]);
+    setProteinGoal(String(effectiveData.proteinGoal));
+    setWeightGoal(
+      effectiveData.weightGoalKg != null ? String(effectiveData.weightGoalKg) : "",
+    );
+  }, [
+    effectiveData.calorieGoal,
+    effectiveData.stepGoal,
+    effectiveData.proteinGoal,
+    effectiveData.weightGoalKg,
+  ]);
 
   useEffect(() => {
     if (!saveSuccess) return;
@@ -285,6 +297,9 @@ export default function SettingsScreen() {
   const saveSettings = async () => {
     const nextCalorieGoal = Number(calorieGoal.replace(/,/g, "").trim());
     const nextStepGoal = Number(stepGoal.replace(/,/g, "").trim());
+    const nextProteinGoal = Number(proteinGoal.replace(/,/g, "").trim());
+    const trimmedWeight = weightGoal.replace(/,/g, "").trim();
+    const nextWeightGoalKg = trimmedWeight === "" ? null : Number(trimmedWeight);
 
     if (!Number.isInteger(nextCalorieGoal) || nextCalorieGoal < 500 || nextCalorieGoal > 10000) {
       setSaveError("Calorie goal must be an integer between 500 and 10000.");
@@ -292,6 +307,17 @@ export default function SettingsScreen() {
     }
     if (!Number.isInteger(nextStepGoal) || nextStepGoal < 1000 || nextStepGoal > 100000) {
       setSaveError("Step goal must be an integer between 1000 and 100000.");
+      return;
+    }
+    if (!Number.isInteger(nextProteinGoal) || nextProteinGoal < 20 || nextProteinGoal > 500) {
+      setSaveError("Protein goal must be an integer between 20 and 500.");
+      return;
+    }
+    if (
+      nextWeightGoalKg !== null &&
+      (Number.isNaN(nextWeightGoalKg) || nextWeightGoalKg < 20 || nextWeightGoalKg > 300)
+    ) {
+      setSaveError("Weight goal must be between 20 and 300 kg, or empty.");
       return;
     }
 
@@ -308,12 +334,14 @@ export default function SettingsScreen() {
       const token = await getToken();
       if (!token) throw new Error("Not signed in");
 
-      const updated = await apiRequest<UserSettingsResponse>("/api/user/settings", {
+      const updated = await apiRequest<UserSettings>("/api/user/settings", {
         method: "PUT",
         token,
         body: JSON.stringify({
           calorieGoal: nextCalorieGoal,
           stepGoal: nextStepGoal,
+          proteinGoal: nextProteinGoal,
+          weightGoalKg: nextWeightGoalKg,
         }),
       });
 
@@ -370,7 +398,7 @@ export default function SettingsScreen() {
                 />
                 <Text style={styles.inputUnit}>kcal</Text>
               </View>
-              <View style={[styles.inputRow, styles.inputRowLast]}>
+              <View style={styles.inputRow}>
                 <Text style={styles.inputLabel}>Step Goal</Text>
                 <TextInput
                   style={styles.goalInput}
@@ -383,6 +411,36 @@ export default function SettingsScreen() {
                   editable={!isSaving}
                 />
                 <Text style={styles.inputUnit}>steps</Text>
+              </View>
+              <View style={styles.inputRow}>
+                <Text style={styles.inputLabel}>Protein Goal</Text>
+                <TextInput
+                  style={styles.goalInput}
+                  value={formatGoal(proteinGoal)}
+                  onChangeText={(value) => {
+                    hasEditedRef.current = true;
+                    setProteinGoal(value.replace(/[^\d]/g, ""));
+                  }}
+                  keyboardType="number-pad"
+                  editable={!isSaving}
+                />
+                <Text style={styles.inputUnit}>g</Text>
+              </View>
+              <View style={[styles.inputRow, styles.inputRowLast]}>
+                <Text style={styles.inputLabel}>Weight Goal</Text>
+                <TextInput
+                  style={styles.goalInput}
+                  value={weightGoal}
+                  onChangeText={(value) => {
+                    hasEditedRef.current = true;
+                    setWeightGoal(value.replace(/[^\d.]/g, ""));
+                  }}
+                  keyboardType="decimal-pad"
+                  editable={!isSaving}
+                  placeholder="—"
+                  placeholderTextColor={token.textMute}
+                />
+                <Text style={styles.inputUnit}>kg</Text>
               </View>
             </>
           )}

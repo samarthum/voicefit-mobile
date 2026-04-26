@@ -223,6 +223,7 @@ function mockDashboardData(selectedDate: string): DashboardData {
   return {
     today: {
       calories: { consumed: 495, goal: 2000 },
+      macros: { protein: 38, carbs: 62, fat: 18 },
       steps: { count: 6842, goal: 10000 },
       weight: 72.4,
       workoutSessions: 1,
@@ -341,11 +342,10 @@ export default function DashboardScreen() {
   const todaySteps = dashboard?.today.steps.count ?? 0;
   const todayStepsGoal = dashboard?.today.steps.goal ?? 10000;
 
-  // Macros are not yet aggregated server-side on /api/dashboard. Until that ships,
-  // these stay null and render as "—" placeholders inside the macro bars.
-  const todayProtein: number | null = null;
-  const todayCarbs: number | null = null;
-  const todayFat: number | null = null;
+  const todayMacros = dashboard?.today.macros ?? null;
+  const todayProtein: number | null = todayMacros?.protein ?? null;
+  const todayCarbs: number | null = todayMacros?.carbs ?? null;
+  const todayFat: number | null = todayMacros?.fat ?? null;
   const todayProteinGoal = 140;
   const todayCarbsGoal = 210;
   const todayFatGoal = 70;

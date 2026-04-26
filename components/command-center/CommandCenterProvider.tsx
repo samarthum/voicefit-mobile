@@ -3,7 +3,7 @@ import { Keyboard, Linking, Platform } from "react-native";
 import { Audio } from "expo-av";
 import { useAuth } from "@clerk/clerk-expo";
 import { useQueryClient } from "@tanstack/react-query";
-import type { InterpretEntryResponse } from "@voicefit/contracts/types";
+import type { DashboardData, InterpretEntryResponse } from "@voicefit/contracts/types";
 import { apiFormRequest, apiRequest } from "../../lib/api-client";
 import type {
   CommandErrorSubtype,
@@ -67,6 +67,7 @@ export interface CommandCenterInternalValue {
   isInterpretingVoice: boolean;
   reviewDraft: ReviewDraft | null;
   commandToast: string | null;
+  lastSavedKcalLeft: number | null;
   commandErrorSubtype: CommandErrorSubtype;
   commandErrorDetail: string | null;
   activeErrorCopy: (typeof ERROR_COPY)[Exclude<CommandErrorSubtype, null>] | null;
@@ -119,6 +120,7 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
   const [isInterpretingVoice, setIsInterpretingVoice] = useState(false);
   const [reviewDraft, setReviewDraft] = useState<ReviewDraft | null>(null);
   const [commandToast, setCommandToast] = useState<string | null>(null);
+  const [lastSavedKcalLeft, setLastSavedKcalLeft] = useState<number | null>(null);
   const [commandErrorSubtype, setCommandErrorSubtype] = useState<CommandErrorSubtype>(null);
   const [commandErrorDetail, setCommandErrorDetail] = useState<string | null>(null);
   const [screenContext, setScreenContextState] = useState<ScreenContext>({});
@@ -194,15 +196,27 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
     setCommandErrorDetail(null);
     setIsInterpretingVoice(false);
     setReviewDraft(null);
+    setLastSavedKcalLeft(null);
   }, [recording]);
 
-  // Holds the saved ring visible for 600ms after a successful write so the
-  // user gets the emph-easing scale-in confirmation before the sheet closes.
-  const finishWithSaved = useCallback((toast: string) => {
+  // Holds the saved toast visible for ~2.2s after a successful write so the
+  // user can read the meal/kcal-left summary before the sheet closes.
+  const finishWithSaved = useCallback((toast: string, kcalLeft: number | null = null) => {
     setCommandToast(toast);
+    setLastSavedKcalLeft(kcalLeft);
     setCommandState("cc_saved");
-    setTimeout(() => closeCommandCenter(), 600);
+    setTimeout(() => closeCommandCenter(), 2200);
   }, [closeCommandCenter]);
+
+  // Snapshots dashboard cache to compute `kcal left today` after a meal save.
+  // Reads pre-save consumed kcal so the math is stable even before the
+  // invalidated dashboard query refetches.
+  const computeKcalLeftAfterMeal = useCallback((justSavedKcal: number): number | null => {
+    const dashboardCaches = queryClient.getQueriesData<DashboardData>({ queryKey: ["dashboard"] });
+    const cached = dashboardCaches.find(([, data]) => data != null)?.[1];
+    if (!cached) return null;
+    return Math.max(0, cached.today.calories.goal - cached.today.calories.consumed - justSavedKcal);
+  }, [queryClient]);
 
   const openCommandCenter = useCallback(() => {
     setCommandText("");
@@ -272,13 +286,24 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
     setCommandErrorDetail(null);
     setCommandState(action.kind === "quick_add" ? "cc_quick_add_saving" : "cc_saving");
 
+    // Snapshot pre-save kcal-left for the saved-toast footer (meal saves only).
+    const isMealSave =
+      action.kind === "quick_add" ||
+      (action.kind === "entry" && action.interpreted.intent === "meal");
+    const justSavedKcal = action.kind === "quick_add"
+      ? action.item.calories
+      : action.kind === "entry" && action.interpreted.intent === "meal"
+        ? action.interpreted.payload.calories
+        : 0;
+    const kcalLeftAfterSave = isMealSave ? computeKcalLeftAfterMeal(justSavedKcal) : null;
+
     try {
       if (isWebPreview) {
         if (action.kind === "entry" && hasWebPreviewFlag("save_fail")) throw new Error("Mock auto-save failure.");
         if (action.kind === "quick_add" && hasWebPreviewFlag("quick_add_fail")) throw new Error("Mock quick-add save failure.");
         await new Promise((resolve) => setTimeout(resolve, 550));
         await refreshAfterSave();
-        finishWithSaved("Saved");
+        finishWithSaved("Saved", kcalLeftAfterSave);
         return;
       }
 
@@ -362,14 +387,14 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
       }
 
       await refreshAfterSave();
-      finishWithSaved("Saved");
+      finishWithSaved("Saved", kcalLeftAfterSave);
     } catch (error) {
       setCommandError(
         action.kind === "quick_add" ? "quick_add_failure" : "auto_save_failure",
         getErrorMessage(error),
       );
     }
-  }, [isWebPreview, getToken, refreshAfterSave, finishWithSaved, setCommandError, screenContext.sessionId]);
+  }, [isWebPreview, getToken, refreshAfterSave, finishWithSaved, setCommandError, screenContext.sessionId, computeKcalLeftAfterMeal]);
 
   const routeInterpretedEntry = useCallback(async (interpreted: InterpretEntryResponse, transcript: string, source: EntrySource) => {
     if (interpreted.intent === "meal") {
@@ -634,6 +659,7 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
     isInterpretingVoice,
     reviewDraft,
     commandToast,
+    lastSavedKcalLeft,
     commandErrorSubtype,
     commandErrorDetail,
     activeErrorCopy,
@@ -658,7 +684,7 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
     setCommandText,
   }), [
     commandState, commandText, voiceTranscript, recordingSeconds, isInterpretingVoice,
-    reviewDraft, commandToast, commandErrorSubtype, commandErrorDetail, activeErrorCopy,
+    reviewDraft, commandToast, lastSavedKcalLeft, commandErrorSubtype, commandErrorDetail, activeErrorCopy,
     quickAddItems, screenContext, isWebPreview,
     closeCommandCenter, openCommandCenter, startRecording, stopRecording, sendTyped,
     handleCommandInputChange, handleErrorPrimary, handleErrorSecondary,
