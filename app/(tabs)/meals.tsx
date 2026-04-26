@@ -138,8 +138,7 @@ export default function MealsScreen() {
   const today = toLocalDateString(new Date());
   const dayOptions = useMemo(() => getLastSevenDaysEndingToday(), [today]);
 
-  const [filterMode, setFilterMode] = useState<"all" | "date">("all");
-  const [selectedDate, setSelectedDate] = useState<string>(today);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
   const [selectedMealId, setSelectedMealId] = useState<string | null>(null);
   const [editDescription, setEditDescription] = useState("");
@@ -148,21 +147,41 @@ export default function MealsScreen() {
   const [editError, setEditError] = useState<string | null>(null);
   const [editSuccess, setEditSuccess] = useState<string | null>(null);
 
-  const appliedDate = filterMode === "date" ? selectedDate : "";
-
   const mealsQuery = useQuery({
-    queryKey: ["meals", appliedDate],
+    queryKey: ["meals", "recent"],
     enabled: !isWebPreview && !!isSignedIn,
     queryFn: async () => {
       const t = await getToken();
       if (!t) throw new Error("Not signed in");
-      const query = new URLSearchParams({ limit: "50", offset: "0" });
-      if (appliedDate) query.set("date", appliedDate);
-      return apiRequest<MealsListResponse>(`/api/meals?${query.toString()}`, { token: t });
+      return apiRequest<MealsListResponse>("/api/meals?limit=50&offset=0", { token: t });
     },
   });
 
-  const meals = isWebPreview ? SAMPLE_MEALS : mealsQuery.data?.meals ?? [];
+  const allMeals = isWebPreview ? SAMPLE_MEALS : mealsQuery.data?.meals ?? [];
+
+  useEffect(() => {
+    if (selectedDate !== null) return;
+    if (!isWebPreview && mealsQuery.isLoading) return;
+    const datesWithMeals = new Set(
+      allMeals.map((m) => toLocalDateString(new Date(m.eatenAt))),
+    );
+    if (datesWithMeals.has(today)) {
+      setSelectedDate(today);
+      return;
+    }
+    const fallback = dayOptions
+      .map((d) => d.date)
+      .reverse()
+      .find((d) => d !== today && datesWithMeals.has(d));
+    setSelectedDate(fallback ?? today);
+  }, [selectedDate, isWebPreview, mealsQuery.isLoading, allMeals, today, dayOptions]);
+
+  const effectiveDate = selectedDate ?? today;
+
+  const meals = useMemo(
+    () => allMeals.filter((m) => toLocalDateString(new Date(m.eatenAt)) === effectiveDate),
+    [allMeals, effectiveDate],
+  );
 
   useEffect(() => {
     setEditError(null);
@@ -293,30 +312,18 @@ export default function MealsScreen() {
           <View style={styles.statPill}>
             <Text style={styles.statLabel}>Entries</Text>
             <Text style={styles.statValue}>{meals.length}</Text>
-            <Text style={styles.statSub}>{filterMode === "date" ? "this day" : "recent"}</Text>
+            <Text style={styles.statSub}>this day</Text>
           </View>
         </View>
 
         <View style={styles.filterRow}>
-          <Pressable
-            style={[styles.filterChip, filterMode === "all" && styles.filterChipActive]}
-            onPress={() => {
-              setFilterMode("all");
-              setSelectedMealId(null);
-            }}
-          >
-            <Text style={[styles.filterChipText, filterMode === "all" && styles.filterChipTextActive]}>
-              All
-            </Text>
-          </Pressable>
           {dayOptions.map((day) => {
-            const active = filterMode === "date" && selectedDate === day.date;
+            const active = effectiveDate === day.date;
             return (
               <Pressable
                 key={day.date}
                 style={[styles.dayItem, active && styles.dayItemActive]}
                 onPress={() => {
-                  setFilterMode("date");
                   setSelectedDate(day.date);
                   setSelectedMealId(null);
                 }}
@@ -510,28 +517,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 6,
     marginBottom: 18,
-  },
-  filterChip: {
-    height: 48,
-    paddingHorizontal: 14,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: token.line,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  filterChipActive: {
-    backgroundColor: token.accent,
-    borderColor: "transparent",
-  },
-  filterChipText: {
-    fontFamily: font.sans[600],
-    fontSize: 12,
-    fontWeight: "600",
-    color: token.textSoft,
-  },
-  filterChipTextActive: {
-    color: token.accentInk,
   },
   dayItem: {
     flex: 1,
