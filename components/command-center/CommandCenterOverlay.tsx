@@ -11,7 +11,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Svg, { Path } from "react-native-svg";
+import Svg, { Path, Rect } from "react-native-svg";
 import {
   COLORS,
   confidenceLabel,
@@ -40,7 +40,7 @@ function SparkleGlyph({ color = COLORS.textTertiary }: { color?: string }) {
 function MicGlyph({ color = t.accentInk }: { color?: string }) {
   return (
     <Svg width={22} height={28} viewBox="0 0 22 28" fill="none">
-      <Path d="M7 1H15C17.21 1 19 2.79 19 5V11C19 13.21 17.21 15 15 15H7C4.79 15 3 13.21 3 11V5C3 2.79 4.79 1 7 1Z" fill={color} />
+      <Rect x={7} y={1} width={8} height={14} rx={4} fill={color} />
       <Path d="M3 13C3 17.5 6.5 21 11 21C15.5 21 19 17.5 19 13" stroke={color} strokeWidth={1.8} strokeLinecap="round" fill="none" />
       <Path d="M11 21V26M7 26H15" stroke={color} strokeWidth={1.8} strokeLinecap="round" />
     </Svg>
