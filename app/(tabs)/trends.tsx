@@ -12,7 +12,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "@clerk/clerk-expo";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
-import type { DashboardData } from "@voicefit/contracts/types";
+import type { DashboardData, TopMealsResponse } from "@voicefit/contracts/types";
 import Svg, {
   Circle as SvgCircle,
   Defs,
@@ -72,22 +72,6 @@ function lastSevenDayLabels(): string[] {
 
 type MealAggregate = { key: string; name: string; count: number; kcal: number };
 
-function aggregateTopMeals(recentMeals: DashboardData["recentMeals"]): MealAggregate[] {
-  const map = new Map<string, MealAggregate>();
-  for (const meal of recentMeals) {
-    const key = meal.description.trim().toLowerCase();
-    if (!key) continue;
-    const existing = map.get(key);
-    if (existing) {
-      existing.count += 1;
-      existing.kcal += meal.calories || 0;
-    } else {
-      map.set(key, { key, name: meal.description, count: 1, kcal: meal.calories || 0 });
-    }
-  }
-  return Array.from(map.values()).sort((a, b) => b.kcal - a.kcal).slice(0, 4);
-}
-
 function average(values: number[]): number | null {
   if (!values.length) return null;
   return values.reduce((s, v) => s + v, 0) / values.length;
@@ -95,6 +79,18 @@ function average(values: number[]): number | null {
 
 function isWebPreviewMode() {
   return __DEV__ && Platform.OS === "web";
+}
+
+function mockTopMeals(): TopMealsResponse {
+  return {
+    windowDays: 7,
+    meals: [
+      { key: "chicken caesar", description: "Chicken caesar", count: 3, totalCalories: 1560, averageCalories: 520 },
+      { key: "oats, blueberries, whey", description: "Oats, blueberries, whey", count: 2, totalCalories: 840, averageCalories: 420 },
+      { key: "protein bar", description: "Protein bar", count: 3, totalCalories: 660, averageCalories: 220 },
+      { key: "greek yogurt", description: "Greek yogurt", count: 1, totalCalories: 170, averageCalories: 170 },
+    ],
+  };
 }
 
 function mockDashboard(date: string): DashboardData {
@@ -153,6 +149,21 @@ export default function TrendsScreen() {
       if (!t) throw new Error("Not signed in");
       return apiRequest<DashboardData>(
         `/api/dashboard?${new URLSearchParams({ timezone, date: today })}`,
+        { token: t }
+      );
+    },
+  });
+
+  const TOP_MEALS_DAYS = 7;
+  const TOP_MEALS_LIMIT = 4;
+  const topMealsQuery = useQuery<TopMealsResponse>({
+    queryKey: ["top-meals", TOP_MEALS_DAYS, TOP_MEALS_LIMIT],
+    queryFn: async () => {
+      if (isWebPreview) return mockTopMeals();
+      const t = await getToken();
+      if (!t) throw new Error("Not signed in");
+      return apiRequest<TopMealsResponse>(
+        `/api/meals/top?${new URLSearchParams({ days: String(TOP_MEALS_DAYS), limit: String(TOP_MEALS_LIMIT) })}`,
         { token: t }
       );
     },
@@ -251,9 +262,15 @@ export default function TrendsScreen() {
   const dayLabels = useMemo(() => lastSevenDayLabels(), []);
   const weekNumber = useMemo(() => getISOWeek(new Date()), []);
 
-  const topMeals = useMemo(
-    () => aggregateTopMeals(dashboard?.recentMeals ?? []),
-    [dashboard?.recentMeals]
+  const topMeals = useMemo<MealAggregate[]>(
+    () =>
+      (topMealsQuery.data?.meals ?? []).map((item) => ({
+        key: item.key,
+        name: item.description,
+        count: item.count,
+        kcal: item.totalCalories,
+      })),
+    [topMealsQuery.data]
   );
   const topKcal = topMeals.length ? Math.max(...topMeals.map((m) => m.kcal), 1) : 1;
 
