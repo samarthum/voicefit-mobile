@@ -1545,9 +1545,7 @@ const styles = StyleSheet.create({
   loadingWrap: { paddingVertical: 48, alignItems: "center" },
   cardsWrap: { paddingHorizontal: 20, paddingTop: 4, gap: 24 },
   exerciseCard: {
-    borderRadius: rad.md,
     backgroundColor: "transparent",
-    overflow: "hidden",
   },
   exerciseHeader: {
     flexDirection: "row",
