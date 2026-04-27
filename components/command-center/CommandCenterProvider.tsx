@@ -301,6 +301,9 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
       method: "POST",
       token,
       body: JSON.stringify({ transcript, source, timezone }),
+      // Meal interpretation runs the agentic Anthropic + USDA + IFCT loop
+      // server-side; 15s default isn't enough.
+      timeoutMs: 60_000,
     });
   }, [isWebPreview, getToken, timezone]);
 
