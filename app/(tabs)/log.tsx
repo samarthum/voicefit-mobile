@@ -423,12 +423,6 @@ export default function LogScreen() {
       {interpretation ? (
         <View style={styles.card}>
           <Text style={styles.cardTitle}>3. Review and Save</Text>
-          <Text style={styles.helperText}>Confidence: {Math.round(interpretation.confidence * 100)}%</Text>
-          {interpretation.assumptions.length > 0 ? (
-            <Text style={styles.assumptionsText}>
-              {interpretation.assumptions.join(" | ")}
-            </Text>
-          ) : null}
 
           <Text style={styles.fieldLabel}>Meal Type</Text>
           <View style={styles.mealTypeRow}>
@@ -632,10 +626,6 @@ const styles = StyleSheet.create({
   helperText: {
     fontSize: 13,
     color: "rgba(243,244,241,0.42)",
-  },
-  assumptionsText: {
-    fontSize: 12,
-    color: "rgba(243,244,241,0.68)",
   },
   primaryButton: {
     backgroundColor: "#F3F4F1",

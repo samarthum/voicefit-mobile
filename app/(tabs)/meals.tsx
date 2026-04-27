@@ -1,18 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
-  Keyboard,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
 import { useAuth } from "@clerk/clerk-expo";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
+import { useRouter } from "expo-router";
 import Svg, { Path } from "react-native-svg";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { FloatingCommandBar } from "../../components/FloatingCommandBar";
@@ -40,8 +38,6 @@ interface MealsListResponse {
   limit: number;
   offset: number;
 }
-
-const MEAL_TYPES: MealType[] = ["breakfast", "lunch", "dinner", "snack"];
 
 const SAMPLE_MEALS: MealItem[] = [
   {
@@ -131,21 +127,14 @@ function formatHeaderDate(date: string) {
 
 export default function MealsScreen() {
   const cc = useCommandCenter();
+  const router = useRouter();
   const { getToken, isSignedIn } = useAuth();
-  const queryClient = useQueryClient();
   const isWebPreview = __DEV__ && Platform.OS === "web";
 
   const today = toLocalDateString(new Date());
   const dayOptions = useMemo(() => getLastSevenDaysEndingToday(), [today]);
 
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
-
-  const [selectedMealId, setSelectedMealId] = useState<string | null>(null);
-  const [editDescription, setEditDescription] = useState("");
-  const [editCalories, setEditCalories] = useState("");
-  const [editMealType, setEditMealType] = useState<MealType>("breakfast");
-  const [editError, setEditError] = useState<string | null>(null);
-  const [editSuccess, setEditSuccess] = useState<string | null>(null);
 
   const mealsQuery = useQuery({
     queryKey: ["meals", "recent"],
@@ -183,71 +172,6 @@ export default function MealsScreen() {
     [allMeals, effectiveDate],
   );
 
-  useEffect(() => {
-    setEditError(null);
-    setEditSuccess(null);
-    if (!selectedMealId || !meals.length) return;
-    const sel = meals.find((m) => m.id === selectedMealId);
-    if (!sel) return;
-    setEditDescription(sel.description);
-    setEditCalories(String(sel.calories));
-    setEditMealType(sel.mealType);
-  }, [meals, selectedMealId]);
-
-  const updateMealMutation = useMutation({
-    mutationFn: async () => {
-      if (!selectedMealId) throw new Error("Select a meal first");
-      const t = await getToken();
-      if (!t) throw new Error("Not signed in");
-      return apiRequest<MealItem>(`/api/meals/${selectedMealId}`, {
-        method: "PUT",
-        token: t,
-        body: JSON.stringify({
-          description: editDescription.trim(),
-          calories: Number(editCalories.trim()),
-          mealType: editMealType,
-        }),
-      });
-    },
-    onSuccess: async () => {
-      Keyboard.dismiss();
-      setEditError(null);
-      setEditSuccess("Meal updated.");
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["meals"] }),
-        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
-      ]);
-      setSelectedMealId(null);
-    },
-    onError: (error) => {
-      setEditSuccess(null);
-      setEditError(error instanceof Error ? error.message : "Failed to update meal.");
-    },
-  });
-
-  const deleteMealMutation = useMutation({
-    mutationFn: async () => {
-      if (!selectedMealId) throw new Error("Select a meal first");
-      const t = await getToken();
-      if (!t) throw new Error("Not signed in");
-      return apiRequest<{ deleted: boolean }>(`/api/meals/${selectedMealId}`, {
-        method: "DELETE",
-        token: t,
-      });
-    },
-    onSuccess: async () => {
-      setSelectedMealId(null);
-      setEditError(null);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["meals"] }),
-        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
-      ]);
-    },
-    onError: (error) => {
-      setEditError(error instanceof Error ? error.message : "Failed to delete meal.");
-    },
-  });
-
   const grouped = useMemo(() => {
     const map = new Map<string, MealItem[]>();
     for (const m of meals) {
@@ -261,33 +185,9 @@ export default function MealsScreen() {
 
   const totalCalories = meals.reduce((sum, m) => sum + m.calories, 0);
 
-  const handleSave = async () => {
-    if (!selectedMealId) return;
-    if (!editDescription.trim()) {
-      setEditError("Description is required.");
-      return;
-    }
-    if (!Number.isInteger(Number(editCalories.trim()))) {
-      setEditError("Calories must be a whole number.");
-      return;
-    }
-    if (isWebPreview) {
-      setEditError(null);
-      setEditSuccess("Preview updated.");
-      return;
-    }
-    await updateMealMutation.mutateAsync();
-  };
-
-  const handleDelete = () => {
-    if (isWebPreview) {
-      setSelectedMealId(null);
-      return;
-    }
-    Alert.alert("Delete meal", "This will permanently delete the meal.", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Delete", style: "destructive", onPress: () => void deleteMealMutation.mutateAsync() },
-    ]);
+  const handleOpenMeal = (mealId: string) => {
+    if (isWebPreview) return;
+    router.push({ pathname: "/meal-edit/[id]", params: { id: mealId } });
   };
 
   return (
@@ -323,10 +223,7 @@ export default function MealsScreen() {
               <Pressable
                 key={day.date}
                 style={[styles.dayItem, active && styles.dayItemActive]}
-                onPress={() => {
-                  setSelectedDate(day.date);
-                  setSelectedMealId(null);
-                }}
+                onPress={() => setSelectedDate(day.date)}
               >
                 <Text style={[styles.dayLabel, active && styles.dayLabelActive]}>{day.dayLabel}</Text>
                 <Text style={[styles.dayNum, active && styles.dayNumActive]}>{day.dayNum}</Text>
@@ -354,86 +251,30 @@ export default function MealsScreen() {
           <View key={date} style={styles.daySection}>
             <Text style={styles.dayHeading}>{formatHeaderDate(date)}</Text>
             <View style={styles.mealsCard}>
-              {items.map((meal, idx) => {
-                const isSelected = meal.id === selectedMealId;
-                return (
-                  <Pressable
-                    key={meal.id}
-                    onPress={() => setSelectedMealId(isSelected ? null : meal.id)}
-                    style={[
-                      styles.mealRow,
-                      idx > 0 ? styles.mealRowDivider : null,
-                      isSelected ? styles.mealRowSelected : null,
-                    ]}
-                  >
-                    <Text style={styles.mealTime}>{formatMealTime(meal.eatenAt)}</Text>
-                    <View style={styles.mealCopy}>
-                      <Text style={styles.mealName} numberOfLines={1}>{meal.description}</Text>
-                      <Text style={styles.mealMeta}>{meal.mealType}</Text>
-                    </View>
-                    <View style={styles.mealKcalRow}>
-                      <Text style={styles.mealKcalNum}>{meal.calories}</Text>
-                      <Text style={styles.mealKcalUnit}>kcal</Text>
-                    </View>
-                    <View style={styles.mealChevron}>
-                      <ChevronGlyph />
-                    </View>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </View>
-        ))}
-
-        {selectedMealId ? (
-          <View style={styles.editCard}>
-            <Text style={styles.editTitle}>Edit meal</Text>
-            <TextInput
-              style={styles.editInput}
-              value={editDescription}
-              onChangeText={setEditDescription}
-              placeholder="Meal description"
-              placeholderTextColor={token.textMute}
-            />
-            <TextInput
-              style={styles.editInput}
-              value={editCalories}
-              onChangeText={(v) => setEditCalories(v.replace(/[^\d]/g, ""))}
-              keyboardType="number-pad"
-              placeholder="Calories"
-              placeholderTextColor={token.textMute}
-            />
-            <View style={styles.typeRow}>
-              {MEAL_TYPES.map((type) => (
+              {items.map((meal, idx) => (
                 <Pressable
-                  key={type}
-                  style={[styles.typeChip, editMealType === type && styles.typeChipActive]}
-                  onPress={() => setEditMealType(type)}
+                  key={meal.id}
+                  onPress={() => handleOpenMeal(meal.id)}
+                  style={[styles.mealRow, idx > 0 ? styles.mealRowDivider : null]}
+                  testID={`meals-row-${meal.id}`}
                 >
-                  <Text style={[styles.typeChipText, editMealType === type && styles.typeChipTextActive]}>
-                    {type}
-                  </Text>
+                  <Text style={styles.mealTime}>{formatMealTime(meal.eatenAt)}</Text>
+                  <View style={styles.mealCopy}>
+                    <Text style={styles.mealName} numberOfLines={1}>{meal.description}</Text>
+                    <Text style={styles.mealMeta}>{meal.mealType}</Text>
+                  </View>
+                  <View style={styles.mealKcalRow}>
+                    <Text style={styles.mealKcalNum}>{meal.calories}</Text>
+                    <Text style={styles.mealKcalUnit}>kcal</Text>
+                  </View>
+                  <View style={styles.mealChevron}>
+                    <ChevronGlyph />
+                  </View>
                 </Pressable>
               ))}
             </View>
-            {editError ? <Text style={styles.errorText}>{editError}</Text> : null}
-            {editSuccess ? <Text style={styles.successText}>{editSuccess}</Text> : null}
-            <View style={styles.editActions}>
-              <Pressable style={styles.deleteButton} onPress={handleDelete}>
-                <Text style={styles.deleteButtonText}>Delete</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.saveButton, updateMealMutation.isPending && styles.saveButtonDisabled]}
-                onPress={() => void handleSave()}
-                disabled={updateMealMutation.isPending}
-              >
-                <Text style={styles.saveButtonText}>
-                  {updateMealMutation.isPending ? "Saving…" : "Save"}
-                </Text>
-              </Pressable>
-            </View>
           </View>
-        ) : null}
+        ))}
       </ScrollView>
 
       <FloatingCommandBar
@@ -584,9 +425,6 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: token.line,
   },
-  mealRowSelected: {
-    backgroundColor: "rgba(199,251,65,0.06)",
-  },
   mealTime: {
     width: 44,
     fontFamily: font.mono[400],
@@ -651,112 +489,5 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 19,
     color: token.textSoft,
-  },
-  editCard: {
-    marginTop: 4,
-    borderRadius: r.md,
-    backgroundColor: token.surface,
-    borderWidth: 1,
-    borderColor: token.line,
-    padding: 16,
-  },
-  editTitle: {
-    fontFamily: font.sans[600],
-    fontSize: 15,
-    fontWeight: "600",
-    color: token.text,
-    letterSpacing: -0.15,
-    marginBottom: 12,
-  },
-  editInput: {
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: token.line,
-    backgroundColor: token.bg,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontFamily: font.sans[400],
-    fontSize: 14,
-    color: token.text,
-    marginBottom: 10,
-  },
-  typeRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginTop: 4,
-    marginBottom: 6,
-  },
-  typeChip: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: token.line,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-  },
-  typeChipActive: {
-    backgroundColor: token.accent,
-    borderColor: "transparent",
-  },
-  typeChipText: {
-    fontFamily: font.sans[600],
-    fontSize: 12,
-    fontWeight: "600",
-    color: token.textSoft,
-    textTransform: "capitalize",
-  },
-  typeChipTextActive: {
-    color: token.accentInk,
-  },
-  errorText: {
-    fontFamily: font.sans[600],
-    fontSize: 12.5,
-    fontWeight: "600",
-    color: token.negative,
-    marginTop: 6,
-  },
-  successText: {
-    fontFamily: font.sans[600],
-    fontSize: 12.5,
-    fontWeight: "600",
-    color: token.positive,
-    marginTop: 6,
-  },
-  editActions: {
-    flexDirection: "row",
-    gap: 12,
-    marginTop: 14,
-  },
-  deleteButton: {
-    flex: 1,
-    borderRadius: 12,
-    backgroundColor: token.bg,
-    borderWidth: 1,
-    borderColor: token.line,
-    paddingVertical: 13,
-    alignItems: "center",
-  },
-  deleteButtonText: {
-    fontFamily: font.sans[600],
-    fontSize: 14,
-    fontWeight: "600",
-    color: token.negative,
-  },
-  saveButton: {
-    flex: 1.6,
-    borderRadius: 12,
-    backgroundColor: token.accent,
-    paddingVertical: 13,
-    alignItems: "center",
-  },
-  saveButtonDisabled: {
-    opacity: 0.65,
-  },
-  saveButtonText: {
-    fontFamily: font.sans[700],
-    fontSize: 14,
-    fontWeight: "700",
-    color: token.accentInk,
-    letterSpacing: 0.28,
   },
 });

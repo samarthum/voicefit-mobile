@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import {
+  Alert,
   Modal,
   Platform,
   Pressable,
@@ -17,9 +18,10 @@ import {
   confidenceLabel,
   formatMealTypeLabel,
   formatRecordingDuration,
-  SHOW_ESTIMATED_REVIEW_MACROS,
 } from "./helpers";
 import { useCommandCenterInternal } from "./CommandCenterProvider";
+import { IngredientEditor, type IngredientEditorMode } from "./IngredientEditor";
+import type { MealReviewIngredient } from "./types";
 import { EXERCISE_CATALOG } from "../../lib/exercise-catalog";
 import { color as t, font, radius } from "../../lib/tokens";
 import { LoadingBlock } from "../pulse/LoadingSkeleton";
@@ -346,6 +348,39 @@ export function CommandCenterOverlay() {
     commandState === "cc_expanded_empty" || commandState === "cc_expanded_typing";
   const modalAnimationType = Platform.OS === "web" ? "none" : "slide";
 
+  // Ingredient editor sheet state — local to the overlay because nothing else
+  // needs to read it. The editor mounts on top of the meal review sheet so
+  // the user keeps the meal context visible behind a darkened backdrop.
+  const [ingredientEditor, setIngredientEditor] = useState<IngredientEditorMode | null>(null);
+
+  // Auto-dismiss the editor if the review sheet itself goes away (user
+  // discarded, navigated, etc.) so we don't leave a stale modal mounted.
+  useEffect(() => {
+    if (commandState !== "cc_review_meal" && ingredientEditor) {
+      setIngredientEditor(null);
+    }
+  }, [commandState, ingredientEditor]);
+
+  const openAddIngredientEditor = () => setIngredientEditor({ kind: "add" });
+  const openEditIngredientEditor = (ingredient: MealReviewIngredient) =>
+    setIngredientEditor({ kind: "edit", ingredient });
+  const closeIngredientEditor = () => setIngredientEditor(null);
+
+  const handleLongPressIngredient = (ingredient: MealReviewIngredient) => {
+    Alert.alert(
+      "Delete ingredient?",
+      `Remove "${ingredient.name}" from this meal.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => cc.removeIngredient(ingredient.id),
+        },
+      ],
+    );
+  };
+
   const renderIdle = () => {
     const sendDisabled = !cc.commandText.trim();
     const isWorkout = cc.screenContext.screen === "workout";
@@ -526,16 +561,10 @@ export function CommandCenterOverlay() {
 
     if (commandState === "cc_review_meal" && cc.reviewDraft?.kind === "meal") {
       const meal = cc.reviewDraft.interpreted.payload;
-      const confidence = confidenceLabel(cc.reviewDraft.confidence);
-      const segmentCount = Math.max(0, Math.min(4, Math.round(cc.reviewDraft.confidence * 4)));
-      const assumptions = meal.assumptions ?? [];
-      const confidenceText = assumptions.length > 0
-        ? `${confidence.text} · ${assumptions[0]}`
-        : confidence.text;
       const mealTypeLabel = formatMealTypeLabel(meal.mealType).toUpperCase();
-      const eyebrow = cc.reviewDraft.eatenAtLabel
-        ? `${mealTypeLabel} · ${cc.reviewDraft.eatenAtLabel}`
-        : mealTypeLabel;
+      const totalGramsLabel = `${Math.round(cc.reviewDraft.totalGrams)} G`;
+      const eyebrowParts = [mealTypeLabel, cc.reviewDraft.eatenAtLabel, totalGramsLabel].filter(Boolean);
+      const eyebrow = eyebrowParts.join(" · ");
       return (
         <Sheet
           title={null}
@@ -570,75 +599,62 @@ export function CommandCenterOverlay() {
                 </View>
               </View>
 
-              {SHOW_ESTIMATED_REVIEW_MACROS ? (
-                <View style={styles.mealReviewMacrosGrid}>
-                  <View style={styles.mealReviewMacroCell}>
-                    <Text style={styles.mealReviewMacroLabel}>PROTEIN</Text>
-                    <View style={styles.mealReviewMacroValueRow}>
-                      <Text style={[styles.mealReviewMacroValue, styles.mealReviewMacroValueAccent]}>
-                        {cc.reviewDraft.macros.protein}
-                      </Text>
-                      <Text style={styles.mealReviewMacroUnit}>g</Text>
-                    </View>
-                  </View>
-                  <View style={styles.mealReviewMacroCell}>
-                    <Text style={styles.mealReviewMacroLabel}>CARBS</Text>
-                    <View style={styles.mealReviewMacroValueRow}>
-                      <Text style={[styles.mealReviewMacroValue, styles.mealReviewMacroValueSoft]}>
-                        {cc.reviewDraft.macros.carbs}
-                      </Text>
-                      <Text style={styles.mealReviewMacroUnit}>g</Text>
-                    </View>
-                  </View>
-                  <View style={styles.mealReviewMacroCell}>
-                    <Text style={styles.mealReviewMacroLabel}>FAT</Text>
-                    <View style={styles.mealReviewMacroValueRow}>
-                      <Text style={[styles.mealReviewMacroValue, styles.mealReviewMacroValueSoft]}>
-                        {cc.reviewDraft.macros.fat}
-                      </Text>
-                      <Text style={styles.mealReviewMacroUnit}>g</Text>
-                    </View>
+              <View style={styles.mealReviewMacrosGrid}>
+                <View style={styles.mealReviewMacroCell}>
+                  <Text style={styles.mealReviewMacroLabel}>PROTEIN</Text>
+                  <View style={styles.mealReviewMacroValueRow}>
+                    <Text style={[styles.mealReviewMacroValue, styles.mealReviewMacroValueAccent]}>
+                      {cc.reviewDraft.macros.protein}
+                    </Text>
+                    <Text style={styles.mealReviewMacroUnit}>g</Text>
                   </View>
                 </View>
-              ) : null}
+                <View style={styles.mealReviewMacroCell}>
+                  <Text style={styles.mealReviewMacroLabel}>CARBS</Text>
+                  <View style={styles.mealReviewMacroValueRow}>
+                    <Text style={[styles.mealReviewMacroValue, styles.mealReviewMacroValueSoft]}>
+                      {cc.reviewDraft.macros.carbs}
+                    </Text>
+                    <Text style={styles.mealReviewMacroUnit}>g</Text>
+                  </View>
+                </View>
+                <View style={styles.mealReviewMacroCell}>
+                  <Text style={styles.mealReviewMacroLabel}>FAT</Text>
+                  <View style={styles.mealReviewMacroValueRow}>
+                    <Text style={[styles.mealReviewMacroValue, styles.mealReviewMacroValueSoft]}>
+                      {cc.reviewDraft.macros.fat}
+                    </Text>
+                    <Text style={styles.mealReviewMacroUnit}>g</Text>
+                  </View>
+                </View>
+              </View>
 
               <View style={styles.mealReviewDivider} />
 
               <View style={styles.mealReviewIngredientsHeader}>
                 <Text style={styles.mealReviewIngredientsTitle}>INGREDIENTS</Text>
-                <Pressable onPress={() => {}}>
+                <Pressable onPress={openAddIngredientEditor} testID="cc-review-add-ingredient">
                   <Text style={styles.mealReviewAddLink}>+ ADD</Text>
                 </Pressable>
               </View>
 
               {cc.reviewDraft.ingredients.map((ingredient, index) => (
-                <View
+                <Pressable
                   key={ingredient.id}
+                  onPress={() => openEditIngredientEditor(ingredient)}
+                  onLongPress={() => handleLongPressIngredient(ingredient)}
+                  delayLongPress={400}
                   style={[
                     styles.mealReviewIngredientRow,
                     index === 0 ? null : styles.mealReviewIngredientRowDivider,
                   ]}
+                  testID={`cc-review-ingredient-${index}`}
                 >
                   <Text style={styles.mealReviewIngredientName}>{ingredient.name}</Text>
-                  <Text style={styles.mealReviewIngredientQty}>{ingredient.quantity}</Text>
+                  <Text style={styles.mealReviewIngredientQty}>{`${Math.round(ingredient.grams)} g`}</Text>
                   <Text style={styles.mealReviewIngredientCal}>{ingredient.calories}</Text>
-                </View>
+                </Pressable>
               ))}
-            </View>
-
-            <View style={styles.mealReviewConfidenceRow}>
-              <View style={styles.mealReviewConfidenceBar}>
-                {[0, 1, 2, 3].map((i) => (
-                  <View
-                    key={i}
-                    style={[
-                      styles.mealReviewConfidenceSegment,
-                      { backgroundColor: i < segmentCount ? t.accent : t.line },
-                    ]}
-                  />
-                ))}
-              </View>
-              <Text style={styles.mealReviewConfidenceText}>{confidenceText}</Text>
             </View>
 
             <View style={styles.mealReviewActions}>
@@ -964,6 +980,34 @@ export function CommandCenterOverlay() {
       >
         {renderContent()}
       </Modal>
+      {ingredientEditor && commandState === "cc_review_meal" ? (
+        <Modal
+          visible
+          transparent
+          animationType="fade"
+          statusBarTranslucent
+          onRequestClose={closeIngredientEditor}
+        >
+          <IngredientEditor
+            mode={ingredientEditor}
+            fetchInterpreted={cc.fetchInterpretedIngredient}
+            onSubmitAdd={(ingredient) => {
+              cc.addIngredient(ingredient);
+              closeIngredientEditor();
+            }}
+            onSubmitEdit={(replacement) => {
+              if (ingredientEditor.kind !== "edit") return;
+              const id = ingredientEditor.ingredient.id;
+              // grams-only edit returns a MealReviewIngredient (already scaled
+              // locally); rename returns an authoritative MealIngredient from
+              // the LLM. Either works as a replacement input.
+              cc.replaceIngredient(id, replacement);
+              closeIngredientEditor();
+            }}
+            onCancel={closeIngredientEditor}
+          />
+        </Modal>
+      ) : null}
       {toast}
     </>
   );

@@ -59,8 +59,11 @@ export type SaveAction =
 export interface MealReviewIngredient {
   id: string;
   name: string;
-  quantity: string;
+  grams: number;
   calories: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
 }
 
 export interface MealReviewDraft {
@@ -68,8 +71,8 @@ export interface MealReviewDraft {
   interpreted: Extract<InterpretEntryResponse, { intent: "meal" }>;
   transcript: string;
   source: EntrySource;
-  confidence: number;
   eatenAtLabel: string;
+  totalGrams: number;
   ingredients: MealReviewIngredient[];
   macros: {
     protein: number;

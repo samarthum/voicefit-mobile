@@ -3,12 +3,14 @@ import { Keyboard, Linking, Platform } from "react-native";
 import { Audio } from "expo-av";
 import { useAuth } from "@clerk/clerk-expo";
 import { useQueryClient } from "@tanstack/react-query";
-import type { DashboardData, InterpretEntryResponse } from "@voicefit/contracts/types";
+import type { DashboardData, InterpretEntryResponse, MealIngredient } from "@voicefit/contracts/types";
 import { apiFormRequest, apiRequest } from "../../lib/api-client";
+import { fetchInterpretedIngredient as fetchInterpretedIngredientApi } from "../../lib/api/ingredient";
 import type {
   CommandErrorSubtype,
   CommandState,
   EntrySource,
+  MealReviewIngredient,
   QuickAddItem,
   RecentMeal,
   ReviewDraft,
@@ -22,6 +24,7 @@ import {
   buildWorkoutReviewDraft,
   ensureQuickSession,
   ERROR_COPY,
+  generateIngredientId,
   getErrorMessage,
   hasWebPreviewFlag,
   inferCalories,
@@ -29,6 +32,8 @@ import {
   inferMealType,
   MIN_RECORDING_DURATION_MS,
   parsePositiveNumber,
+  recalculateMealTotals,
+  scaleIngredientByGrams,
   toLocalDateString,
 } from "./helpers";
 
@@ -87,6 +92,13 @@ export interface CommandCenterInternalValue {
   editReviewTranscript: () => void;
   updateWorkoutSet: (idx: number, patch: Partial<Pick<WorkoutReviewSet, "weightKg" | "reps" | "notes">>) => void;
   addWorkoutSet: () => void;
+  /** Pre-save ingredient editing in the meal review sheet. */
+  editIngredientGrams: (id: string, grams: number) => void;
+  replaceIngredient: (id: string, replacement: MealIngredient) => void;
+  addIngredient: (ingredient: MealIngredient) => void;
+  removeIngredient: (id: string) => void;
+  /** Hits POST /api/interpret/ingredient. Used by the editor sheet directly. */
+  fetchInterpretedIngredient: (name: string, grams?: number) => Promise<MealIngredient>;
   runSaveAction: (action: SaveAction) => Promise<void>;
   setVoiceTranscript: (text: string) => void;
   setCommandState: (state: CommandState) => void;
@@ -259,14 +271,26 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
       if (text.includes("weight")) {
         return { intent: "weight", payload: { value: 72.4, confidence: 0.97, assumptions: [], unit: "kg" } } as InterpretEntryResponse;
       }
+      const mealCalories = inferCalories(transcript);
+      // Plausible chicken-rice-broccoli plate that sums to the inferred kcal.
+      const chickenCal = Math.round(mealCalories * 0.45);
+      const riceCal = Math.round(mealCalories * 0.4);
+      const broccoliCal = mealCalories - chickenCal - riceCal;
       return {
         intent: "meal",
         payload: {
           mealType: inferMealType(transcript),
           description: inferMealDescription(transcript),
-          calories: inferCalories(transcript),
-          confidence: 0.96,
-          assumptions: [],
+          totalGrams: 440,
+          ingredients: [
+            { name: "Grilled chicken breast", grams: 150, calories: chickenCal, proteinG: 46, carbsG: 0, fatG: 5 },
+            { name: "Steamed white rice", grams: 200, calories: riceCal, proteinG: 5, carbsG: 56, fatG: 1 },
+            { name: "Broccoli florets", grams: 90, calories: broccoliCal, proteinG: 3, carbsG: 6, fatG: 0 },
+          ],
+          calories: mealCalories,
+          proteinG: 54,
+          carbsG: 62,
+          fatG: 6,
         },
       } as InterpretEntryResponse;
     }
@@ -326,6 +350,9 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
         const { interpreted, transcript, source } = action;
 
         if (interpreted.intent === "meal") {
+          // The user may have added/removed/edited ingredients in the review
+          // sheet — `recalculateMealTotals` keeps interpreted.payload in sync
+          // with the in-memory edits, so we can read straight from it here.
           await apiRequest("/api/meals", {
             method: "POST",
             token,
@@ -334,6 +361,10 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
               mealType: interpreted.payload.mealType,
               description: interpreted.payload.description,
               calories: interpreted.payload.calories,
+              proteinG: interpreted.payload.proteinG,
+              carbsG: interpreted.payload.carbsG,
+              fatG: interpreted.payload.fatG,
+              ingredients: interpreted.payload.ingredients,
               transcriptRaw: transcript,
             }),
           });
@@ -538,6 +569,95 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
     });
   }, []);
 
+  // -------------------------------------------------------------------------
+  // Pre-save ingredient editing — every mutation runs through these so totals
+  // stay in sync (`recalculateMealTotals` updates both display state and the
+  // mirror-of-payload that the existing save path reads from).
+  // -------------------------------------------------------------------------
+
+  const editIngredientGrams = useCallback((id: string, grams: number) => {
+    setReviewDraft((prev) => {
+      if (!prev || prev.kind !== "meal") return prev;
+      const ingredients = prev.ingredients.map((ing) =>
+        ing.id === id ? scaleIngredientByGrams(ing, grams) : ing,
+      );
+      return recalculateMealTotals({ ...prev, ingredients });
+    });
+  }, []);
+
+  const replaceIngredient = useCallback((id: string, replacement: MealIngredient) => {
+    setReviewDraft((prev) => {
+      if (!prev || prev.kind !== "meal") return prev;
+      const ingredients = prev.ingredients.map<MealReviewIngredient>((ing) =>
+        ing.id === id
+          ? {
+              id: ing.id,
+              name: replacement.name,
+              grams: replacement.grams,
+              calories: replacement.calories,
+              proteinG: replacement.proteinG,
+              carbsG: replacement.carbsG,
+              fatG: replacement.fatG,
+            }
+          : ing,
+      );
+      return recalculateMealTotals({ ...prev, ingredients });
+    });
+  }, []);
+
+  const addIngredient = useCallback((ingredient: MealIngredient) => {
+    setReviewDraft((prev) => {
+      if (!prev || prev.kind !== "meal") return prev;
+      const next: MealReviewIngredient = {
+        id: generateIngredientId(),
+        name: ingredient.name,
+        grams: ingredient.grams,
+        calories: ingredient.calories,
+        proteinG: ingredient.proteinG,
+        carbsG: ingredient.carbsG,
+        fatG: ingredient.fatG,
+      };
+      return recalculateMealTotals({ ...prev, ingredients: [...prev.ingredients, next] });
+    });
+  }, []);
+
+  const removeIngredient = useCallback((id: string) => {
+    setReviewDraft((prev) => {
+      if (!prev || prev.kind !== "meal") return prev;
+      const ingredients = prev.ingredients.filter((ing) => ing.id !== id);
+      return recalculateMealTotals({ ...prev, ingredients });
+    });
+  }, []);
+
+  /**
+   * Thin wrapper over the shared `fetchInterpretedIngredient` helper that
+   * resolves the Clerk token and short-circuits in web preview mode. The
+   * actual network call lives in `lib/api/ingredient.ts` so the meals-tab
+   * post-save editor can reuse it without depending on this provider.
+   */
+  const fetchInterpretedIngredient = useCallback(async (name: string, grams?: number): Promise<MealIngredient> => {
+    const trimmedName = name.trim();
+    if (!trimmedName) throw new Error("Name is required");
+
+    if (isWebPreview) {
+      await new Promise((resolve) => setTimeout(resolve, 700));
+      const g = grams && Number.isFinite(grams) && grams > 0 ? Math.round(grams) : 100;
+      // Crude per-100g defaults so the preview UI shows non-zero numbers.
+      const calories = Math.round((g / 100) * 150);
+      return {
+        name: trimmedName,
+        grams: g,
+        calories,
+        proteinG: Math.round(calories * 0.06),
+        carbsG: Math.round(calories * 0.04),
+        fatG: Math.round(calories * 0.02),
+      };
+    }
+
+    const token = await getToken();
+    return fetchInterpretedIngredientApi(token, trimmedName, grams);
+  }, [isWebPreview, getToken]);
+
   const saveReviewedEntry = useCallback(async () => {
     if (!reviewDraft) return;
     if (reviewDraft.kind === "workout") {
@@ -678,6 +798,11 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
     editReviewTranscript,
     updateWorkoutSet,
     addWorkoutSet,
+    editIngredientGrams,
+    replaceIngredient,
+    addIngredient,
+    removeIngredient,
+    fetchInterpretedIngredient,
     runSaveAction,
     setVoiceTranscript,
     setCommandState,
@@ -688,7 +813,9 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
     quickAddItems, screenContext, isWebPreview,
     closeCommandCenter, openCommandCenter, startRecording, stopRecording, sendTyped,
     handleCommandInputChange, handleErrorPrimary, handleErrorSecondary,
-    saveReviewedEntry, editReviewTranscript, updateWorkoutSet, addWorkoutSet, runSaveAction,
+    saveReviewedEntry, editReviewTranscript, updateWorkoutSet, addWorkoutSet,
+    editIngredientGrams, replaceIngredient, addIngredient, removeIngredient, fetchInterpretedIngredient,
+    runSaveAction,
   ]);
 
   return (

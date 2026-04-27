@@ -45,7 +45,6 @@ export const WEB_PREVIEW_FLAGS_KEY = "__vf_home_preview_flags";
 export const WAVE_BAR_COUNT = 20;
 export const WAVE_MIN = 8;
 export const WAVE_MAX = 56;
-export const SHOW_ESTIMATED_REVIEW_MACROS = false;
 
 export const DEFAULT_QUICK_ADD: QuickAddItem[] = [
   { id: "default-1", description: "Chicken Salad", calories: 420, mealType: "lunch" },
@@ -100,24 +99,14 @@ export function getErrorMessage(error: unknown) {
 // Meal helpers
 // ---------------------------------------------------------------------------
 
-function mealIngredientQuantity(name: string) {
-  const lower = name.toLowerCase();
-  if (lower.includes("chicken")) return "150g";
-  if (lower.includes("rice")) return "200g";
-  if (lower.includes("salad") || lower.includes("greens")) return "90g";
-  if (lower.includes("oat")) return "80g";
-  if (lower.includes("salmon")) return "140g";
-  return "1 serving";
-}
-
-function splitMealIngredients(description: string) {
-  const cleaned = description.replace(/&/g, " and ").replace(/\s+/g, " ").trim();
-  const parts = cleaned
-    .split(/,| and |\bwith\b/i)
-    .map((part) => part.trim())
-    .filter(Boolean);
-  if (parts.length === 0) return [description.trim() || "Meal"];
-  return parts.slice(0, 4);
+/**
+ * Stable, locally-unique ID for an ingredient row in the in-memory review
+ * draft. Never serialized over the wire — only used as a React key and as a
+ * lookup target for edit/delete operations. Robust under reorder/delete
+ * (unlike the index-based Phase 2 IDs).
+ */
+export function generateIngredientId() {
+  return `ing_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
 export function buildMealReviewDraft(
@@ -125,32 +114,106 @@ export function buildMealReviewDraft(
   transcript: string,
   source: EntrySource,
 ): MealReviewDraft {
-  const totalCalories = Math.max(80, interpreted.payload.calories);
-  const ingredientNames = splitMealIngredients(interpreted.payload.description);
-  const ingredientCount = ingredientNames.length;
-  const perIngredient = Math.max(20, Math.floor(totalCalories / ingredientCount));
-  const remainder = totalCalories - perIngredient * ingredientCount;
-
-  const ingredients: MealReviewIngredient[] = ingredientNames.map((name, index) => ({
-    id: `${name}-${index}`,
-    name: name.charAt(0).toUpperCase() + name.slice(1),
-    quantity: mealIngredientQuantity(name),
-    calories: perIngredient + (index === ingredientCount - 1 ? remainder : 0),
+  const payload = interpreted.payload;
+  const ingredients: MealReviewIngredient[] = payload.ingredients.map((ing) => ({
+    id: generateIngredientId(),
+    name: ing.name,
+    grams: ing.grams,
+    calories: ing.calories,
+    proteinG: ing.proteinG,
+    carbsG: ing.carbsG,
+    fatG: ing.fatG,
   }));
-
-  const protein = Math.round((totalCalories * 0.32) / 4);
-  const carbs = Math.round((totalCalories * 0.46) / 4);
-  const fat = Math.max(1, Math.round((totalCalories * 0.22) / 9));
 
   return {
     kind: "meal",
     interpreted,
     transcript,
     source,
-    confidence: interpreted.payload.confidence,
     eatenAtLabel: formatClockTime(new Date()),
+    totalGrams: payload.totalGrams,
     ingredients,
-    macros: { protein, carbs, fat },
+    macros: {
+      protein: payload.proteinG,
+      carbs: payload.carbsG,
+      fat: payload.fatG,
+    },
+  };
+}
+
+/**
+ * Recomputes a meal review draft's totals (calories, macros, totalGrams)
+ * from its current ingredient list. Pure — call this after any ingredient
+ * mutation. Also keeps `interpreted.payload` in sync so the existing save
+ * path (which reads from interpreted.payload) writes the user's edits to DB.
+ */
+export function recalculateMealTotals(draft: MealReviewDraft): MealReviewDraft {
+  const totals = draft.ingredients.reduce(
+    (acc, ing) => {
+      acc.grams += ing.grams;
+      acc.calories += ing.calories;
+      acc.protein += ing.proteinG;
+      acc.carbs += ing.carbsG;
+      acc.fat += ing.fatG;
+      return acc;
+    },
+    { grams: 0, calories: 0, protein: 0, carbs: 0, fat: 0 },
+  );
+
+  const totalGrams = Math.round(totals.grams);
+  const calories = Math.round(totals.calories);
+  const proteinG = Math.round(totals.protein);
+  const carbsG = Math.round(totals.carbs);
+  const fatG = Math.round(totals.fat);
+
+  return {
+    ...draft,
+    totalGrams,
+    macros: { protein: proteinG, carbs: carbsG, fat: fatG },
+    interpreted: {
+      ...draft.interpreted,
+      payload: {
+        ...draft.interpreted.payload,
+        totalGrams,
+        calories,
+        proteinG,
+        carbsG,
+        fatG,
+        ingredients: draft.ingredients.map((ing) => ({
+          name: ing.name,
+          grams: ing.grams,
+          calories: ing.calories,
+          proteinG: ing.proteinG,
+          carbsG: ing.carbsG,
+          fatG: ing.fatG,
+        })),
+      },
+    },
+  };
+}
+
+/**
+ * Linearly scales an ingredient's macros when grams change without a name
+ * change. Falls back to zeroed macros if the original grams is non-positive
+ * (a defensive case — shouldn't happen for LLM-returned rows). Rounds to
+ * integers for display parity with the rest of the macro UI.
+ */
+export function scaleIngredientByGrams(
+  ingredient: MealReviewIngredient,
+  newGrams: number,
+): MealReviewIngredient {
+  if (!Number.isFinite(newGrams) || newGrams <= 0) return ingredient;
+  if (ingredient.grams <= 0) {
+    return { ...ingredient, grams: newGrams, calories: 0, proteinG: 0, carbsG: 0, fatG: 0 };
+  }
+  const ratio = newGrams / ingredient.grams;
+  return {
+    ...ingredient,
+    grams: newGrams,
+    calories: Math.round(ingredient.calories * ratio),
+    proteinG: Math.round(ingredient.proteinG * ratio),
+    carbsG: Math.round(ingredient.carbsG * ratio),
+    fatG: Math.round(ingredient.fatG * ratio),
   };
 }
 
