@@ -16,10 +16,10 @@ import { Audio } from "expo-av";
 import { useRouter } from "expo-router";
 import { useAuth } from "@clerk/clerk-expo";
 import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport, isToolUIPart, getToolName } from "ai";
-import type { UIMessage } from "ai";
+import { DefaultChatTransport, isStaticToolUIPart, getToolName } from "ai";
+import type { CoachUIMessage } from "@voicefit/contracts/coach";
 import { fetch as expoFetch } from "expo/fetch";
-import { LegendList } from "@legendapp/list";
+import { LegendList, type LegendListRef } from "@legendapp/list";
 import Markdown from "react-native-markdown-display";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Svg, { Path } from "react-native-svg";
@@ -280,7 +280,7 @@ const UserBubble = memo(function UserBubble({ text }: UserBubbleProps) {
 
 type AssistantBubbleProps = {
   messageId: string;
-  parts: UIMessage["parts"];
+  parts: CoachUIMessage["parts"];
 };
 const AssistantBubble = memo(function AssistantBubble({
   messageId,
@@ -295,10 +295,10 @@ const AssistantBubble = memo(function AssistantBubble({
       if (part.text.trim()) {
         textParts.push({ key: `${messageId}-t-${i}`, text: part.text });
       }
-    } else if (isToolUIPart(part)) {
+    } else if (isStaticToolUIPart(part)) {
       const label =
-        (part.state === "input-available" || part.state === "output-available")
-          ? (part.input as Record<string, unknown>)?.label as string | undefined
+        part.state === "input-available" || part.state === "output-available"
+          ? part.input.label
           : undefined;
       const name = getToolName(part);
       toolParts.push({
@@ -468,17 +468,31 @@ export default function CoachScreen() {
   const [isTranscribing, setIsTranscribing] = useState(false);
   const recordingRef = useRef<Audio.Recording | null>(null);
   const inputRef = useRef<TextInput>(null);
+  const listRef = useRef<LegendListRef>(null);
+
+  // Re-pin the list to the latest message when the keyboard comes up.
+  // LegendList's `maintainScrollAtEnd` only triggers on data updates, not on
+  // viewport changes — so without this the user lands mid-thread when they
+  // tap the composer.
+  useEffect(() => {
+    const showEvent =
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const sub = Keyboard.addListener(showEvent, () => {
+      listRef.current?.scrollToEnd({ animated: true });
+    });
+    return () => sub.remove();
+  }, []);
 
   // ---- Initial messages from server ----
   const {
     data: serverMessages,
     isLoading: loadingHistory,
-  } = useQuery<UIMessage[]>({
+  } = useQuery<CoachUIMessage[]>({
     queryKey: ["coach-messages"],
     queryFn: async () => {
       const token = await getToken();
       if (!token) throw new Error("Not signed in");
-      const result = await apiRequest<{ messages: UIMessage[] }>(
+      const result = await apiRequest<{ messages: CoachUIMessage[] }>(
         "/api/coach/messages",
         { token }
       );
@@ -520,8 +534,8 @@ export default function CoachScreen() {
     status,
     error: chatError,
     regenerate,
-  } = useChat({
-    transport: new DefaultChatTransport({
+  } = useChat<CoachUIMessage>({
+    transport: new DefaultChatTransport<CoachUIMessage>({
       fetch: expoFetch as unknown as typeof globalThis.fetch,
       api: `${API_BASE}/api/coach/chat`,
       headers: async (): Promise<Record<string, string>> => {
@@ -696,7 +710,7 @@ export default function CoachScreen() {
 
   // ---- Render items ----
   const renderItem = useCallback(
-    ({ item }: { item: UIMessage }) => {
+    ({ item }: { item: CoachUIMessage }) => {
       if (item.role === "user") {
         const text =
           item.parts
@@ -710,7 +724,7 @@ export default function CoachScreen() {
     []
   );
 
-  const keyExtractor = useCallback((item: UIMessage) => item.id, []);
+  const keyExtractor = useCallback((item: CoachUIMessage) => item.id, []);
 
   // ---- Empty state ----
   const ListEmpty = useCallback(() => {
@@ -752,7 +766,7 @@ export default function CoachScreen() {
     <KeyboardAvoidingView
       style={styles.root}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
+      keyboardVerticalOffset={0}
     >
       {/* Header */}
       <View style={styles.header}>
@@ -821,6 +835,7 @@ export default function CoachScreen() {
 
       {/* Message List */}
       <LegendList
+        ref={listRef}
         data={messages}
         renderItem={renderItem}
         keyExtractor={keyExtractor}
@@ -831,6 +846,7 @@ export default function CoachScreen() {
         contentContainerStyle={styles.listContent}
         ItemSeparatorComponent={ListSeparator}
         ListEmptyComponent={ListEmpty}
+        alignItemsAtEnd
         maintainScrollAtEnd
       />
 
@@ -1025,8 +1041,6 @@ const styles = StyleSheet.create({
   listContent: {
     paddingVertical: 16,
     paddingHorizontal: 16,
-    flexGrow: 1,
-    justifyContent: "flex-end" as const,
     gap: 10,
   },
   // Empty state
@@ -1084,7 +1098,7 @@ const styles = StyleSheet.create({
   composer: {
     paddingHorizontal: 16,
     paddingTop: 8,
-    paddingBottom: Platform.OS === "ios" ? 34 : 12,
+    paddingBottom: 12,
     backgroundColor: token.bg,
     borderTopWidth: 1,
     borderTopColor: token.line,
