@@ -281,7 +281,7 @@ export default function DashboardScreen() {
   }, []);
 
   const dashboardQuery = useQuery<DashboardData>({
-    queryKey: ["dashboard", timezone, selectedDate],
+    queryKey: ["dashboard", "home", timezone, selectedDate],
     queryFn: async () => {
       if (isWebPreview) {
         return mockDashboardData(selectedDate);
@@ -289,7 +289,7 @@ export default function DashboardScreen() {
       const token = await getToken();
       if (!token) throw new Error("Not signed in");
       return apiRequest<DashboardData>(
-        `/api/dashboard?${new URLSearchParams({ timezone, date: selectedDate })}`,
+        `/api/dashboard?${new URLSearchParams({ timezone, date: selectedDate, scope: "home" })}`,
         { token }
       );
     },
@@ -338,10 +338,10 @@ export default function DashboardScreen() {
   }, [metricCurrentValues]);
 
   const todayCaloriesConsumed = dashboard?.today.calories.consumed ?? 0;
-  const todayCaloriesGoal = dashboard?.today.calories.goal ?? 2000;
+  const todayCaloriesGoal = dashboard?.today.calories.goal ?? 0;
 
   const todaySteps = dashboard?.today.steps.count ?? 0;
-  const todayStepsGoal = dashboard?.today.steps.goal ?? 10000;
+  const todayStepsGoal = dashboard?.today.steps.goal ?? 0;
 
   const todayMacros = dashboard?.today.macros ?? null;
   const todayProtein: number | null = todayMacros?.protein ?? null;
@@ -352,12 +352,13 @@ export default function DashboardScreen() {
   const todayFatGoal = 70;
 
   const coachSummary = useMemo(() => {
+    if (!dashboard) return "";
     const remaining = todayCaloriesGoal - todayCaloriesConsumed;
     if (remaining > 200) return `${remaining.toLocaleString()} kcal left — plenty of room for dinner.`;
     if (remaining > 0) return `${remaining.toLocaleString()} kcal left — a light bite tops you up.`;
     if (remaining > -200) return "You're right on goal — nice steady day.";
     return `${Math.abs(remaining).toLocaleString()} kcal over — coach can suggest a leaner day tomorrow.`;
-  }, [todayCaloriesGoal, todayCaloriesConsumed]);
+  }, [dashboard, todayCaloriesGoal, todayCaloriesConsumed]);
 
   const trendChart = useMemo(
     () => buildLinePaths(normalizedTrendValues, chartWidth - 8, 160, trendTab, todayCaloriesGoal),
@@ -505,7 +506,11 @@ export default function DashboardScreen() {
             >
               <View style={styles.heroCardHeader}>
                 <Text style={styles.heroEyebrow}>Move · today</Text>
-                <Text style={styles.heroGoalText}>{todayCaloriesGoal.toLocaleString()} kcal goal</Text>
+                {isDashboardInitialLoading ? (
+                  <LoadingBlock width={92} height={14} radius={6} />
+                ) : (
+                  <Text style={styles.heroGoalText}>{todayCaloriesGoal.toLocaleString()} kcal goal</Text>
+                )}
               </View>
               <View style={styles.heroBody}>
                 {isDashboardInitialLoading ? (
@@ -514,17 +519,32 @@ export default function DashboardScreen() {
                   <CalorieRing consumed={todayCaloriesConsumed} goal={todayCaloriesGoal} />
                 )}
                 <View style={styles.heroRight}>
-                  <Text style={styles.heroSummary}>
-                    <Text style={styles.heroSummaryAccent}>
-                      {Math.max(todayCaloriesGoal - todayCaloriesConsumed, 0).toLocaleString()} kcal
-                    </Text>{" "}
-                    left to hit your goal.
-                  </Text>
-                  <View style={styles.macroStack}>
-                    <MacroBar label="Protein" current={todayProtein} goal={todayProteinGoal} tone="accent" />
-                    <MacroBar label="Carbs" current={todayCarbs} goal={todayCarbsGoal} />
-                    <MacroBar label="Fat" current={todayFat} goal={todayFatGoal} />
-                  </View>
+                  {isDashboardInitialLoading ? (
+                    <View style={styles.heroLoadingCopy}>
+                      <LoadingBlock width={"92%"} height={18} radius={6} />
+                      <LoadingBlock width={"76%"} height={18} radius={6} />
+                    </View>
+                  ) : (
+                    <Text style={styles.heroSummary}>
+                      <Text style={styles.heroSummaryAccent}>
+                        {Math.max(todayCaloriesGoal - todayCaloriesConsumed, 0).toLocaleString()} kcal
+                      </Text>{" "}
+                      left to hit your goal.
+                    </Text>
+                  )}
+                  {isDashboardInitialLoading ? (
+                    <View style={styles.macroLoadingStack}>
+                      <LoadingBlock width={"100%"} height={18} radius={6} />
+                      <LoadingBlock width={"100%"} height={18} radius={6} />
+                      <LoadingBlock width={"100%"} height={18} radius={6} />
+                    </View>
+                  ) : (
+                    <View style={styles.macroStack}>
+                      <MacroBar label="Protein" current={todayProtein} goal={todayProteinGoal} tone="accent" />
+                      <MacroBar label="Carbs" current={todayCarbs} goal={todayCarbsGoal} />
+                      <MacroBar label="Fat" current={todayFat} goal={todayFatGoal} />
+                    </View>
+                  )}
                 </View>
               </View>
             </Pressable>
@@ -548,7 +568,12 @@ export default function DashboardScreen() {
                   </View>
                 )}
                 <View style={styles.metricThinTrack}>
-                  <View style={[styles.metricThinFill, { width: `${progressPercent(todaySteps, todayStepsGoal) * 100}%` }]} />
+                  <View
+                    style={[
+                      styles.metricThinFill,
+                      { width: isDashboardInitialLoading ? "0%" : `${progressPercent(todaySteps, todayStepsGoal) * 100}%` },
+                    ]}
+                  />
                 </View>
               </Pressable>
 
@@ -575,9 +600,15 @@ export default function DashboardScreen() {
                     <Text style={styles.metricUnit}>kg</Text>
                   </View>
                 )}
-                <View style={styles.weightSparklineWrap}>
-                  <WeightSparkline />
-                </View>
+                {isDashboardInitialLoading ? (
+                  <View style={styles.weightSparklineWrap}>
+                    <LoadingBlock width={"100%"} height={18} radius={6} />
+                  </View>
+                ) : (
+                  <View style={styles.weightSparklineWrap}>
+                    <WeightSparkline />
+                  </View>
+                )}
               </Pressable>
             </View>
 
@@ -585,7 +616,13 @@ export default function DashboardScreen() {
               <CoachBadge />
               <View style={styles.coachTextWrap}>
                 <Text style={styles.coachTitle}>Ask coach</Text>
-                <Text style={styles.coachSub}>{coachSummary}</Text>
+                {isDashboardInitialLoading ? (
+                  <View style={styles.coachLoadingSub}>
+                    <LoadingBlock width={"86%"} height={16} radius={6} />
+                  </View>
+                ) : (
+                  <Text style={styles.coachSub}>{coachSummary}</Text>
+                )}
               </View>
               <Text style={styles.coachChevron}>›</Text>
             </Pressable>
@@ -785,6 +822,10 @@ const styles = StyleSheet.create({
   heroRight: {
     flex: 1,
   },
+  heroLoadingCopy: {
+    gap: 6,
+    marginBottom: 12,
+  },
   heroSummary: {
     fontFamily: font.sans[400],
     fontSize: 13,
@@ -823,6 +864,9 @@ const styles = StyleSheet.create({
     color: token.textMute,
   },
   macroStack: {
+    gap: 10,
+  },
+  macroLoadingStack: {
     gap: 10,
   },
   macroRow: {},
@@ -979,6 +1023,9 @@ const styles = StyleSheet.create({
     fontWeight: "400",
     letterSpacing: -0.07,
     lineHeight: 18,
+  },
+  coachLoadingSub: {
+    marginTop: 5,
   },
   coachChevron: {
     color: token.textMute,

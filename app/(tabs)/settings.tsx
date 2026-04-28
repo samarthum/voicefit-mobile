@@ -352,7 +352,15 @@ export default function SettingsScreen() {
               ...existing,
               today: {
                 ...existing.today,
+                calories: {
+                  ...existing.today.calories,
+                  goal: updated.calorieGoal,
+                },
                 proteinGoal: updated.proteinGoal,
+                steps: {
+                  ...existing.today.steps,
+                  goal: updated.stepGoal,
+                },
               },
             }
           : existing,

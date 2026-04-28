@@ -1,10 +1,11 @@
 import "../polyfills";
 import { ClerkProvider } from "@clerk/clerk-expo";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { focusManager, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import * as SecureStore from "expo-secure-store";
 import { Slot } from "expo-router";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { ActivityIndicator, Pressable, StatusBar, StyleSheet, Text, View } from "react-native";
+import { useEffect } from "react";
+import { ActivityIndicator, AppState, Platform, Pressable, StatusBar, StyleSheet, Text, View } from "react-native";
 import { useFonts } from "expo-font";
 import {
   InterTight_300Light,
@@ -45,7 +46,16 @@ const tokenCache = {
   },
 };
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      gcTime: 30 * 60 * 1000,
+      refetchOnReconnect: true,
+      retry: 1,
+      staleTime: 60 * 1000,
+    },
+  },
+});
 
 export function ErrorBoundary({ error, retry }: { error: Error; retry: () => void }) {
   return (
@@ -79,6 +89,14 @@ export default function RootLayout() {
     GeistMono_500Medium,
     GeistMono_600SemiBold,
   });
+
+  useEffect(() => {
+    if (Platform.OS === "web") return undefined;
+    const subscription = AppState.addEventListener("change", (status) => {
+      focusManager.setFocused(status === "active");
+    });
+    return () => subscription.remove();
+  }, []);
 
   if (!fontsLoaded) {
     return (

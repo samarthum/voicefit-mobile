@@ -143,13 +143,13 @@ export default function TrendsScreen() {
   const [chartWidth, setChartWidth] = useState(320);
 
   const dashboardQuery = useQuery<DashboardData>({
-    queryKey: ["dashboard", timezone, today],
+    queryKey: ["dashboard", "full", timezone, today],
     queryFn: async () => {
       if (isWebPreview) return mockDashboard(today);
       const t = await getToken();
       if (!t) throw new Error("Not signed in");
       return apiRequest<DashboardData>(
-        `/api/dashboard?${new URLSearchParams({ timezone, date: today })}`,
+        `/api/dashboard?${new URLSearchParams({ timezone, date: today, scope: "full" })}`,
         { token: t }
       );
     },
