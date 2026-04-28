@@ -42,7 +42,7 @@ const COLORS = {
   accentInk: token.accentInk,
 };
 
-import type { UserSettings } from "@voicefit/contracts/types";
+import type { DashboardData, UserSettings } from "@voicefit/contracts/types";
 
 const PREVIEW_SETTINGS: UserSettings = {
   calorieGoal: 2000,
@@ -346,6 +346,17 @@ export default function SettingsScreen() {
       });
 
       queryClient.setQueryData(["user-settings"], updated);
+      queryClient.setQueriesData<DashboardData>({ queryKey: ["dashboard"] }, (existing) =>
+        existing
+          ? {
+              ...existing,
+              today: {
+                ...existing.today,
+                proteinGoal: updated.proteinGoal,
+              },
+            }
+          : existing,
+      );
       await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       hasEditedRef.current = false;
       setSaveSuccess("Goals updated.");

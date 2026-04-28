@@ -224,6 +224,7 @@ function mockDashboardData(selectedDate: string): DashboardData {
     today: {
       calories: { consumed: 495, goal: 2000 },
       macros: { protein: 38, carbs: 62, fat: 18 },
+      proteinGoal: 140,
       steps: { count: 6842, goal: 10000 },
       weight: 72.4,
       workoutSessions: 1,
@@ -346,7 +347,7 @@ export default function DashboardScreen() {
   const todayProtein: number | null = todayMacros?.protein ?? null;
   const todayCarbs: number | null = todayMacros?.carbs ?? null;
   const todayFat: number | null = todayMacros?.fat ?? null;
-  const todayProteinGoal = 140;
+  const todayProteinGoal = dashboard?.today.proteinGoal ?? 140;
   const todayCarbsGoal = 210;
   const todayFatGoal = 70;
 
