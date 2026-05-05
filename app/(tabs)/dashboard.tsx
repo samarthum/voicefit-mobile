@@ -320,6 +320,7 @@ export default function DashboardScreen() {
   const cc = useCommandCenter();
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const isWebPreview = isWebPreviewMode();
+  const [isManualRefreshing, setIsManualRefreshing] = useState(false);
 
   const today = toLocalDateString(new Date());
   const dayOptions = useMemo(() => getLastSevenDaysEndingToday(), [today]);
@@ -504,9 +505,14 @@ export default function DashboardScreen() {
         keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl
-            refreshing={dashboardQuery.isRefetching}
-            onRefresh={() => {
-              void dashboardQuery.refetch();
+            refreshing={isManualRefreshing}
+            onRefresh={async () => {
+              setIsManualRefreshing(true);
+              try {
+                await dashboardQuery.refetch();
+              } finally {
+                setIsManualRefreshing(false);
+              }
             }}
           />
         }

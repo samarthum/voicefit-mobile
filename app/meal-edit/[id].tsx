@@ -234,12 +234,19 @@ export default function MealEditScreen() {
       if (!token) throw new Error("Not signed in");
       return apiRequest<MealDetail>(`/api/meals/${id}`, { token });
     },
+    refetchInterval: (query) => {
+      return query.state.data?.interpretationStatus === "interpreting" ? 2000 : false;
+    },
+    refetchOnMount: "always",
   });
 
-  // Seed local ingredient state once when the meal first arrives. We avoid
-  // re-seeding on subsequent refetches so we don't clobber unsaved edits.
+  // Seed local ingredient state once when the meal first arrives in a
+  // non-interpreting state. Skipping interpreting data avoids seeding empty
+  // ingredients before Claude finishes; the seeded flag then prevents
+  // clobbering unsaved edits on later refetches.
   useEffect(() => {
     if (seeded || !mealQuery.data) return;
+    if (mealQuery.data.interpretationStatus === "interpreting") return;
     setIngredients(toReviewIngredients(mealQuery.data.ingredients ?? []));
     setEditedMealType(mealQuery.data.mealType);
     setSeeded(true);
