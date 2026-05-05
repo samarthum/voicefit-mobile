@@ -1,28 +1,29 @@
-// VoiceFit Mobile · Design Tokens · v1.0
-// Canonical source of truth — extracted from project Tokens.html (Pulse direction).
-// Anything visual that isn't here is a bug — flag and add.
+// VoiceFit Mobile · Design Tokens · v2.0 (Bevel-light)
+// Canonical source of truth for all visual styling. Anything visual that isn't
+// here is a bug — flag and add. Inspired by bevel.health: off-white canvas,
+// soft white cards, sage accent, deep cool-charcoal text.
 
 export const color = {
-  bg: "#0A0B0A",
-  surface: "#141614",
-  surface2: "#1C1F1C",
-  line: "rgba(255,255,255,0.08)",
-  line2: "rgba(255,255,255,0.14)",
+  bg: "#FAFAFA",
+  surface: "#FFFFFF",
+  surface2: "#F1F3F7",
+  line: "rgba(15,20,25,0.06)",
+  line2: "rgba(15,20,25,0.10)",
 
-  text: "#F3F4F1",
-  textSoft: "rgba(243,244,241,0.68)",
-  textMute: "rgba(243,244,241,0.42)",
+  text: "#0F1419",
+  textSoft: "#5A6471",
+  textMute: "#9AA0AB",
 
-  accent: "#C7FB41",
-  accentDim: "#8AAE2B",
-  accentInk: "#0A0B0A",
-  accentTintBg: "rgba(199,251,65,0.08)",
-  accentTintBorder: "rgba(199,251,65,0.25)",
-  accentRingTrack: "rgba(199,251,65,0.12)",
+  accent: "#5E8C7A",
+  accentDim: "#3F6957",
+  accentInk: "#FFFFFF",
+  accentTintBg: "rgba(94,140,122,0.08)",
+  accentTintBorder: "rgba(94,140,122,0.25)",
+  accentRingTrack: "rgba(94,140,122,0.14)",
 
-  positive: "#7CE08A",
-  warn: "#FFB347",
-  negative: "#FF6B6B",
+  positive: "#34A853",
+  warn: "#E8924B",
+  negative: "#D9534F",
 } as const;
 
 export const space = {
@@ -104,31 +105,31 @@ export const type = {
   numXS: { fontFamily: font.mono[400], fontSize: 11, fontWeight: "400" as const, lineHeight: 14, letterSpacing: 0 },
 } as const;
 
-// Hairline rules and accent-glow helpers — used by Card / FloatingSheet.
+// Shadows tuned for a light canvas — neutral charcoal, low opacity.
 export const elevation = {
   flat: { borderColor: color.line, borderWidth: 1 },
   sheet: {
-    borderColor: color.line2,
+    borderColor: color.line,
     borderWidth: 1,
-    shadowColor: "#000000",
-    shadowOpacity: 0.4,
-    shadowRadius: 40,
-    shadowOffset: { width: 0, height: 20 },
-    elevation: 12,
+    shadowColor: "#0F1419",
+    shadowOpacity: 0.08,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 8,
   },
   primaryCTA: {
-    shadowColor: color.accent,
-    shadowOpacity: 0.25,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 8,
+    shadowColor: "#0F1419",
+    shadowOpacity: 0.10,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
   },
   accentGlow: {
     shadowColor: color.accent,
-    shadowOpacity: 0.3,
-    shadowRadius: 24,
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
     shadowOffset: { width: 0, height: 0 },
-    elevation: 6,
+    elevation: 4,
   },
 } as const;
 

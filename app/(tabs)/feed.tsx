@@ -14,6 +14,7 @@ import { useAuth } from "@clerk/clerk-expo";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ConversationEvent, ConversationEventKind, InterpretEntryResponse } from "@voicefit/contracts/types";
 import { apiRequest } from "../../lib/api-client";
+import { color } from "../../lib/tokens";
 
 interface ConversationResponse {
   events: ConversationEvent[];
@@ -440,19 +441,19 @@ const styles = StyleSheet.create({
   container: {
     padding: 20,
     gap: 12,
-    backgroundColor: "#0A0B0A",
+    backgroundColor: color.bg,
   },
   title: {
     fontSize: 24,
     fontWeight: "700",
-    color: "#F3F4F1",
+    color: color.text,
   },
   subtitle: {
     fontSize: 14,
-    color: "rgba(243,244,241,0.68)",
+    color: color.textSoft,
   },
   card: {
-    backgroundColor: "#141614",
+    backgroundColor: color.surface,
     borderRadius: 12,
     padding: 14,
     gap: 8,
@@ -460,17 +461,17 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 13,
     fontWeight: "600",
-    color: "#F3F4F1",
+    color: color.text,
   },
   input: {
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
+    borderColor: color.line,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 14,
-    color: "#F3F4F1",
-    backgroundColor: "#0A0B0A",
+    color: color.text,
+    backgroundColor: color.bg,
     textAlignVertical: "top",
   },
   row: {
@@ -483,24 +484,24 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   kindChip: {
-    backgroundColor: "rgba(255,255,255,0.08)",
+    backgroundColor: color.line,
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
   kindChipActive: {
-    backgroundColor: "#F3F4F1",
+    backgroundColor: color.text,
   },
   kindChipText: {
-    color: "#F3F4F1",
+    color: color.text,
     fontSize: 12,
     fontWeight: "600",
   },
   kindChipTextActive: {
-    color: "#0A0B0A",
+    color: color.bg,
   },
   buttonPrimary: {
-    backgroundColor: "#F3F4F1",
+    backgroundColor: color.text,
     borderRadius: 10,
     paddingVertical: 11,
     paddingHorizontal: 14,
@@ -508,12 +509,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   buttonPrimaryText: {
-    color: "#0A0B0A",
+    color: color.bg,
     fontSize: 14,
     fontWeight: "700",
   },
   buttonSecondary: {
-    backgroundColor: "rgba(255,255,255,0.08)",
+    backgroundColor: color.line,
     borderRadius: 10,
     paddingVertical: 11,
     paddingHorizontal: 14,
@@ -521,7 +522,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   buttonSecondaryText: {
-    color: "#F3F4F1",
+    color: color.text,
     fontSize: 14,
     fontWeight: "600",
   },
@@ -530,30 +531,30 @@ const styles = StyleSheet.create({
   },
   helperText: {
     fontSize: 12,
-    color: "rgba(243,244,241,0.68)",
+    color: color.textSoft,
   },
   error: {
-    color: "#FF6B6B",
+    color: color.negative,
     fontSize: 13,
     fontWeight: "600",
   },
   success: {
-    color: "#7CE08A",
+    color: color.positive,
     fontSize: 13,
     fontWeight: "600",
   },
   emptyText: {
     paddingHorizontal: 20,
     paddingVertical: 14,
-    color: "rgba(243,244,241,0.68)",
+    color: color.textSoft,
     fontSize: 14,
   },
   eventCard: {
     marginHorizontal: 20,
     marginBottom: 10,
-    backgroundColor: "#0A0B0A",
+    backgroundColor: color.bg,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
+    borderColor: color.line,
     borderRadius: 12,
     padding: 14,
     gap: 6,
@@ -567,28 +568,28 @@ const styles = StyleSheet.create({
   badge: {
     fontSize: 11,
     fontWeight: "700",
-    color: "#F3F4F1",
-    backgroundColor: "rgba(255,255,255,0.08)",
+    color: color.text,
+    backgroundColor: color.line,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 999,
   },
   timestamp: {
     fontSize: 11,
-    color: "rgba(243,244,241,0.42)",
+    color: color.textMute,
   },
   userText: {
     fontSize: 14,
-    color: "#F3F4F1",
+    color: color.text,
     fontWeight: "600",
   },
   systemText: {
     fontSize: 13,
-    color: "#F3F4F1",
+    color: color.text,
   },
   metaText: {
     fontSize: 11,
-    color: "rgba(243,244,241,0.42)",
+    color: color.textMute,
   },
   footer: {
     paddingHorizontal: 20,

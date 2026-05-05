@@ -219,7 +219,7 @@ export default function SignUpEmailScreen() {
 
         <Pressable style={styles.submitButton} onPress={() => void handleSubmit()} disabled={isSubmitting}>
           {isSubmitting ? (
-            <ActivityIndicator color="#FFFFFF" />
+            <ActivityIndicator color={token.accentInk} />
           ) : (
             <Text style={styles.submitButtonText}>{content.button}</Text>
           )}

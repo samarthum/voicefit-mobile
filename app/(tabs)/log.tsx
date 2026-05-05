@@ -14,6 +14,7 @@ import { useAuth } from "@clerk/clerk-expo";
 import { useQueryClient } from "@tanstack/react-query";
 import type { MealInterpretation, RecordingState } from "@voicefit/contracts/types";
 import { apiFormRequest, apiRequest } from "../../lib/api-client";
+import { color } from "../../lib/tokens";
 
 type MealType = MealInterpretation["mealType"];
 
@@ -596,19 +597,19 @@ const styles = StyleSheet.create({
   container: {
     padding: 20,
     gap: 16,
-    backgroundColor: "#0A0B0A",
+    backgroundColor: color.bg,
   },
   title: {
     fontSize: 24,
     fontWeight: "700",
-    color: "#F3F4F1",
+    color: color.text,
   },
   body: {
     fontSize: 14,
-    color: "rgba(243,244,241,0.68)",
+    color: color.textSoft,
   },
   card: {
-    backgroundColor: "#141614",
+    backgroundColor: color.surface,
     borderRadius: 14,
     padding: 16,
     gap: 10,
@@ -616,19 +617,19 @@ const styles = StyleSheet.create({
   cardTitle: {
     fontSize: 16,
     fontWeight: "700",
-    color: "#F3F4F1",
+    color: color.text,
   },
   timerLabel: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#FF6B6B",
+    color: color.negative,
   },
   helperText: {
     fontSize: 13,
-    color: "rgba(243,244,241,0.42)",
+    color: color.textMute,
   },
   primaryButton: {
-    backgroundColor: "#F3F4F1",
+    backgroundColor: color.text,
     paddingVertical: 12,
     paddingHorizontal: 14,
     borderRadius: 10,
@@ -636,7 +637,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   stopButton: {
-    backgroundColor: "#FF6B6B",
+    backgroundColor: color.negative,
     paddingVertical: 12,
     paddingHorizontal: 14,
     borderRadius: 10,
@@ -644,17 +645,17 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   primaryButtonText: {
-    color: "#0A0B0A",
+    color: color.bg,
     fontSize: 14,
     fontWeight: "700",
   },
   stopButtonText: {
-    color: "#0A0B0A",
+    color: color.bg,
     fontSize: 14,
     fontWeight: "700",
   },
   secondaryButton: {
-    backgroundColor: "rgba(255,255,255,0.08)",
+    backgroundColor: color.line,
     paddingVertical: 12,
     paddingHorizontal: 14,
     borderRadius: 10,
@@ -662,7 +663,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   secondaryButtonText: {
-    color: "#F3F4F1",
+    color: color.text,
     fontSize: 14,
     fontWeight: "600",
   },
@@ -676,33 +677,33 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontSize: 13,
-    color: "#F3F4F1",
+    color: color.text,
   },
   multilineInput: {
     minHeight: 90,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
+    borderColor: color.line,
     borderRadius: 10,
     padding: 12,
     fontSize: 14,
-    color: "#F3F4F1",
+    color: color.text,
     textAlignVertical: "top",
-    backgroundColor: "#0A0B0A",
+    backgroundColor: color.bg,
   },
   fieldLabel: {
     fontSize: 13,
     fontWeight: "600",
-    color: "#F3F4F1",
+    color: color.text,
   },
   textInput: {
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
+    borderColor: color.line,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 14,
-    color: "#F3F4F1",
-    backgroundColor: "#0A0B0A",
+    color: color.text,
+    backgroundColor: color.bg,
   },
   buttonRow: {
     flexDirection: "row",
@@ -715,45 +716,45 @@ const styles = StyleSheet.create({
   },
   mealTypeChip: {
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    backgroundColor: "#0A0B0A",
+    borderColor: color.line,
+    backgroundColor: color.bg,
     borderRadius: 999,
     paddingVertical: 8,
     paddingHorizontal: 12,
   },
   mealTypeChipActive: {
-    borderColor: "#F3F4F1",
-    backgroundColor: "#F3F4F1",
+    borderColor: color.text,
+    backgroundColor: color.text,
   },
   mealTypeChipText: {
     fontSize: 13,
-    color: "#F3F4F1",
+    color: color.text,
     textTransform: "capitalize",
   },
   mealTypeChipTextActive: {
-    color: "#0A0B0A",
+    color: color.bg,
   },
   errorBox: {
-    backgroundColor: "#1C1F1C",
+    backgroundColor: color.surface2,
     borderRadius: 10,
     padding: 10,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
+    borderColor: color.line2,
   },
   errorText: {
-    color: "#FF6B6B",
+    color: color.negative,
     fontSize: 13,
     fontWeight: "600",
   },
   successBox: {
-    backgroundColor: "#1C1F1C",
+    backgroundColor: color.surface2,
     borderRadius: 10,
     padding: 10,
     borderWidth: 1,
-    borderColor: "#C7FB41",
+    borderColor: color.accentTintBorder,
   },
   successText: {
-    color: "#7CE08A",
+    color: color.positive,
     fontSize: 13,
     fontWeight: "600",
   },

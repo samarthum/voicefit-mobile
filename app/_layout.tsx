@@ -110,7 +110,7 @@ export default function RootLayout() {
     <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
       <QueryClientProvider client={queryClient}>
         <SafeAreaProvider>
-          <StatusBar barStyle="light-content" backgroundColor={color.bg} />
+          <StatusBar barStyle="dark-content" backgroundColor={color.bg} />
           <CommandCenterProvider>
             <Slot />
             <CommandCenterOverlay />

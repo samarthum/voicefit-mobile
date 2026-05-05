@@ -89,10 +89,7 @@ export function VoiceRing({ state, size = 200, reducedMotion = false }: VoiceRin
   const spinDeg = spin.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "360deg"] });
 
   const containerStyle = [styles.container, { width: size, height: size, opacity: fade }];
-  const glow =
-    state === "listening" && !reducedMotion
-      ? { shadowColor: color.accent, shadowOpacity: 0.3, shadowRadius: 24, shadowOffset: { width: 0, height: 0 } }
-      : null;
+  const glow = null;
 
   if (state === "idle") {
     return (
