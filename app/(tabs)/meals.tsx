@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Platform,
+  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -9,13 +9,20 @@ import {
   View,
 } from "react-native";
 import { useAuth } from "@clerk/clerk-expo";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import Svg, { Path } from "react-native-svg";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { FloatingCommandBar } from "../../components/FloatingCommandBar";
 import { useCommandCenter, toLocalDateString } from "../../components/command-center";
 import { apiRequest } from "../../lib/api-client";
+import { isWebPreviewMode } from "../../lib/web-preview-mode";
+import {
+  type AsyncMealStatus,
+  formatNullableCalories,
+  isFiniteNumber,
+  normalizeMealStatus,
+} from "../../lib/meal-status";
 import { color as token, font, radius as r } from "../../lib/tokens";
 
 type MealType = "breakfast" | "lunch" | "dinner" | "snack";
@@ -27,7 +34,12 @@ interface MealItem {
   mealType: MealType;
   description: string;
   transcriptRaw: string | null;
-  calories: number;
+  calories: number | null;
+  proteinG?: number | null;
+  carbsG?: number | null;
+  fatG?: number | null;
+  interpretationStatus?: AsyncMealStatus | "pending" | "error" | null;
+  errorMessage?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -48,6 +60,7 @@ const SAMPLE_MEALS: MealItem[] = [
     description: "Chicken caesar",
     transcriptRaw: null,
     calories: 520,
+    interpretationStatus: "reviewed",
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   },
@@ -59,6 +72,7 @@ const SAMPLE_MEALS: MealItem[] = [
     description: "Oats, blueberries, whey",
     transcriptRaw: null,
     calories: 420,
+    interpretationStatus: "needs_review",
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   },
@@ -70,6 +84,7 @@ const SAMPLE_MEALS: MealItem[] = [
     description: "Grilled salmon, rice",
     transcriptRaw: null,
     calories: 620,
+    interpretationStatus: "reviewed",
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   },
@@ -104,6 +119,37 @@ function ChevronGlyph() {
   );
 }
 
+function MealStatusBadge({ status }: { status: AsyncMealStatus }) {
+  if (status === "reviewed") return null;
+  const label =
+    status === "interpreting"
+      ? "Estimating"
+      : status === "needs_review"
+      ? "Review estimate"
+      : "Failed";
+  return (
+    <View
+      style={[
+        styles.statusBadge,
+        status === "failed" ? styles.statusBadgeFailed : null,
+      ]}
+    >
+      {status === "interpreting" ? (
+        <ActivityIndicator size="small" color={token.textMute} style={styles.statusSpinner} />
+      ) : null}
+      <Text
+        style={[
+          styles.statusBadgeText,
+          status === "failed" ? styles.statusBadgeTextFailed : null,
+        ]}
+        numberOfLines={1}
+      >
+        {label}
+      </Text>
+    </View>
+  );
+}
+
 function formatMealTime(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
@@ -129,7 +175,8 @@ export default function MealsScreen() {
   const cc = useCommandCenter();
   const router = useRouter();
   const { getToken, isSignedIn } = useAuth();
-  const isWebPreview = __DEV__ && Platform.OS === "web";
+  const queryClient = useQueryClient();
+  const isWebPreview = isWebPreviewMode();
 
   const today = toLocalDateString(new Date());
   const dayOptions = useMemo(() => getLastSevenDaysEndingToday(), [today]);
@@ -144,9 +191,39 @@ export default function MealsScreen() {
       if (!t) throw new Error("Not signed in");
       return apiRequest<MealsListResponse>("/api/meals?limit=50&offset=0", { token: t });
     },
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      const hasPending = data?.meals?.some(
+        (m) => m.interpretationStatus === "interpreting",
+      );
+      return hasPending ? 2000 : false;
+    },
   });
 
   const allMeals = isWebPreview ? SAMPLE_MEALS : mealsQuery.data?.meals ?? [];
+
+  const deleteMutation = useMutation({
+    mutationFn: async (mealId: string) => {
+      const token = await getToken();
+      if (!token) throw new Error("Not signed in");
+      return apiRequest<{ deleted: boolean }>(`/api/meals/${mealId}`, {
+        method: "DELETE",
+        token,
+      });
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["meals"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+      ]);
+    },
+    onError: (error) => {
+      Alert.alert(
+        "Could not delete meal",
+        error instanceof Error ? error.message : "Please try again.",
+      );
+    },
+  });
 
   useEffect(() => {
     if (selectedDate !== null) return;
@@ -183,11 +260,19 @@ export default function MealsScreen() {
     return Array.from(map.entries()).sort(([a], [b]) => (a < b ? 1 : -1));
   }, [meals]);
 
-  const totalCalories = meals.reduce((sum, m) => sum + m.calories, 0);
+  const totalCalories = meals.reduce((sum, m) => sum + (isFiniteNumber(m.calories) ? m.calories : 0), 0);
 
   const handleOpenMeal = (mealId: string) => {
     if (isWebPreview) return;
     router.push({ pathname: "/meal-edit/[id]", params: { id: mealId } });
+  };
+
+  const handleDeleteMeal = (mealId: string) => {
+    if (isWebPreview || deleteMutation.isPending) return;
+    Alert.alert("Delete meal", "This will permanently delete the meal.", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Delete", style: "destructive", onPress: () => deleteMutation.mutate(mealId) },
+    ]);
   };
 
   return (
@@ -251,27 +336,60 @@ export default function MealsScreen() {
           <View key={date} style={styles.daySection}>
             <Text style={styles.dayHeading}>{formatHeaderDate(date)}</Text>
             <View style={styles.mealsCard}>
-              {items.map((meal, idx) => (
-                <Pressable
-                  key={meal.id}
-                  onPress={() => handleOpenMeal(meal.id)}
-                  style={[styles.mealRow, idx > 0 ? styles.mealRowDivider : null]}
-                  testID={`meals-row-${meal.id}`}
-                >
-                  <Text style={styles.mealTime}>{formatMealTime(meal.eatenAt)}</Text>
-                  <View style={styles.mealCopy}>
-                    <Text style={styles.mealName} numberOfLines={1}>{meal.description}</Text>
-                    <Text style={styles.mealMeta}>{meal.mealType}</Text>
-                  </View>
-                  <View style={styles.mealKcalRow}>
-                    <Text style={styles.mealKcalNum}>{meal.calories}</Text>
-                    <Text style={styles.mealKcalUnit}>kcal</Text>
-                  </View>
-                  <View style={styles.mealChevron}>
-                    <ChevronGlyph />
-                  </View>
-                </Pressable>
-              ))}
+              {items.map((meal, idx) => {
+                const status = normalizeMealStatus(meal.interpretationStatus, meal.calories);
+                const calories = formatNullableCalories(meal.calories);
+                return (
+                  <Pressable
+                    key={meal.id}
+                    onPress={() => handleOpenMeal(meal.id)}
+                    style={[styles.mealRow, idx > 0 ? styles.mealRowDivider : null]}
+                    testID={`meals-row-${meal.id}`}
+                  >
+                    <Text style={styles.mealTime}>{formatMealTime(meal.eatenAt)}</Text>
+                    <View style={styles.mealCopy}>
+                      <Text style={styles.mealName} numberOfLines={1}>{meal.description}</Text>
+                      <View style={styles.mealMetaRow}>
+                        {status !== "interpreting" ? (
+                          <Text style={styles.mealMeta} numberOfLines={1}>{meal.mealType}</Text>
+                        ) : null}
+                        <MealStatusBadge status={status} />
+                      </View>
+                    </View>
+                    <View style={styles.mealTrailing}>
+                      {status === "failed" ? (
+                        <Pressable
+                          onPress={(event) => {
+                            event.stopPropagation();
+                            handleDeleteMeal(meal.id);
+                          }}
+                          hitSlop={8}
+                          style={styles.failedDeleteButton}
+                          testID={`meals-delete-${meal.id}`}
+                        >
+                          <Text style={styles.failedDeleteText}>
+                            {deleteMutation.isPending ? "..." : "Delete"}
+                          </Text>
+                        </Pressable>
+                      ) : (
+                        <View style={styles.mealKcalRow}>
+                          {status === "interpreting" || calories == null ? (
+                            <Text style={styles.mealKcalPending}>--</Text>
+                          ) : (
+                            <>
+                              <Text style={styles.mealKcalNum}>{calories}</Text>
+                              <Text style={styles.mealKcalUnit}>kcal</Text>
+                            </>
+                          )}
+                        </View>
+                      )}
+                      <View style={styles.mealChevron}>
+                        <ChevronGlyph />
+                      </View>
+                    </View>
+                  </Pressable>
+                );
+              })}
             </View>
           </View>
         ))}
@@ -417,22 +535,24 @@ const styles = StyleSheet.create({
   mealRow: {
     flexDirection: "row",
     alignItems: "center",
+    minHeight: 68,
     paddingHorizontal: 16,
-    paddingVertical: 14,
-    gap: 12,
+    paddingVertical: 12,
+    gap: 10,
   },
   mealRowDivider: {
     borderTopWidth: 1,
     borderTopColor: token.line,
   },
   mealTime: {
-    width: 44,
+    width: 42,
     fontFamily: font.mono[400],
     fontSize: 11,
     color: token.textMute,
   },
   mealCopy: {
     flex: 1,
+    minWidth: 0,
   },
   mealName: {
     fontFamily: font.sans[500],
@@ -440,18 +560,34 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     color: token.text,
   },
+  mealMetaRow: {
+    marginTop: 3,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    minWidth: 0,
+  },
   mealMeta: {
-    marginTop: 2,
     fontFamily: font.sans[600],
     fontSize: 10.5,
     fontWeight: "600",
     letterSpacing: 0.84,
     textTransform: "uppercase",
     color: token.textMute,
+    flexShrink: 1,
+  },
+  mealTrailing: {
+    width: 104,
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    alignItems: "center",
+    gap: 8,
   },
   mealKcalRow: {
+    width: 76,
     flexDirection: "row",
     alignItems: "baseline",
+    justifyContent: "flex-end",
     gap: 3,
   },
   mealKcalNum: {
@@ -465,8 +601,63 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: token.textMute,
   },
+  mealKcalPending: {
+    fontFamily: font.mono[500],
+    fontSize: 15,
+    fontWeight: "500",
+    color: token.textMute,
+  },
   mealChevron: {
-    marginLeft: 6,
+    width: 8,
+    alignItems: "center",
+  },
+  statusBadge: {
+    maxWidth: 104,
+    minHeight: 20,
+    borderRadius: r.pill,
+    borderWidth: 1,
+    borderColor: token.line,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    flexShrink: 1,
+  },
+  statusBadgeFailed: {
+    borderColor: token.negative,
+  },
+  statusSpinner: {
+    transform: [{ scale: 0.65 }],
+    marginHorizontal: -3,
+  },
+  statusBadgeText: {
+    fontFamily: font.sans[600],
+    fontSize: 9,
+    fontWeight: "600",
+    letterSpacing: 0.35,
+    textTransform: "uppercase",
+    color: token.textMute,
+    flexShrink: 1,
+  },
+  statusBadgeTextFailed: {
+    color: token.negative,
+  },
+  failedDeleteButton: {
+    minWidth: 54,
+    minHeight: 28,
+    borderRadius: r.pill,
+    borderWidth: 1,
+    borderColor: token.negative,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 8,
+  },
+  failedDeleteText: {
+    fontFamily: font.sans[600],
+    fontSize: 11,
+    fontWeight: "600",
+    color: token.negative,
   },
   emptyCard: {
     borderRadius: r.md,

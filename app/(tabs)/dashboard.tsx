@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  Platform,
+  ActivityIndicator,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -25,18 +25,32 @@ import { FloatingCommandBar } from "../../components/FloatingCommandBar";
 import { useCommandCenter, COLORS, toLocalDateString } from "../../components/command-center";
 import { getErrorMessage } from "../../components/command-center/helpers";
 import { color as token, font, radius as r } from "../../lib/tokens";
+import { isWebPreviewMode } from "../../lib/web-preview-mode";
 import { Wordmark, LoadingBlock, OfflineBanner } from "../../components/pulse";
 import NetInfo from "@react-native-community/netinfo";
+import {
+  type AsyncMealStatus,
+  formatNullableCalories,
+  normalizeMealStatus,
+} from "../../lib/meal-status";
 import {
   type TrendMetric,
   TREND_TABS,
   safeNumber,
   buildLinePaths,
   metricValueFromPoint,
-  metricColor,
 } from "../../lib/trends";
 
-type RecentMeal = DashboardData["recentMeals"][number];
+type RecentMeal = Omit<DashboardData["recentMeals"][number], "calories"> & {
+  calories: number | null;
+  interpretationStatus?: AsyncMealStatus | "pending" | "error" | null;
+  errorMessage?: string | null;
+};
+type DashboardToday = DashboardData["today"] & { proteinGoal?: number };
+type DashboardHomeData = Omit<DashboardData, "recentMeals" | "today"> & {
+  today: DashboardToday;
+  recentMeals: RecentMeal[];
+};
 
 const DEFAULT_WEIGHT_GOAL = 70;
 
@@ -208,7 +222,7 @@ function WeightSparkline() {
 
 // LoadingBlock is now imported from components/pulse — see top of file.
 
-function mockDashboardData(selectedDate: string): DashboardData {
+function mockDashboardData(selectedDate: string): DashboardHomeData {
   const base = parseDateKey(selectedDate);
   const trends = Array.from({ length: 14 }, (_, idx) => {
     const d = new Date(base);
@@ -233,10 +247,19 @@ function mockDashboardData(selectedDate: string): DashboardData {
     weeklyTrends: trends,
     recentMeals: [
       {
+        id: "meal-4",
+        description: "Voice meal still being estimated",
+        calories: null,
+        mealType: "snack",
+        interpretationStatus: "interpreting",
+        eatenAt: new Date(base.getFullYear(), base.getMonth(), base.getDate(), 15, 45).toISOString(),
+      },
+      {
         id: "meal-1",
         description: "Chicken Salad",
         calories: 450,
         mealType: "lunch",
+        interpretationStatus: "reviewed",
         eatenAt: new Date(base.getFullYear(), base.getMonth(), base.getDate(), 12, 30).toISOString(),
       },
       {
@@ -244,6 +267,7 @@ function mockDashboardData(selectedDate: string): DashboardData {
         description: "Overnight Oats",
         calories: 320,
         mealType: "breakfast",
+        interpretationStatus: "needs_review",
         eatenAt: new Date(base.getFullYear(), base.getMonth(), base.getDate(), 8, 15).toISOString(),
       },
       {
@@ -251,6 +275,7 @@ function mockDashboardData(selectedDate: string): DashboardData {
         description: "Grilled Salmon & Rice",
         calories: 620,
         mealType: "dinner",
+        interpretationStatus: "reviewed",
         eatenAt: new Date(base.getFullYear(), base.getMonth(), base.getDate() - 1, 19, 5).toISOString(),
       },
     ],
@@ -258,12 +283,43 @@ function mockDashboardData(selectedDate: string): DashboardData {
   };
 }
 
+function MealStatusBadge({ status }: { status: AsyncMealStatus }) {
+  if (status === "reviewed") return null;
+  const label =
+    status === "interpreting"
+      ? "Estimating"
+      : status === "needs_review"
+      ? "Review estimate"
+      : "Failed";
+  return (
+    <View
+      style={[
+        styles.mealStatusBadge,
+        status === "failed" ? styles.mealStatusBadgeFailed : null,
+      ]}
+    >
+      {status === "interpreting" ? (
+        <ActivityIndicator size="small" color={token.textMute} style={styles.mealStatusSpinner} />
+      ) : null}
+      <Text
+        style={[
+          styles.mealStatusText,
+          status === "failed" ? styles.mealStatusTextFailed : null,
+        ]}
+        numberOfLines={1}
+      >
+        {label}
+      </Text>
+    </View>
+  );
+}
+
 export default function DashboardScreen() {
   const { getToken } = useAuth();
   const router = useRouter();
   const cc = useCommandCenter();
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const isWebPreview = __DEV__ && Platform.OS === "web";
+  const isWebPreview = isWebPreviewMode();
 
   const today = toLocalDateString(new Date());
   const dayOptions = useMemo(() => getLastSevenDaysEndingToday(), [today]);
@@ -280,7 +336,7 @@ export default function DashboardScreen() {
     return unsubscribe;
   }, []);
 
-  const dashboardQuery = useQuery<DashboardData>({
+  const dashboardQuery = useQuery<DashboardHomeData>({
     queryKey: ["dashboard", "home", timezone, selectedDate],
     queryFn: async () => {
       if (isWebPreview) {
@@ -288,10 +344,17 @@ export default function DashboardScreen() {
       }
       const token = await getToken();
       if (!token) throw new Error("Not signed in");
-      return apiRequest<DashboardData>(
+      return apiRequest<DashboardHomeData>(
         `/api/dashboard?${new URLSearchParams({ timezone, date: selectedDate, scope: "home" })}`,
         { token }
       );
+    },
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      const hasPending = data?.recentMeals?.some(
+        (m) => m.interpretationStatus === "interpreting",
+      );
+      return hasPending ? 2000 : false;
     },
   });
 
@@ -426,6 +489,11 @@ export default function DashboardScreen() {
     const rounded = Math.round(trendChange);
     const sign = rounded > 0 ? "+" : "";
     return `${sign}${rounded}% vs prior 7 days`;
+  };
+
+  const handleOpenMeal = (mealId: string) => {
+    if (isWebPreview) return;
+    router.push({ pathname: "/meal-edit/[id]", params: { id: mealId } });
   };
 
   return (
@@ -646,18 +714,36 @@ export default function DashboardScreen() {
                   const eaten = new Date(meal.eatenAt);
                   const hh = String(eaten.getHours()).padStart(2, "0");
                   const mm = String(eaten.getMinutes()).padStart(2, "0");
+                  const status = normalizeMealStatus(meal.interpretationStatus, meal.calories);
+                  const calories = formatNullableCalories(meal.calories);
                   return (
-                    <View key={meal.id} style={[styles.mealRow, index === 0 && styles.mealRowFirst]}>
+                    <Pressable
+                      key={meal.id}
+                      style={[styles.mealRow, index === 0 && styles.mealRowFirst]}
+                      onPress={() => handleOpenMeal(meal.id)}
+                      testID={`home-meal-row-${meal.id}`}
+                    >
                       <Text style={styles.mealTime}>{hh}:{mm}</Text>
                       <View style={styles.mealInfo}>
                         <Text style={styles.mealTitle} numberOfLines={1}>{meal.description}</Text>
-                        <Text style={styles.mealMeta}>{meal.mealType}</Text>
+                        <View style={styles.mealMetaRow}>
+                          {status !== "interpreting" ? (
+                            <Text style={styles.mealMeta} numberOfLines={1}>{meal.mealType}</Text>
+                          ) : null}
+                          <MealStatusBadge status={status} />
+                        </View>
                       </View>
                       <View style={styles.mealKcalRow}>
-                        <Text style={styles.mealKcalNum}>{meal.calories}</Text>
-                        <Text style={styles.mealKcalUnit}>kcal</Text>
+                        {status === "interpreting" || calories == null ? (
+                          <Text style={styles.mealKcalPending}>--</Text>
+                        ) : (
+                          <>
+                            <Text style={styles.mealKcalNum}>{calories}</Text>
+                            <Text style={styles.mealKcalUnit}>kcal</Text>
+                          </>
+                        )}
                       </View>
-                    </View>
+                    </Pressable>
                   );
                 })
               ) : (
@@ -1153,16 +1239,18 @@ const styles = StyleSheet.create({
   mealRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 14,
+    minHeight: 68,
+    paddingVertical: 12,
     paddingHorizontal: 16,
     borderTopWidth: 1,
     borderTopColor: token.line,
+    gap: 10,
   },
   mealRowFirst: {
     borderTopWidth: 0,
   },
   mealTime: {
-    width: 44,
+    width: 42,
     fontFamily: font.mono[400],
     fontSize: 11,
     color: token.textMute,
@@ -1177,17 +1265,26 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     color: token.text,
   },
+  mealMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    minWidth: 0,
+    marginTop: 3,
+  },
   mealMeta: {
-    marginTop: 2,
     fontFamily: font.sans[600],
     fontSize: 10.5,
     color: token.textMute,
     letterSpacing: 0.84,
     textTransform: "uppercase",
+    flexShrink: 1,
   },
   mealKcalRow: {
+    width: 76,
     flexDirection: "row",
     alignItems: "baseline",
+    justifyContent: "flex-end",
     gap: 3,
   },
   mealKcalNum: {
@@ -1200,6 +1297,44 @@ const styles = StyleSheet.create({
     fontFamily: font.sans[400],
     fontSize: 10,
     color: token.textMute,
+  },
+  mealKcalPending: {
+    fontFamily: font.mono[500],
+    fontSize: 15,
+    fontWeight: "500",
+    color: token.textMute,
+  },
+  mealStatusBadge: {
+    maxWidth: 104,
+    minHeight: 20,
+    borderRadius: r.pill,
+    borderWidth: 1,
+    borderColor: token.line,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    flexShrink: 1,
+  },
+  mealStatusBadgeFailed: {
+    borderColor: token.negative,
+  },
+  mealStatusSpinner: {
+    transform: [{ scale: 0.65 }],
+    marginHorizontal: -3,
+  },
+  mealStatusText: {
+    fontFamily: font.sans[600],
+    fontSize: 9,
+    fontWeight: "600",
+    letterSpacing: 0.35,
+    color: token.textMute,
+    textTransform: "uppercase",
+    flexShrink: 1,
+  },
+  mealStatusTextFailed: {
+    color: token.negative,
   },
   mealCalories: {
     fontFamily: font.mono[500],

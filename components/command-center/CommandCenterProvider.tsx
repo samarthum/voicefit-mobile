@@ -1,16 +1,19 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { Keyboard, Linking, Platform } from "react-native";
+import { Alert, Keyboard, Linking, Platform } from "react-native";
 import { Audio } from "expo-av";
+import * as ImagePicker from "expo-image-picker";
 import { useAuth } from "@clerk/clerk-expo";
 import { useQueryClient } from "@tanstack/react-query";
 import type { DashboardData, InterpretEntryResponse, MealIngredient } from "@voicefit/contracts/types";
 import { apiFormRequest, apiRequest } from "../../lib/api-client";
+import { isWebPreviewMode } from "../../lib/web-preview-mode";
 import { fetchInterpretedIngredient as fetchInterpretedIngredientApi } from "../../lib/api/ingredient";
 import type {
   CommandErrorSubtype,
   CommandState,
   EntrySource,
   MealReviewIngredient,
+  PhotoAttachment,
   QuickAddItem,
   RecentMeal,
   ReviewDraft,
@@ -19,7 +22,6 @@ import type {
   WorkoutReviewSet,
 } from "./types";
 import {
-  buildMealReviewDraft,
   buildQuickAddItems,
   buildWorkoutReviewDraft,
   ensureQuickSession,
@@ -30,6 +32,7 @@ import {
   inferCalories,
   inferMealDescription,
   inferMealType,
+  isLikelyMealEntry,
   MIN_RECORDING_DURATION_MS,
   parsePositiveNumber,
   recalculateMealTotals,
@@ -71,6 +74,7 @@ export interface CommandCenterInternalValue {
   recordingSeconds: number;
   isInterpretingVoice: boolean;
   reviewDraft: ReviewDraft | null;
+  selectedMealPhoto: PhotoAttachment | null;
   commandToast: string | null;
   lastSavedKcalLeft: number | null;
   commandErrorSubtype: CommandErrorSubtype;
@@ -85,6 +89,8 @@ export interface CommandCenterInternalValue {
   startRecording: () => Promise<void>;
   stopRecording: () => Promise<void>;
   sendTyped: () => Promise<void>;
+  openPhotoMenu: () => void;
+  sendPhotoMeal: () => Promise<void>;
   handleCommandInputChange: (text: string) => void;
   handleErrorPrimary: () => Promise<void>;
   handleErrorSecondary: () => void;
@@ -120,7 +126,7 @@ export function useCommandCenterInternal() {
 export function CommandCenterProvider({ children }: { children: React.ReactNode }) {
   const { getToken } = useAuth();
   const queryClient = useQueryClient();
-  const isWebPreview = __DEV__ && Platform.OS === "web";
+  const isWebPreview = isWebPreviewMode();
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   // ---- State ----
@@ -131,6 +137,7 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [isInterpretingVoice, setIsInterpretingVoice] = useState(false);
   const [reviewDraft, setReviewDraft] = useState<ReviewDraft | null>(null);
+  const [selectedMealPhoto, setSelectedMealPhoto] = useState<PhotoAttachment | null>(null);
   const [commandToast, setCommandToast] = useState<string | null>(null);
   const [lastSavedKcalLeft, setLastSavedKcalLeft] = useState<number | null>(null);
   const [commandErrorSubtype, setCommandErrorSubtype] = useState<CommandErrorSubtype>(null);
@@ -139,6 +146,7 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
 
   const pendingSaveRef = useRef<SaveAction | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mealPollTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   // ---- Quick add items from React Query cache ----
   const quickAddItems = useMemo(() => {
@@ -161,6 +169,12 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
       if (recording) recording.stopAndUnloadAsync().catch(() => undefined);
     };
   }, [recording]);
+
+  useEffect(() => {
+    return () => {
+      mealPollTimersRef.current.forEach(clearTimeout);
+    };
+  }, []);
 
   // Web preview: tick recording seconds
   useEffect(() => {
@@ -197,6 +211,15 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
     ]);
   }, [queryClient]);
 
+  const refreshAfterPendingMeal = useCallback(async () => {
+    mealPollTimersRef.current.forEach(clearTimeout);
+    mealPollTimersRef.current = [];
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+      queryClient.invalidateQueries({ queryKey: ["meals"] }),
+    ]);
+  }, [queryClient]);
+
   const closeCommandCenter = useCallback(() => {
     if (recording) {
       recording.stopAndUnloadAsync().catch(() => undefined);
@@ -208,6 +231,7 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
     setCommandErrorDetail(null);
     setIsInterpretingVoice(false);
     setReviewDraft(null);
+    setSelectedMealPhoto(null);
     setLastSavedKcalLeft(null);
   }, [recording]);
 
@@ -236,10 +260,93 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
     setRecordingSeconds(0);
     setIsInterpretingVoice(false);
     setReviewDraft(null);
+    setSelectedMealPhoto(null);
     setCommandErrorSubtype(null);
     setCommandErrorDetail(null);
     setCommandState("cc_expanded_empty");
   }, []);
+
+  const getPhotoFileName = useCallback((uri: string, fileName?: string | null) => {
+    if (fileName?.trim()) return fileName.trim();
+    const extension = uri.split(".").pop()?.split("?")[0] || "jpg";
+    return `voicefit-meal-${Date.now()}.${extension}`;
+  }, []);
+
+  const getPhotoMimeType = useCallback((uri: string, mimeType?: string | null) => {
+    const extension = uri.split(".").pop()?.split("?")[0]?.toLowerCase();
+    if (extension === "jpg" || extension === "jpeg") return "image/jpeg";
+    if (extension === "png") return "image/png";
+    if (extension === "webp") return "image/webp";
+    if (extension === "gif") return "image/gif";
+    if (extension === "heic" || extension === "heif") return "image/heic";
+    if (mimeType?.trim()) return mimeType.trim();
+    return "image/jpeg";
+  }, []);
+
+  const buildPhotoAttachment = useCallback((asset: ImagePicker.ImagePickerAsset): PhotoAttachment => ({
+    uri: asset.uri,
+    name: getPhotoFileName(asset.uri, asset.fileName),
+    type: getPhotoMimeType(asset.uri, asset.mimeType),
+    width: Number.isFinite(asset.width) ? asset.width : null,
+    height: Number.isFinite(asset.height) ? asset.height : null,
+  }), [getPhotoFileName, getPhotoMimeType]);
+
+  const createPendingMealFromText = useCallback(async (transcript: string, source: EntrySource) => {
+    if (isWebPreview) {
+      await new Promise((resolve) => setTimeout(resolve, 650));
+      await refreshAfterPendingMeal();
+      finishWithSaved("Logging your meal…");
+      return;
+    }
+
+    const token = await getToken();
+    if (!token) throw new Error("Not signed in");
+
+    await apiRequest("/api/meals/interpret", {
+      method: "POST",
+      token,
+      body: JSON.stringify({
+        transcript,
+        context: transcript,
+        source,
+        timezone,
+        eatenAt: new Date().toISOString(),
+      }),
+      timeoutMs: 60_000,
+    });
+    await refreshAfterPendingMeal();
+    finishWithSaved("Logging your meal…");
+  }, [isWebPreview, getToken, timezone, refreshAfterPendingMeal, finishWithSaved]);
+
+  const createPendingMealFromPhoto = useCallback(async (photo: PhotoAttachment, context: string) => {
+    if (isWebPreview) {
+      await new Promise((resolve) => setTimeout(resolve, 650));
+      await refreshAfterPendingMeal();
+      finishWithSaved("Looking at your photo…");
+      return;
+    }
+
+    const token = await getToken();
+    if (!token) throw new Error("Not signed in");
+
+    const formData = new FormData();
+    formData.append("photo", { uri: photo.uri, name: photo.name, type: photo.type } as unknown as Blob);
+    formData.append("source", "photo");
+    formData.append("context", context.trim());
+    formData.append("timezone", timezone);
+    formData.append("eatenAt", new Date().toISOString());
+    if (context.trim()) {
+      formData.append("transcript", context.trim());
+    }
+
+    await apiFormRequest("/api/meals/interpret", formData, {
+      method: "POST",
+      token,
+      timeoutMs: 60_000,
+    });
+    await refreshAfterPendingMeal();
+    finishWithSaved("Looking at your photo…");
+  }, [isWebPreview, getToken, timezone, refreshAfterPendingMeal, finishWithSaved]);
 
   const interpretEntry = useCallback(async (transcript: string, source: EntrySource): Promise<InterpretEntryResponse> => {
     if (isWebPreview) {
@@ -432,15 +539,14 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
 
   const routeInterpretedEntry = useCallback(async (interpreted: InterpretEntryResponse, transcript: string, source: EntrySource) => {
     if (interpreted.intent === "meal") {
-      setReviewDraft(buildMealReviewDraft(interpreted, transcript, source));
-      setCommandState("cc_review_meal");
+      await createPendingMealFromText(transcript, source);
     } else if (interpreted.intent === "workout_set") {
       setReviewDraft(buildWorkoutReviewDraft(interpreted, transcript, source));
       setCommandState("cc_review_workout");
     } else {
       await runSaveAction({ kind: "entry", interpreted, transcript, source });
     }
-  }, [runSaveAction]);
+  }, [createPendingMealFromText, runSaveAction]);
 
   const sendTyped = useCallback(async () => {
     const trimmed = commandText.trim();
@@ -449,12 +555,78 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
     setCommandErrorSubtype(null);
     setCommandErrorDetail(null);
     try {
+      if (isLikelyMealEntry(trimmed)) {
+        await createPendingMealFromText(trimmed, "text");
+        return;
+      }
       const interpreted = await interpretEntry(trimmed, "text");
       await routeInterpretedEntry(interpreted, trimmed, "text");
     } catch (error) {
       setCommandError("typed_interpret_failure", getErrorMessage(error));
     }
-  }, [commandText, interpretEntry, routeInterpretedEntry, setCommandError]);
+  }, [commandText, createPendingMealFromText, interpretEntry, routeInterpretedEntry, setCommandError]);
+
+  const launchPhotoPicker = useCallback(async (mode: "camera" | "library") => {
+    setCommandErrorSubtype(null);
+    setCommandErrorDetail(null);
+    try {
+      const permission = mode === "camera"
+        ? await ImagePicker.requestCameraPermissionsAsync()
+        : await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+      if (!permission.granted) {
+        setCommandError("photo_permission_denied");
+        return;
+      }
+
+      const result = mode === "camera"
+        ? await ImagePicker.launchCameraAsync({
+            allowsEditing: false,
+            exif: false,
+            mediaTypes: ["images"],
+            quality: 0.82,
+          })
+        : await ImagePicker.launchImageLibraryAsync({
+            allowsEditing: false,
+            exif: false,
+            mediaTypes: ["images"],
+            quality: 0.82,
+          });
+
+      if (result.canceled || !result.assets[0]) return;
+
+      setSelectedMealPhoto(buildPhotoAttachment(result.assets[0]));
+      setCommandText("");
+      setCommandState("cc_photo_context");
+    } catch (error) {
+      setCommandError("photo_interpret_failure", getErrorMessage(error));
+    }
+  }, [buildPhotoAttachment, setCommandError]);
+
+  const openPhotoMenu = useCallback(() => {
+    if (Platform.OS === "web") {
+      void launchPhotoPicker("library");
+      return;
+    }
+
+    Alert.alert("Log meal photo", "Add optional context after selecting a photo.", [
+      { text: "Take photo", onPress: () => void launchPhotoPicker("camera") },
+      { text: "Choose from library", onPress: () => void launchPhotoPicker("library") },
+      { text: "Cancel", style: "cancel" },
+    ]);
+  }, [launchPhotoPicker]);
+
+  const sendPhotoMeal = useCallback(async () => {
+    if (!selectedMealPhoto) return;
+    setCommandState("cc_submitting_photo");
+    setCommandErrorSubtype(null);
+    setCommandErrorDetail(null);
+    try {
+      await createPendingMealFromPhoto(selectedMealPhoto, commandText);
+    } catch (error) {
+      setCommandError("photo_interpret_failure", getErrorMessage(error));
+    }
+  }, [selectedMealPhoto, commandText, createPendingMealFromPhoto, setCommandError]);
 
   const interpretVoiceTranscript = useCallback(async (text: string) => {
     const transcript = text.trim();
@@ -467,6 +639,10 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
     setCommandErrorSubtype(null);
     setCommandErrorDetail(null);
     try {
+      if (isLikelyMealEntry(transcript)) {
+        await createPendingMealFromText(transcript, "voice");
+        return;
+      }
       const interpreted = await interpretEntry(transcript, "voice");
       await routeInterpretedEntry(interpreted, transcript, "voice");
     } catch (error) {
@@ -474,7 +650,7 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
     } finally {
       setIsInterpretingVoice(false);
     }
-  }, [interpretEntry, routeInterpretedEntry, setCommandError]);
+  }, [createPendingMealFromText, interpretEntry, routeInterpretedEntry, setCommandError]);
 
   const startRecording = useCallback(async () => {
     setCommandErrorSubtype(null);
@@ -722,14 +898,19 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
     if (!commandErrorSubtype) return;
     if (commandErrorSubtype === "typed_interpret_failure") { await sendTyped(); return; }
     if (commandErrorSubtype === "voice_interpret_failure") { await startRecording(); return; }
+    if (commandErrorSubtype === "photo_interpret_failure") { await sendPhotoMeal(); return; }
     if (commandErrorSubtype === "mic_permission_denied") {
       try { await Linking.openSettings(); } catch { setCommandErrorDetail("Open your device settings and enable microphone access."); }
+      return;
+    }
+    if (commandErrorSubtype === "photo_permission_denied") {
+      try { await Linking.openSettings(); } catch { setCommandErrorDetail("Open your device settings and enable camera or photo access."); }
       return;
     }
     if ((commandErrorSubtype === "auto_save_failure" || commandErrorSubtype === "quick_add_failure") && pendingSaveRef.current) {
       await runSaveAction(pendingSaveRef.current);
     }
-  }, [commandErrorSubtype, sendTyped, startRecording, runSaveAction]);
+  }, [commandErrorSubtype, sendTyped, startRecording, sendPhotoMeal, runSaveAction]);
 
   const handleErrorSecondary = useCallback(() => {
     if (!commandErrorSubtype) return;
@@ -740,6 +921,11 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
     if (commandErrorSubtype === "voice_interpret_failure") {
       if (voiceTranscript.trim()) setCommandText(voiceTranscript.trim());
       setCommandState(voiceTranscript.trim() ? "cc_expanded_typing" : "cc_expanded_empty");
+      return;
+    }
+    if (commandErrorSubtype === "photo_interpret_failure" || commandErrorSubtype === "photo_permission_denied") {
+      setSelectedMealPhoto(null);
+      setCommandState(commandText.trim() ? "cc_expanded_typing" : "cc_expanded_empty");
       return;
     }
     if (commandErrorSubtype === "mic_permission_denied") {
@@ -781,6 +967,7 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
     recordingSeconds,
     isInterpretingVoice,
     reviewDraft,
+    selectedMealPhoto,
     commandToast,
     lastSavedKcalLeft,
     commandErrorSubtype,
@@ -794,6 +981,8 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
     startRecording,
     stopRecording,
     sendTyped,
+    openPhotoMenu,
+    sendPhotoMeal,
     handleCommandInputChange,
     handleErrorPrimary,
     handleErrorSecondary,
@@ -812,9 +1001,10 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
     setCommandText,
   }), [
     commandState, commandText, voiceTranscript, recordingSeconds, isInterpretingVoice,
-    reviewDraft, commandToast, lastSavedKcalLeft, commandErrorSubtype, commandErrorDetail, activeErrorCopy,
+    reviewDraft, selectedMealPhoto, commandToast, lastSavedKcalLeft, commandErrorSubtype, commandErrorDetail, activeErrorCopy,
     quickAddItems, screenContext, isWebPreview,
     closeCommandCenter, openCommandCenter, startRecording, stopRecording, sendTyped,
+    openPhotoMenu, sendPhotoMeal,
     handleCommandInputChange, handleErrorPrimary, handleErrorSecondary,
     saveReviewedEntry, editReviewTranscript, updateWorkoutSet, addWorkoutSet,
     editIngredientGrams, replaceIngredient, addIngredient, removeIngredient, fetchInterpretedIngredient,

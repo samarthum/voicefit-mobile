@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import {
   LayoutChangeEvent,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -28,6 +27,7 @@ import { useCommandCenter, toLocalDateString } from "../../components/command-ce
 import { Wordmark } from "../../components/pulse";
 import { color as token, font, radius as r } from "../../lib/tokens";
 import { type TrendMetric, getISOWeek, safeNumber, metricValueFromPoint } from "../../lib/trends";
+import { isWebPreviewMode } from "../../lib/web-preview-mode";
 
 const TAB_LABELS: Record<TrendMetric, string> = {
   calories: "Calories",
@@ -77,9 +77,6 @@ function average(values: number[]): number | null {
   return values.reduce((s, v) => s + v, 0) / values.length;
 }
 
-function isWebPreviewMode() {
-  return __DEV__ && Platform.OS === "web";
-}
 
 function mockTopMeals(): TopMealsResponse {
   return {
@@ -115,14 +112,14 @@ function mockDashboard(date: string): DashboardData {
     },
     weeklyTrends: trends,
     recentMeals: [
-      { id: "1", description: "Oats, blueberries, whey", calories: 420, mealType: "breakfast", eatenAt: date },
-      { id: "2", description: "Chicken caesar", calories: 520, mealType: "lunch", eatenAt: date },
-      { id: "3", description: "Protein bar", calories: 220, mealType: "snack", eatenAt: date },
-      { id: "4", description: "Greek yogurt", calories: 170, mealType: "snack", eatenAt: date },
-      { id: "5", description: "Oats, blueberries, whey", calories: 420, mealType: "breakfast", eatenAt: date },
-      { id: "6", description: "Chicken caesar", calories: 520, mealType: "lunch", eatenAt: date },
-      { id: "7", description: "Protein bar", calories: 220, mealType: "snack", eatenAt: date },
-      { id: "8", description: "Protein bar", calories: 220, mealType: "snack", eatenAt: date },
+      { id: "1", description: "Oats, blueberries, whey", calories: 420, mealType: "breakfast", interpretationStatus: "reviewed", eatenAt: date },
+      { id: "2", description: "Chicken caesar", calories: 520, mealType: "lunch", interpretationStatus: "reviewed", eatenAt: date },
+      { id: "3", description: "Protein bar", calories: 220, mealType: "snack", interpretationStatus: "reviewed", eatenAt: date },
+      { id: "4", description: "Greek yogurt", calories: 170, mealType: "snack", interpretationStatus: "reviewed", eatenAt: date },
+      { id: "5", description: "Oats, blueberries, whey", calories: 420, mealType: "breakfast", interpretationStatus: "reviewed", eatenAt: date },
+      { id: "6", description: "Chicken caesar", calories: 520, mealType: "lunch", interpretationStatus: "reviewed", eatenAt: date },
+      { id: "7", description: "Protein bar", calories: 220, mealType: "snack", interpretationStatus: "reviewed", eatenAt: date },
+      { id: "8", description: "Protein bar", calories: 220, mealType: "snack", interpretationStatus: "reviewed", eatenAt: date },
     ],
     recentExercises: [],
   };

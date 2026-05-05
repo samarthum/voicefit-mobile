@@ -16,7 +16,9 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.samarthmamadapur.voicefit",
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "VoiceFit needs microphone access to log meals and workouts by voice."
+        "NSMicrophoneUsageDescription": "VoiceFit needs microphone access to log meals and workouts by voice.",
+        "NSCameraUsageDescription": "VoiceFit needs camera access to log meals from photos.",
+        "NSPhotoLibraryUsageDescription": "VoiceFit needs photo library access to log meals from existing photos."
       }
     },
     "android": {
@@ -25,7 +27,9 @@
         "backgroundColor": "#ffffff"
       },
       "permissions": [
-        "RECORD_AUDIO"
+        "RECORD_AUDIO",
+        "CAMERA",
+        "READ_MEDIA_IMAGES"
       ],
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
@@ -37,7 +41,14 @@
     "scheme": "voicefit",
     "plugins": [
       "expo-router",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "VoiceFit needs camera access to log meals from photos.",
+          "photosPermission": "VoiceFit needs photo library access to log meals from existing photos."
+        }
+      ]
     ],
     "extra": {
       "router": {},

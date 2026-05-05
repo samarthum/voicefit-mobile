@@ -95,6 +95,34 @@ export function getErrorMessage(error: unknown) {
   return "Something went wrong. Please try again.";
 }
 
+export function isLikelyMealEntry(text: string) {
+  const value = text.toLowerCase().replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
+  if (!value) return false;
+
+  const workoutOrMetricPatterns = [
+    /\b(bench|squat|deadlift|curl|press|row|pull[-\s]?up|push[-\s]?up|plank|run|ran|cardio|workout|exercise)\b/,
+    /\b(rep|reps|set|sets|kg|lb|lbs)\b/,
+    /\b(steps?|weigh(ed)?|weight)\b/,
+    /^(walked)\b/,
+  ];
+  if (workoutOrMetricPatterns.some((pattern) => pattern.test(value))) return false;
+
+  const questionPatterns = [
+    /^(what|when|how|why|did|do|can|should)\b/,
+    /\b(yesterday|last week|today|goal|goals|progress|average|trend)\b.*\?/,
+  ];
+  if (questionPatterns.some((pattern) => pattern.test(value))) return false;
+
+  const mealPatterns = [
+    /\b(ate|eaten|had|having|drank|drink|logged|log)\b/,
+    /\b(breakfast|brunch|lunch|dinner|snack|meal|dessert)\b/,
+    /\b(calorie|calories|kcal|protein|carbs|fat)\b/,
+    /\b(chicken|beef|pork|salmon|tuna|egg|eggs|rice|pasta|bread|oats|yogurt|salad|sandwich|burger|pizza|soup|cereal|banana|apple|smoothie|shake|coffee|latte|sushi|taco|burrito|fries|bowl)\b/,
+  ];
+
+  return mealPatterns.some((pattern) => pattern.test(value));
+}
+
 // ---------------------------------------------------------------------------
 // Meal helpers
 // ---------------------------------------------------------------------------
@@ -346,12 +374,16 @@ export function inferCalories(transcript: string) {
 
 export function buildQuickAddItems(recentMeals: RecentMeal[] | undefined): QuickAddItem[] {
   if (!recentMeals?.length) return DEFAULT_QUICK_ADD;
-  return recentMeals.slice(0, 5).map((meal) => ({
-    id: meal.id,
-    description: meal.description,
-    calories: meal.calories,
-    mealType: meal.mealType,
-  }));
+  const items = recentMeals
+    .filter((meal) => meal.calories != null)
+    .slice(0, 5)
+    .map((meal) => ({
+      id: meal.id,
+      description: meal.description,
+      calories: meal.calories ?? 0,
+      mealType: meal.mealType,
+    }));
+  return items.length ? items : DEFAULT_QUICK_ADD;
 }
 
 // ---------------------------------------------------------------------------
@@ -376,9 +408,23 @@ export const ERROR_COPY: Record<
     secondary: "Edit text",
     tertiary: "Discard",
   },
+  photo_interpret_failure: {
+    title: "Couldn't submit that photo",
+    body: "Keep the photo and try again, or choose a different entry method.",
+    primary: "Retry photo",
+    secondary: "Use typing instead",
+    tertiary: "Discard",
+  },
   mic_permission_denied: {
     title: "Microphone access is off",
     body: "Enable microphone in Settings to log by voice.",
+    primary: "Open Settings",
+    secondary: "Use typing instead",
+    tertiary: "Discard",
+  },
+  photo_permission_denied: {
+    title: "Photo access is off",
+    body: "Enable camera or photo access in Settings to log meals by photo.",
     primary: "Open Settings",
     secondary: "Use typing instead",
     tertiary: "Discard",

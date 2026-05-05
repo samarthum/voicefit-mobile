@@ -1,11 +1,12 @@
 import { Redirect } from "expo-router";
-import { View, ActivityIndicator, Platform } from "react-native";
+import { View, ActivityIndicator } from "react-native";
 import { useAuth } from "@clerk/clerk-expo";
 import { color } from "../lib/tokens";
+import { isWebPreviewMode } from "../lib/web-preview-mode";
 
 export default function Index() {
   const { isLoaded, isSignedIn } = useAuth();
-  const bypassAuthForWebPreview = __DEV__ && Platform.OS === "web";
+  const bypassAuthForWebPreview = isWebPreviewMode();
 
   if (!isLoaded) {
     return (

@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -19,6 +18,7 @@ import { FloatingCommandBar } from "../../components/FloatingCommandBar";
 import { useCommandCenter } from "../../components/command-center";
 import { apiRequest } from "../../lib/api-client";
 import { color as token, font, radius as r } from "../../lib/tokens";
+import { isWebPreviewMode } from "../../lib/web-preview-mode";
 import type { WorkoutSessionsListResponse } from "@voicefit/contracts/types";
 
 const COLORS = {
@@ -152,7 +152,7 @@ export default function WorkoutsScreen() {
   const cc = useCommandCenter();
   const { getToken, isSignedIn } = useAuth();
   const queryClient = useQueryClient();
-  const isWebPreview = __DEV__ && Platform.OS === "web";
+  const isWebPreview = isWebPreviewMode();
   const [refreshing, setRefreshing] = useState(false);
   const createToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [createFeedback, setCreateFeedback] = useState<string | null>(null);

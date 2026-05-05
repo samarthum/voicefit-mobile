@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import {
   Alert,
+  Image,
   Modal,
   Platform,
   Pressable,
@@ -58,11 +59,22 @@ function CloseGlyph({ color = t.textSoft }: { color?: string }) {
   );
 }
 
-function KeyboardGlyph({ color = t.textSoft }: { color?: string }) {
+function CameraGlyph({ color = t.textSoft }: { color?: string }) {
   return (
-    <Svg width={18} height={14} viewBox="0 0 18 14" fill="none">
-      <Path d="M1.5 1H16.5C17.05 1 17.5 1.45 17.5 2V12C17.5 12.55 17.05 13 16.5 13H1.5C0.95 13 0.5 12.55 0.5 12V2C0.5 1.45 0.95 1 1.5 1Z" stroke={color} strokeWidth={1.4} fill="none" />
-      <Path d="M4.2 7H4.9M8.7 7H9.4M13.2 7H13.9M5 10H13" stroke={color} strokeWidth={1.6} strokeLinecap="round" />
+    <Svg width={20} height={18} viewBox="0 0 20 18" fill="none">
+      <Path
+        d="M6.2 3L7.5 1.2H12.5L13.8 3H17C18.1 3 19 3.9 19 5V15C19 16.1 18.1 17 17 17H3C1.9 17 1 16.1 1 15V5C1 3.9 1.9 3 3 3H6.2Z"
+        stroke={color}
+        strokeWidth={1.6}
+        strokeLinejoin="round"
+        fill="none"
+      />
+      <Path
+        d="M10 13.2C11.77 13.2 13.2 11.77 13.2 10C13.2 8.23 11.77 6.8 10 6.8C8.23 6.8 6.8 8.23 6.8 10C6.8 11.77 8.23 13.2 10 13.2Z"
+        stroke={color}
+        strokeWidth={1.6}
+        fill="none"
+      />
     </Svg>
   );
 }
@@ -181,11 +193,14 @@ function Sheet({
 type InterpretingCopy = { label: string; elapsed: string };
 
 function getInterpretingCopy(
-  state: "cc_submitting_typed" | "cc_transcribing_voice" | "cc_interpreting_voice",
+  state: "cc_submitting_typed" | "cc_submitting_photo" | "cc_transcribing_voice" | "cc_interpreting_voice",
   recordingSeconds: number,
 ): InterpretingCopy {
+  if (state === "cc_submitting_photo") {
+    return { label: "Saving your photo…", elapsed: "0.7s" };
+  }
   if (state === "cc_submitting_typed") {
-    return { label: "Interpreting your entry…", elapsed: "0.7s" };
+    return { label: "Processing your entry…", elapsed: "0.7s" };
   }
   if (state === "cc_transcribing_voice") {
     return {
@@ -202,10 +217,11 @@ function getInterpretingCopy(
 function InterpretingScreen() {
   const cc = useCommandCenterInternal();
   const isTyped = cc.commandState === "cc_submitting_typed";
-  const transcript = isTyped ? cc.commandText : cc.voiceTranscript;
-  const setTranscript = isTyped ? cc.setCommandText : cc.setVoiceTranscript;
+  const isPhoto = cc.commandState === "cc_submitting_photo";
+  const transcript = isTyped || isPhoto ? cc.commandText : cc.voiceTranscript;
+  const setTranscript = isTyped || isPhoto ? cc.setCommandText : cc.setVoiceTranscript;
   const copy = getInterpretingCopy(
-    cc.commandState as "cc_submitting_typed" | "cc_transcribing_voice" | "cc_interpreting_voice",
+    cc.commandState as "cc_submitting_typed" | "cc_submitting_photo" | "cc_transcribing_voice" | "cc_interpreting_voice",
     cc.recordingSeconds,
   );
   const [isEditingTranscript, setIsEditingTranscript] = useState(false);
@@ -218,6 +234,10 @@ function InterpretingScreen() {
       : undefined;
 
   const onEditPress = () => {
+    if (isPhoto) {
+      cc.setCommandState("cc_photo_context");
+      return;
+    }
     if (isTyped) {
       cc.setCommandState("cc_expanded_typing");
       return;
@@ -225,7 +245,7 @@ function InterpretingScreen() {
     setIsEditingTranscript(true);
   };
 
-  const displayText = transcript.trim() ? `"${transcript.trim()}"` : "";
+  const displayText = transcript.trim() ? `"${transcript.trim()}"` : isPhoto ? "Photo selected" : "";
 
   return (
     <Sheet
@@ -306,7 +326,7 @@ function InterpretingScreen() {
         </View>
 
         <View style={styles.interpretingButtonsRow}>
-          {!isTyped ? (
+          {!isTyped && !isPhoto ? (
             <Pressable
               style={styles.interpretingButton}
               onPress={() => void cc.startRecording()}
@@ -320,7 +340,7 @@ function InterpretingScreen() {
             onPress={onEditPress}
             testID="cc-interpreting-edit"
           >
-            <Text style={styles.interpretingButtonText}>Edit text</Text>
+            <Text style={styles.interpretingButtonText}>{isPhoto ? "Edit context" : "Edit text"}</Text>
           </Pressable>
           <Pressable
             style={styles.interpretingButton}
@@ -403,8 +423,12 @@ export function CommandCenterOverlay() {
         </View>
 
         <View style={styles.idleActionsRow}>
-          <Pressable style={styles.idleSquareBtn}>
-            <KeyboardGlyph />
+          <Pressable
+            style={styles.idleSquareBtn}
+            onPress={cc.openPhotoMenu}
+            testID="cc-camera"
+          >
+            <CameraGlyph />
           </Pressable>
 
           <Pressable
@@ -482,6 +506,58 @@ export function CommandCenterOverlay() {
     );
   };
 
+  const renderPhotoContext = () => {
+    const photo = cc.selectedMealPhoto;
+    return (
+      <Sheet title="Log meal photo" onClose={cc.closeCommandCenter} canCloseViaBackdrop={false}>
+        <View style={styles.photoBody}>
+          {photo ? (
+            <Image
+              source={{ uri: photo.uri }}
+              style={styles.photoPreview}
+              resizeMode="cover"
+              testID="cc-photo-preview"
+            />
+          ) : (
+            <View style={styles.photoPreviewFallback}>
+              <CameraGlyph color={t.textMute} />
+            </View>
+          )}
+
+          <View style={styles.photoContextCard}>
+            <TextInput
+              style={styles.photoContextInput}
+              placeholder="Add context, e.g. chicken, rice, and sauce"
+              placeholderTextColor={t.textSoft}
+              value={cc.commandText}
+              onChangeText={cc.handleCommandInputChange}
+              multiline
+              testID="cc-photo-context"
+            />
+          </View>
+
+          <View style={styles.photoActions}>
+            <Pressable
+              style={styles.photoSecondaryButton}
+              onPress={cc.openPhotoMenu}
+              testID="cc-photo-replace"
+            >
+              <Text style={styles.photoSecondaryText}>Change photo</Text>
+            </Pressable>
+            <Pressable
+              style={styles.photoPrimaryButton}
+              onPress={() => void cc.sendPhotoMeal()}
+              testID="cc-photo-submit"
+            >
+              <Text style={styles.photoPrimaryText}>Submit photo</Text>
+              <SparkSendGlyph color={t.accentInk} />
+            </Pressable>
+          </View>
+        </View>
+      </Sheet>
+    );
+  };
+
   const renderContent = () => {
     if (commandState === "cc_expanded_empty" || commandState === "cc_expanded_typing") {
       return (
@@ -491,8 +567,13 @@ export function CommandCenterOverlay() {
       );
     }
 
+    if (commandState === "cc_photo_context") {
+      return renderPhotoContext();
+    }
+
     if (
       commandState === "cc_submitting_typed" ||
+      commandState === "cc_submitting_photo" ||
       commandState === "cc_transcribing_voice" ||
       commandState === "cc_interpreting_voice"
     ) {
@@ -1234,6 +1315,83 @@ const styles = StyleSheet.create({
     borderColor: t.line,
     alignItems: "center",
     justifyContent: "center",
+  },
+
+  // Photo context
+  photoBody: { paddingHorizontal: 22, paddingBottom: 4 },
+  photoPreview: {
+    width: "100%",
+    aspectRatio: 1.35,
+    borderRadius: 18,
+    backgroundColor: t.surface,
+    borderWidth: 1,
+    borderColor: t.line,
+  },
+  photoPreviewFallback: {
+    width: "100%",
+    aspectRatio: 1.35,
+    borderRadius: 18,
+    backgroundColor: t.surface,
+    borderWidth: 1,
+    borderColor: t.line,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  photoContextCard: {
+    marginTop: 14,
+    backgroundColor: t.surface,
+    borderWidth: 1,
+    borderColor: t.line,
+    borderRadius: 16,
+    padding: 14,
+    minHeight: 84,
+  },
+  photoContextInput: {
+    fontFamily: font.sans[400],
+    fontSize: 14.5,
+    color: t.text,
+    lineHeight: 21,
+    minHeight: 56,
+    padding: 0,
+    textAlignVertical: "top",
+  },
+  photoActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingTop: 16,
+  },
+  photoSecondaryButton: {
+    flex: 1,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: t.surface,
+    borderWidth: 1,
+    borderColor: t.line,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  photoSecondaryText: {
+    fontFamily: font.sans[600],
+    fontSize: 13,
+    fontWeight: "600",
+    color: t.textSoft,
+  },
+  photoPrimaryButton: {
+    flex: 1,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: t.accent,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 8,
+  },
+  photoPrimaryText: {
+    fontFamily: font.sans[700],
+    fontSize: 13.5,
+    fontWeight: "700",
+    color: t.accentInk,
   },
 
   // Review states

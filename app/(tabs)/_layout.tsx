@@ -4,6 +4,7 @@ import { useAuth } from "@clerk/clerk-expo";
 import Svg, { Circle, Path } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { color, font } from "../../lib/tokens";
+import { isWebPreviewMode } from "../../lib/web-preview-mode";
 
 // Line-art icons matching screens-c.jsx C_TabBar — stroke-only, currentColor-driven.
 function TodayIcon({ tint }: { tint: string }) {
@@ -48,7 +49,7 @@ function YouIcon({ tint }: { tint: string }) {
 
 export default function TabsLayout() {
   const { isLoaded, isSignedIn } = useAuth();
-  const bypassAuthForWebPreview = __DEV__ && Platform.OS === "web";
+  const bypassAuthForWebPreview = isWebPreviewMode();
   const insets = useSafeAreaInsets();
   const isAndroid = Platform.OS === "android";
   const tabBarPaddingBottom = isAndroid ? 18 : Math.max(insets.bottom, 10);

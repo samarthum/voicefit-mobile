@@ -4,7 +4,6 @@ import {
   Alert,
   Keyboard,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -24,6 +23,7 @@ import { useCommandCenter } from "../../components/command-center";
 import { getExerciseCatalogItem } from "../../lib/exercise-catalog";
 import { apiRequest } from "../../lib/api-client";
 import { color as token, font, radius as rad } from "../../lib/tokens";
+import { isWebPreviewMode } from "../../lib/web-preview-mode";
 
 const COLORS = {
   bg: token.bg,
@@ -423,7 +423,7 @@ export default function WorkoutSessionScreen() {
 
   const { getToken, isLoaded, isSignedIn } = useAuth();
   const cc = useCommandCenter();
-  const isWebPreview = __DEV__ && Platform.OS === "web";
+  const isWebPreview = isWebPreviewMode();
   const isPreviewId =
     sessionId === "preview-active" || sessionId === "preview-leg-day" || sessionId === "preview-empty";
 

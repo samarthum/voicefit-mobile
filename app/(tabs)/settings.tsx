@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -24,6 +23,7 @@ import { FloatingCommandBar } from "../../components/FloatingCommandBar";
 import { useCommandCenter } from "../../components/command-center";
 import { apiRequest } from "../../lib/api-client";
 import { color as token, font, radius as r } from "../../lib/tokens";
+import { isWebPreviewMode } from "../../lib/web-preview-mode";
 
 const COLORS = {
   bg: token.bg,
@@ -204,7 +204,7 @@ export default function SettingsScreen() {
   const { signOut, getToken, isSignedIn } = useAuth();
   const { user } = useUser();
   const queryClient = useQueryClient();
-  const isWebPreview = __DEV__ && Platform.OS === "web";
+  const isWebPreview = isWebPreviewMode();
   const [calorieGoal, setCalorieGoal] = useState(String(PREVIEW_SETTINGS.calorieGoal));
   const [stepGoal, setStepGoal] = useState(String(PREVIEW_SETTINGS.stepGoal));
   const [proteinGoal, setProteinGoal] = useState(String(PREVIEW_SETTINGS.proteinGoal));

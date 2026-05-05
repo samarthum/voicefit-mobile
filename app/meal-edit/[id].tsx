@@ -17,6 +17,13 @@ import Svg, { Path } from "react-native-svg";
 import type { MealIngredient } from "@voicefit/contracts/types";
 import { apiRequest } from "../../lib/api-client";
 import { fetchInterpretedIngredient } from "../../lib/api/ingredient";
+import {
+  type AsyncMealStatus,
+  formatNullableCalories,
+  isFiniteNumber,
+  normalizeMealStatus,
+  roundNullable,
+} from "../../lib/meal-status";
 import { color as t, font, radius as r } from "../../lib/tokens";
 import { IngredientEditor, type IngredientEditorMode } from "../../components/command-center/IngredientEditor";
 import {
@@ -36,11 +43,11 @@ interface MealIngredientRow {
   id: string;
   position: number;
   name: string;
-  grams: number;
-  calories: number;
-  proteinG: number;
-  carbsG: number;
-  fatG: number;
+  grams: number | null;
+  calories: number | null;
+  proteinG: number | null;
+  carbsG: number | null;
+  fatG: number | null;
 }
 
 interface MealDetail {
@@ -50,11 +57,13 @@ interface MealDetail {
   mealType: MealType;
   description: string;
   transcriptRaw: string | null;
-  calories: number;
+  calories: number | null;
   proteinG: number | null;
   carbsG: number | null;
   fatG: number | null;
   totalGrams: number | null;
+  interpretationStatus?: AsyncMealStatus | "pending" | "error" | null;
+  errorMessage?: string | null;
   createdAt: string;
   updatedAt: string;
   ingredients: MealIngredientRow[];
@@ -85,6 +94,10 @@ function formatMealTime(value: string) {
   return `${hh}:${mm}`;
 }
 
+function nutritionNumber(value: number | null | undefined) {
+  return isFiniteNumber(value) ? value : 0;
+}
+
 function toReviewIngredients(rows: MealIngredientRow[]): MealReviewIngredient[] {
   // Position-ordered → freshly-keyed for React. Server-side IDs are intentionally
   // not reused — the editor only needs locally-stable keys, and a brand-new ID
@@ -95,11 +108,11 @@ function toReviewIngredients(rows: MealIngredientRow[]): MealReviewIngredient[] 
     .map((row) => ({
       id: generateIngredientId(),
       name: row.name,
-      grams: row.grams,
-      calories: row.calories,
-      proteinG: row.proteinG,
-      carbsG: row.carbsG,
-      fatG: row.fatG,
+      grams: nutritionNumber(row.grams),
+      calories: nutritionNumber(row.calories),
+      proteinG: nutritionNumber(row.proteinG),
+      carbsG: nutritionNumber(row.carbsG),
+      fatG: nutritionNumber(row.fatG),
     }));
 }
 
@@ -144,6 +157,57 @@ function computeTotals(ingredients: MealReviewIngredient[]) {
   };
 }
 
+function scalarTotals(meal: MealDetail) {
+  return {
+    totalGrams: roundNullable(meal.totalGrams),
+    calories: roundNullable(meal.calories),
+    macros: {
+      protein: roundNullable(meal.proteinG),
+      carbs: roundNullable(meal.carbsG),
+      fat: roundNullable(meal.fatG),
+    },
+  };
+}
+
+function StatusNotice({ status, message }: { status: AsyncMealStatus; message?: string | null }) {
+  if (status === "reviewed") return null;
+  const title =
+    status === "interpreting"
+      ? "Estimating nutrition"
+      : status === "needs_review"
+      ? "Review estimate"
+      : "Estimate failed";
+  const body =
+    status === "interpreting"
+      ? "This meal is still being interpreted. Nutrition will appear when it finishes."
+      : status === "needs_review"
+      ? "Check the estimate, adjust anything that looks off, then confirm it."
+      : message || "The estimate could not be completed. You can delete this meal or try logging it again.";
+  return (
+    <View
+      style={[
+        styles.statusNotice,
+        status === "failed" ? styles.statusNoticeFailed : null,
+      ]}
+    >
+      <View style={styles.statusNoticeTitleRow}>
+        {status === "interpreting" ? (
+          <ActivityIndicator size="small" color={t.textMute} />
+        ) : null}
+        <Text
+          style={[
+            styles.statusNoticeTitle,
+            status === "failed" ? styles.statusNoticeTitleFailed : null,
+          ]}
+        >
+          {title}
+        </Text>
+      </View>
+      <Text style={styles.statusNoticeBody}>{body}</Text>
+    </View>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Screen
 // ---------------------------------------------------------------------------
@@ -181,7 +245,42 @@ export default function MealEditScreen() {
     setSeeded(true);
   }, [seeded, mealQuery.data]);
 
-  const totals = useMemo(() => computeTotals(ingredients), [ingredients]);
+  const ingredientTotals = useMemo(() => computeTotals(ingredients), [ingredients]);
+
+  type MealUpdatePayload = {
+    mealType?: MealType;
+    interpretationStatus?: AsyncMealStatus;
+  };
+
+  const updateMealMetadata = async (
+    token: string,
+    body: MealUpdatePayload,
+    options: { ignoreStatusOnlyFailure?: boolean } = {},
+  ) => {
+    const fallback = { ...body };
+    delete fallback.interpretationStatus;
+    const hasFallback = Object.keys(fallback).length > 0;
+
+    try {
+      return await apiRequest<MealDetail>(`/api/meals/${id}`, {
+        method: "PUT",
+        token,
+        body: JSON.stringify(body),
+      });
+    } catch (error) {
+      if (body.interpretationStatus && hasFallback) {
+        return apiRequest<MealDetail>(`/api/meals/${id}`, {
+          method: "PUT",
+          token,
+          body: JSON.stringify(fallback),
+        });
+      }
+      if (body.interpretationStatus && options.ignoreStatusOnlyFailure) {
+        return null;
+      }
+      throw error;
+    }
+  };
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -199,15 +298,11 @@ export default function MealEditScreen() {
       // mealType lives on the meal scalar, not the ingredient list — sent via
       // the generic update endpoint when changed.
       const originalMealType = mealQuery.data?.mealType ?? null;
+      const metadataPayload: MealUpdatePayload = { interpretationStatus: "reviewed" };
       if (editedMealType && editedMealType !== originalMealType) {
-        requests.push(
-          apiRequest(`/api/meals/${id}`, {
-            method: "PUT",
-            token,
-            body: JSON.stringify({ mealType: editedMealType }),
-          }),
-        );
+        metadataPayload.mealType = editedMealType;
       }
+      requests.push(updateMealMetadata(token, metadataPayload, { ignoreStatusOnlyFailure: true }));
 
       await Promise.all(requests);
     },
@@ -222,6 +317,26 @@ export default function MealEditScreen() {
     },
     onError: (error) => {
       setErrorMessage(error instanceof Error ? error.message : "Failed to save meal.");
+    },
+  });
+
+  const confirmReviewMutation = useMutation({
+    mutationFn: async () => {
+      const token = await getToken();
+      if (!token) throw new Error("Not signed in");
+      return updateMealMetadata(token, { interpretationStatus: "reviewed" });
+    },
+    onSuccess: async () => {
+      setErrorMessage(null);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["meals"] }),
+        queryClient.invalidateQueries({ queryKey: ["meal", id] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+      ]);
+      router.back();
+    },
+    onError: (error) => {
+      setErrorMessage(error instanceof Error ? error.message : "Failed to confirm meal.");
     },
   });
 
@@ -327,6 +442,27 @@ export default function MealEditScreen() {
   };
 
   const meal = mealQuery.data;
+  const mealStatus = meal ? normalizeMealStatus(meal.interpretationStatus, meal.calories) : "reviewed";
+  const displayTotals = meal && ingredients.length === 0 && !isDirty
+    ? scalarTotals(meal)
+    : ingredientTotals;
+  const displayCalories = formatNullableCalories(displayTotals.calories);
+  const isPendingEstimate = mealStatus === "interpreting";
+  const canConfirmReview = mealStatus === "needs_review" && !isDirty;
+  const primaryActionLabel = isDirty ? "Save" : canConfirmReview ? "Looks good" : "Saved";
+  const primaryActionPending = saveMutation.isPending || confirmReviewMutation.isPending;
+  const primaryActionDisabled =
+    primaryActionPending || isPendingEstimate || (!isDirty && !canConfirmReview);
+
+  const handlePrimaryAction = () => {
+    if (isDirty) {
+      void saveMutation.mutateAsync();
+      return;
+    }
+    if (canConfirmReview) {
+      void confirmReviewMutation.mutateAsync();
+    }
+  };
 
   return (
     <SafeAreaView style={styles.root} edges={["top"]}>
@@ -368,18 +504,29 @@ export default function MealEditScreen() {
           keyboardDismissMode="on-drag"
           keyboardShouldPersistTaps="handled"
         >
+          <StatusNotice status={mealStatus} message={meal.errorMessage} />
+
           <View style={styles.summaryCard}>
             <View style={styles.summaryRow}>
               <View style={styles.summaryLeft}>
                 <Text style={styles.eyebrow}>
                   {(editedMealType ?? meal.mealType).toUpperCase()}
                 </Text>
-                <Text style={styles.mealName}>{meal.description}</Text>
+                <Text style={styles.mealName} numberOfLines={2}>{meal.description}</Text>
                 <Text style={styles.mealTime}>{formatMealTime(meal.eatenAt)}</Text>
               </View>
               <View style={styles.summaryRight}>
-                <Text style={styles.kcalNum}>{totals.calories}</Text>
-                <Text style={styles.kcalUnit}>KCAL</Text>
+                {isPendingEstimate || displayCalories == null ? (
+                  <>
+                    <Text style={styles.kcalPending}>--</Text>
+                    <Text style={styles.kcalUnit}>KCAL</Text>
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.kcalNum}>{displayCalories}</Text>
+                    <Text style={styles.kcalUnit}>KCAL</Text>
+                  </>
+                )}
               </View>
             </View>
 
@@ -413,7 +560,7 @@ export default function MealEditScreen() {
                 <Text style={styles.macroLabel}>PROTEIN</Text>
                 <View style={styles.macroValueRow}>
                   <Text style={[styles.macroValue, styles.macroValueAccent]}>
-                    {totals.macros.protein}
+                    {displayTotals.macros.protein ?? "--"}
                   </Text>
                   <Text style={styles.macroUnit}>g</Text>
                 </View>
@@ -422,7 +569,7 @@ export default function MealEditScreen() {
                 <Text style={styles.macroLabel}>CARBS</Text>
                 <View style={styles.macroValueRow}>
                   <Text style={[styles.macroValue, styles.macroValueSoft]}>
-                    {totals.macros.carbs}
+                    {displayTotals.macros.carbs ?? "--"}
                   </Text>
                   <Text style={styles.macroUnit}>g</Text>
                 </View>
@@ -431,7 +578,7 @@ export default function MealEditScreen() {
                 <Text style={styles.macroLabel}>FAT</Text>
                 <View style={styles.macroValueRow}>
                   <Text style={[styles.macroValue, styles.macroValueSoft]}>
-                    {totals.macros.fat}
+                    {displayTotals.macros.fat ?? "--"}
                   </Text>
                   <Text style={styles.macroUnit}>g</Text>
                 </View>
@@ -444,13 +591,18 @@ export default function MealEditScreen() {
               <Text style={styles.ingredientsTitle}>INGREDIENTS</Text>
               <Pressable
                 onPress={() => setEditorMode({ kind: "add" })}
+                disabled={isPendingEstimate}
                 testID="meal-edit-add-ingredient"
               >
-                <Text style={styles.addLink}>+ ADD</Text>
+                <Text style={[styles.addLink, isPendingEstimate ? styles.addLinkDisabled : null]}>+ ADD</Text>
               </Pressable>
             </View>
 
-            {ingredients.length === 0 ? (
+            {isPendingEstimate ? (
+              <Text style={styles.emptyHint}>
+                Nutrition details are still being estimated.
+              </Text>
+            ) : ingredients.length === 0 ? (
               <Text style={styles.emptyHint}>
                 No ingredients on this meal yet. Tap + ADD to start.
               </Text>
@@ -458,8 +610,12 @@ export default function MealEditScreen() {
               ingredients.map((ingredient, index) => (
                 <Pressable
                   key={ingredient.id}
-                  onPress={() => setEditorMode({ kind: "edit", ingredient })}
-                  onLongPress={() => handleLongPressIngredient(ingredient)}
+                  onPress={() => {
+                    if (!isPendingEstimate) setEditorMode({ kind: "edit", ingredient });
+                  }}
+                  onLongPress={() => {
+                    if (!isPendingEstimate) handleLongPressIngredient(ingredient);
+                  }}
                   delayLongPress={400}
                   style={[
                     styles.ingredientRow,
@@ -495,16 +651,16 @@ export default function MealEditScreen() {
             <Pressable
               style={[
                 styles.saveButton,
-                (saveMutation.isPending || !isDirty) ? styles.saveButtonDisabled : null,
+                primaryActionDisabled ? styles.saveButtonDisabled : null,
               ]}
-              onPress={() => void saveMutation.mutateAsync()}
-              disabled={saveMutation.isPending || !isDirty}
+              onPress={handlePrimaryAction}
+              disabled={primaryActionDisabled}
               testID="meal-edit-save"
             >
-              {saveMutation.isPending ? (
+              {primaryActionPending ? (
                 <ActivityIndicator color={t.accentInk} />
               ) : (
-                <Text style={styles.saveButtonText}>Save</Text>
+                <Text style={styles.saveButtonText}>{primaryActionLabel}</Text>
               )}
             </Pressable>
           </View>
@@ -610,6 +766,38 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 18,
     paddingBottom: 64,
+    gap: 12,
+  },
+  statusNotice: {
+    borderRadius: r.md,
+    borderWidth: 1,
+    borderColor: t.line,
+    backgroundColor: t.surface,
+    padding: 14,
+    gap: 6,
+  },
+  statusNoticeFailed: {
+    borderColor: t.negative,
+  },
+  statusNoticeTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  statusNoticeTitle: {
+    fontFamily: font.sans[600],
+    fontSize: 13,
+    fontWeight: "600",
+    color: t.text,
+  },
+  statusNoticeTitleFailed: {
+    color: t.negative,
+  },
+  statusNoticeBody: {
+    fontFamily: font.sans[400],
+    fontSize: 12.5,
+    lineHeight: 18,
+    color: t.textSoft,
   },
   summaryCard: {
     backgroundColor: t.surface,
@@ -624,10 +812,12 @@ const styles = StyleSheet.create({
   },
   summaryLeft: {
     flex: 1,
+    minWidth: 0,
     gap: 4,
   },
   summaryRight: {
     alignItems: "flex-end",
+    width: 96,
   },
   eyebrow: {
     fontFamily: font.sans[600],
@@ -655,6 +845,13 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     letterSpacing: -0.84,
     color: t.text,
+  },
+  kcalPending: {
+    fontFamily: font.mono[500],
+    fontSize: 28,
+    fontWeight: "500",
+    letterSpacing: -0.84,
+    color: t.textMute,
   },
   kcalUnit: {
     fontFamily: font.sans[600],
@@ -748,6 +945,9 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "600",
     color: t.accent,
+  },
+  addLinkDisabled: {
+    color: t.textMute,
   },
   emptyHint: {
     paddingVertical: 14,

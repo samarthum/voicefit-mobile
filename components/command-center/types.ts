@@ -4,7 +4,9 @@ export type CommandState =
   | "cc_collapsed"
   | "cc_expanded_empty"
   | "cc_expanded_typing"
+  | "cc_photo_context"
   | "cc_submitting_typed"
+  | "cc_submitting_photo"
   | "cc_recording"
   | "cc_transcribing_voice"
   | "cc_interpreting_voice"
@@ -19,12 +21,22 @@ export type CommandState =
 export type CommandErrorSubtype =
   | "typed_interpret_failure"
   | "voice_interpret_failure"
+  | "photo_interpret_failure"
   | "mic_permission_denied"
+  | "photo_permission_denied"
   | "auto_save_failure"
   | "quick_add_failure"
   | null;
 
 export type EntrySource = "text" | "voice";
+
+export interface PhotoAttachment {
+  uri: string;
+  name: string;
+  type: string;
+  width: number | null;
+  height: number | null;
+}
 
 export type RecentMeal = DashboardData["recentMeals"][number];
 
