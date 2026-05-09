@@ -630,7 +630,12 @@ export default function MealEditScreen() {
                   ]}
                   testID={`meal-edit-ingredient-${index}`}
                 >
-                  <Text style={styles.ingredientName}>{ingredient.name}</Text>
+                  <View style={styles.ingredientCopy}>
+                    <Text style={styles.ingredientName}>{ingredient.name}</Text>
+                    <Text style={styles.ingredientMacros}>
+                      {`P ${Math.round(ingredient.proteinG)}g · C ${Math.round(ingredient.carbsG)}g · F ${Math.round(ingredient.fatG)}g`}
+                    </Text>
+                  </View>
                   <Text style={styles.ingredientQty}>{`${Math.round(ingredient.grams)} g`}</Text>
                   <Text style={styles.ingredientCal}>{ingredient.calories}</Text>
                 </Pressable>
@@ -972,11 +977,21 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: t.line,
   },
-  ingredientName: {
+  ingredientCopy: {
     flex: 1,
+    paddingRight: 8,
+  },
+  ingredientName: {
     fontFamily: font.sans[400],
     fontSize: 14,
     color: t.text,
+  },
+  ingredientMacros: {
+    marginTop: 3,
+    fontFamily: font.mono[400],
+    fontSize: 10.5,
+    color: t.textMute,
+    letterSpacing: 0.2,
   },
   ingredientQty: {
     fontFamily: font.mono[400],

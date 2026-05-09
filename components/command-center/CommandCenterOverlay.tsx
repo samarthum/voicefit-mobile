@@ -3,10 +3,12 @@ import { useEffect, useState } from "react";
 import {
   Alert,
   Image,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
   ScrollView,
+  StatusBar,
   StyleSheet,
   Text,
   TextInput,
@@ -156,8 +158,16 @@ function Sheet({
   closeButtonTestID?: string;
 }) {
   const insets = useSafeAreaInsets();
+  // Android's `adjustResize` doesn't fire under transparent statusBarTranslucent
+  // Modals, so we lift the bottom-anchored sheet ourselves. On iOS `padding`
+  // on the bottom-anchored container slides the whole sheet above the keyboard.
+  const kbOffset = Platform.OS === "ios" ? 0 : (StatusBar.currentHeight ?? 0);
   return (
-    <View style={styles.sheetRoot}>
+    <KeyboardAvoidingView
+      style={styles.sheetRoot}
+      behavior="padding"
+      keyboardVerticalOffset={kbOffset}
+    >
       <Pressable
         style={styles.sheetBackdrop}
         onPress={() => {
@@ -182,7 +192,7 @@ function Sheet({
         ) : null}
         {children}
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -731,7 +741,12 @@ export function CommandCenterOverlay() {
                   ]}
                   testID={`cc-review-ingredient-${index}`}
                 >
-                  <Text style={styles.mealReviewIngredientName}>{ingredient.name}</Text>
+                  <View style={styles.mealReviewIngredientCopy}>
+                    <Text style={styles.mealReviewIngredientName}>{ingredient.name}</Text>
+                    <Text style={styles.mealReviewIngredientMacros}>
+                      {`P ${Math.round(ingredient.proteinG)}g · C ${Math.round(ingredient.carbsG)}g · F ${Math.round(ingredient.fatG)}g`}
+                    </Text>
+                  </View>
                   <Text style={styles.mealReviewIngredientQty}>{`${Math.round(ingredient.grams)} g`}</Text>
                   <Text style={styles.mealReviewIngredientCal}>{ingredient.calories}</Text>
                 </Pressable>
@@ -1549,11 +1564,21 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: t.line,
   },
-  mealReviewIngredientName: {
+  mealReviewIngredientCopy: {
     flex: 1,
+    paddingRight: 8,
+  },
+  mealReviewIngredientName: {
     fontFamily: font.sans[400],
     fontSize: 14,
     color: t.text,
+  },
+  mealReviewIngredientMacros: {
+    marginTop: 3,
+    fontFamily: font.mono[400],
+    fontSize: 10.5,
+    color: t.textMute,
+    letterSpacing: 0.2,
   },
   mealReviewIngredientQty: {
     fontFamily: font.mono[400],

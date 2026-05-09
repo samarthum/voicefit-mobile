@@ -7,11 +7,13 @@ import {
   Modal,
   Platform,
   Pressable,
+  StatusBar,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { Audio } from "expo-av";
 import { useRouter } from "expo-router";
 import { useAuth } from "@clerk/clerk-expo";
@@ -483,6 +485,12 @@ export default function CoachScreen() {
     return () => sub.remove();
   }, []);
 
+  // Android `behavior="height"` shrinks the view by the keyboard's reported
+  // height but doesn't account for the bottom tab bar, so the last message
+  // ends up behind the keyboard. `padding` with the status-bar offset is
+  // reliable on both platforms.
+  const kbOffset = Platform.OS === "ios" ? 0 : (StatusBar.currentHeight ?? 0);
+
   // ---- Initial messages from server ----
   const {
     data: serverMessages,
@@ -554,6 +562,12 @@ export default function CoachScreen() {
     if (serverMessages && serverMessages.length > 0 && !hydratedRef.current) {
       hydratedRef.current = true;
       setMessages(serverMessages);
+      // LegendList renders the hydrated history at the top by default.
+      // Pin to the newest message after the next layout pass so the user
+      // lands on the latest exchange instead of the oldest one.
+      requestAnimationFrame(() => {
+        listRef.current?.scrollToEnd({ animated: false });
+      });
     }
   }, [serverMessages, setMessages]);
 
@@ -763,11 +777,12 @@ export default function CoachScreen() {
   const canSend = draft.trim().length > 0 && !isStreaming;
 
   return (
-    <KeyboardAvoidingView
-      style={styles.root}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={0}
-    >
+    <SafeAreaView style={styles.root} edges={["top"]}>
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior="padding"
+        keyboardVerticalOffset={kbOffset}
+      >
       {/* Header */}
       <View style={styles.header}>
         <Pressable
@@ -918,7 +933,8 @@ export default function CoachScreen() {
           isSaving={profileSaving}
         />
       </Modal>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
@@ -939,13 +955,16 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: token.bg,
   },
+  flex: {
+    flex: 1,
+  },
   // Header
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 20,
-    paddingTop: Platform.OS === "ios" ? 58 : 12,
+    paddingTop: 12,
     paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: token.line,

@@ -163,7 +163,7 @@ export default function WorkoutsScreen() {
     };
   }, []);
 
-  const PAGE_SIZE = 20;
+  const PAGE_SIZE = 10;
 
   const sessionsQuery = useInfiniteQuery({
     queryKey: ["workout-sessions", "infinite-list"],
@@ -311,6 +311,18 @@ export default function WorkoutsScreen() {
         contentContainerStyle={styles.scrollContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         keyboardDismissMode="on-drag"
+        scrollEventThrottle={200}
+        onScroll={({ nativeEvent }) => {
+          if (
+            sessionsQuery.hasNextPage &&
+            !sessionsQuery.isFetchingNextPage &&
+            nativeEvent.contentSize.height - nativeEvent.contentOffset.y -
+              nativeEvent.layoutMeasurement.height <
+              400
+          ) {
+            void sessionsQuery.fetchNextPage();
+          }
+        }}
       >
         <View style={styles.header}>
           <View>
@@ -443,18 +455,10 @@ export default function WorkoutsScreen() {
           </View>
         ) : null}
 
-        {sessionsQuery.hasNextPage ? (
-          <Pressable
-            style={[styles.loadMoreButton, sessionsQuery.isFetchingNextPage ? styles.buttonDisabled : null]}
-            onPress={() => sessionsQuery.fetchNextPage()}
-            disabled={sessionsQuery.isFetchingNextPage}
-          >
-            {sessionsQuery.isFetchingNextPage ? (
-              <ActivityIndicator color={COLORS.textPrimary} size="small" />
-            ) : (
-              <Text style={styles.loadMoreText}>Load More</Text>
-            )}
-          </Pressable>
+        {sessionsQuery.isFetchingNextPage ? (
+          <View style={styles.loadingMoreWrap}>
+            <ActivityIndicator color={COLORS.textPrimary} size="small" />
+          </View>
         ) : null}
       </ScrollView>
 
@@ -770,21 +774,11 @@ const styles = StyleSheet.create({
     lineHeight: 21,
     color: token.textSoft,
   },
-  loadMoreButton: {
+  loadingMoreWrap: {
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 12,
+    paddingVertical: 16,
     marginBottom: 8,
-    borderRadius: r.sm,
-    backgroundColor: token.surface,
-    borderWidth: 1,
-    borderColor: token.line,
-  },
-  loadMoreText: {
-    fontFamily: font.sans[600],
-    fontSize: 13,
-    fontWeight: "600",
-    color: token.textSoft,
   },
   toast: {
     position: "absolute",

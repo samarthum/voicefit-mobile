@@ -159,9 +159,10 @@ function CalorieRing({ consumed, goal }: { consumed: number; goal: number }) {
   );
 }
 
-type MacroBarProps = { label: string; current: number | null; goal: number; tone?: "accent" | "soft" };
+type MacroBarProps = { label: string; current: number | null; goal: number | null; tone?: "accent" | "soft" };
 function MacroBar({ label, current, goal, tone = "soft" }: MacroBarProps) {
-  const percent = current != null && goal > 0 ? Math.max(0, Math.min(1, current / goal)) : 0;
+  const hasGoal = goal != null && goal > 0;
+  const percent = hasGoal && current != null ? Math.max(0, Math.min(1, current / goal)) : 0;
   const fillColor = tone === "accent" ? token.accent : token.textSoft;
   return (
     <View style={styles.macroRow}>
@@ -169,12 +170,14 @@ function MacroBar({ label, current, goal, tone = "soft" }: MacroBarProps) {
         <Text style={styles.macroLabel}>{label}</Text>
         <Text style={styles.macroValue}>
           {current != null ? Math.round(current) : "—"}
-          <Text style={styles.macroValueGoal}>/{goal}g</Text>
+          {hasGoal ? <Text style={styles.macroValueGoal}>/{goal}g</Text> : <Text style={styles.macroValueGoal}>g</Text>}
         </Text>
       </View>
-      <View style={styles.macroTrack}>
-        <View style={[styles.macroFill, { width: `${percent * 100}%`, backgroundColor: fillColor }]} />
-      </View>
+      {hasGoal ? (
+        <View style={styles.macroTrack}>
+          <View style={[styles.macroFill, { width: `${percent * 100}%`, backgroundColor: fillColor }]} />
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -412,8 +415,6 @@ export default function DashboardScreen() {
   const todayCarbs: number | null = todayMacros?.carbs ?? null;
   const todayFat: number | null = todayMacros?.fat ?? null;
   const todayProteinGoal = dashboard?.today.proteinGoal ?? 140;
-  const todayCarbsGoal = 210;
-  const todayFatGoal = 70;
 
   const coachSummary = useMemo(() => {
     if (!dashboard) return "";
@@ -615,8 +616,8 @@ export default function DashboardScreen() {
                   ) : (
                     <View style={styles.macroStack}>
                       <MacroBar label="Protein" current={todayProtein} goal={todayProteinGoal} tone="accent" />
-                      <MacroBar label="Carbs" current={todayCarbs} goal={todayCarbsGoal} />
-                      <MacroBar label="Fat" current={todayFat} goal={todayFatGoal} />
+                      <MacroBar label="Carbs" current={todayCarbs} goal={null} />
+                      <MacroBar label="Fat" current={todayFat} goal={null} />
                     </View>
                   )}
                 </View>

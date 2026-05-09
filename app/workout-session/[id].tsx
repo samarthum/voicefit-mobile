@@ -834,6 +834,49 @@ export default function WorkoutSessionScreen() {
     );
   };
 
+  const handleExerciseMenu = (exerciseName: string) => {
+    if (isPreviewId || isWebPreview) return;
+    Keyboard.dismiss();
+    Alert.alert(
+      exerciseName,
+      undefined,
+      [
+        {
+          text: "Delete exercise",
+          style: "destructive",
+          onPress: () => {
+            Alert.alert(
+              `Delete "${exerciseName}"?`,
+              "All sets for this exercise will be removed from the session.",
+              [
+                { text: "Cancel", style: "cancel" },
+                {
+                  text: "Delete",
+                  style: "destructive",
+                  onPress: () => void handleDeleteExercise(exerciseName),
+                },
+              ]
+            );
+          },
+        },
+        { text: "Cancel", style: "cancel" },
+      ]
+    );
+  };
+
+  const handleDeleteExercise = async (exerciseName: string) => {
+    if (!sessionQuery.data || !sessionId) return;
+    const setIds = sessionQuery.data.sets
+      .filter((s) => s.exerciseName === exerciseName && !s.id.startsWith("temp-"))
+      .map((s) => s.id);
+    if (!setIds.length) return;
+    try {
+      await Promise.all(setIds.map((id) => deleteSetMutation.mutateAsync(id)));
+    } catch (error) {
+      setLiveError(error instanceof Error ? error.message : "Failed to delete exercise.");
+    }
+  };
+
   const handleRenameConfirm = () => {
     const trimmed = renameText.trim();
     if (!trimmed) return;
@@ -1057,9 +1100,10 @@ export default function WorkoutSessionScreen() {
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
           <View style={styles.headerLeft}>
-            <Pressable style={styles.iconButton} onPress={() => {
-              if (router.canGoBack()) { router.back(); } else { router.replace("/(tabs)/workouts"); }
-            }}>
+            <Pressable
+              style={styles.iconButton}
+              onPress={() => router.replace("/(tabs)/workouts")}
+            >
               <BackGlyph />
             </Pressable>
           </View>
@@ -1086,9 +1130,7 @@ export default function WorkoutSessionScreen() {
               >
                 <Text style={styles.finishButtonText}>Finish</Text>
               </Pressable>
-            ) : (
-              <View style={{ width: 72 }} />
-            )}
+            ) : null}
           </View>
         </View>
 
@@ -1164,7 +1206,16 @@ export default function WorkoutSessionScreen() {
                       <Text style={styles.exerciseMeta}>{card.meta}</Text>
                     </View>
                   </View>
-                  <DotsGlyph />
+                  {!isPreviewId && !isWebPreview ? (
+                    <Pressable
+                      onPress={() => handleExerciseMenu(card.name)}
+                      hitSlop={10}
+                      style={styles.exerciseDotsButton}
+                      testID={`exercise-menu-${card.name}`}
+                    >
+                      <DotsGlyph />
+                    </Pressable>
+                  ) : null}
                 </View>
 
                 {!isPreviewId && !isWebPreview ? (
@@ -1555,6 +1606,12 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     paddingBottom: 10,
+  },
+  exerciseDotsButton: {
+    width: 32,
+    height: 32,
+    alignItems: "center",
+    justifyContent: "center",
   },
   exerciseTitle: {
     fontFamily: font.sans[600],
