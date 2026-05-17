@@ -121,7 +121,14 @@ export default function TabsLayout() {
       {/* Hidden from tab bar but routable */}
       <Tabs.Screen name="log" options={{ href: null }} />
       <Tabs.Screen name="feed" options={{ href: null }} />
-      <Tabs.Screen name="coach" options={{ href: null }} />
+      <Tabs.Screen
+        name="coach"
+        options={{
+          href: null,
+          tabBarHideOnKeyboard: false,
+          tabBarStyle: { display: "none" },
+        }}
+      />
       <Tabs.Screen name="meals" options={{ href: null }} />
       <Tabs.Screen name="trends" options={{ href: null }} />
     </Tabs>

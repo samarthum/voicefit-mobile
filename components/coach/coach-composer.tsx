@@ -16,6 +16,8 @@ type CoachComposerProps = {
   isRecordingMic: boolean;
   isTranscribing: boolean;
   onChangeText: (text: string) => void;
+  onInputBlur?: () => void;
+  onInputFocus?: () => void;
   onMicPress: () => void;
   onSendPress: () => void;
   placeholder?: string;
@@ -30,6 +32,8 @@ export const CoachComposer = forwardRef<TextInput, CoachComposerProps>(
       isRecordingMic,
       isTranscribing,
       onChangeText,
+      onInputBlur,
+      onInputFocus,
       onMicPress,
       onSendPress,
       placeholder = "Ask your coach...",
@@ -50,6 +54,8 @@ export const CoachComposer = forwardRef<TextInput, CoachComposerProps>(
             editable={!isStreaming}
             textAlignVertical="center"
             returnKeyType="default"
+            onBlur={onInputBlur}
+            onFocus={onInputFocus}
           />
 
           <Pressable

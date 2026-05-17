@@ -19,13 +19,23 @@ type CoachMessageListProps = {
   historyHydrated: boolean;
   starterPrompts: string[];
   onStarterPress: (text: string) => void;
+  onContentSizeChange?: (width: number, height: number) => void;
+  bottomSpacerHeight?: number;
 };
 
 export const CoachMessageList = forwardRef<
   LegendListRef,
   CoachMessageListProps
 >(function CoachMessageList(
-  { messages, loadingHistory, historyHydrated, starterPrompts, onStarterPress },
+  {
+    messages,
+    loadingHistory,
+    historyHydrated,
+    starterPrompts,
+    onStarterPress,
+    onContentSizeChange,
+    bottomSpacerHeight = 0,
+  },
   ref
 ) {
   const renderItem = useCallback(({ item }: { item: CoachUIMessage }) => {
@@ -88,8 +98,14 @@ export const CoachMessageList = forwardRef<
       contentInsetAdjustmentBehavior="automatic"
       keyboardDismissMode="on-drag"
       keyboardShouldPersistTaps="handled"
+      onContentSizeChange={onContentSizeChange}
       contentContainerStyle={styles.listContent}
       ItemSeparatorComponent={ListSeparator}
+      ListFooterComponent={
+        bottomSpacerHeight > 0 ? (
+          <View style={{ height: bottomSpacerHeight }} />
+        ) : null
+      }
       ListEmptyComponent={ListEmpty}
       alignItemsAtEnd
       maintainScrollAtEnd

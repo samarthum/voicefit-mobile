@@ -1,15 +1,18 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
+  Animated,
   Keyboard,
+  KeyboardEvent,
   KeyboardAvoidingView,
   Modal,
   Platform,
-  StatusBar,
   StyleSheet,
   TextInput,
+  View,
+  useWindowDimensions,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useAuth } from "@clerk/clerk-expo";
 import { useChat } from "@ai-sdk/react";
@@ -43,6 +46,21 @@ const STARTER_PROMPTS = [
   "Am I on track for my goal?",
 ];
 
+const ANDROID_KEYBOARD_CLEARANCE = 6;
+const ESTIMATED_COMPOSER_HEIGHT = 64;
+
+function getAndroidKeyboardLift(event: KeyboardEvent, windowHeight: number) {
+  const heightFromScreenY =
+    event.endCoordinates.screenY > 0
+      ? Math.max(0, windowHeight - event.endCoordinates.screenY)
+      : 0;
+
+  return (
+    Math.max(event.endCoordinates.height, heightFromScreenY) +
+    ANDROID_KEYBOARD_CLEARANCE
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Main Screen
 // ---------------------------------------------------------------------------
@@ -51,11 +69,21 @@ export default function CoachScreen() {
   const { getToken } = useAuth();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { height: windowHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const isAndroid = Platform.OS === "android";
   const [draft, setDraft] = useState("");
   const [showMenu, setShowMenu] = useState(false);
   const [historyHydrated, setHistoryHydrated] = useState(false);
+  const [composerHeight, setComposerHeight] = useState(ESTIMATED_COMPOSER_HEIGHT);
+  const keyboardLiftAnim = useRef(new Animated.Value(insets.bottom)).current;
+  const lastAndroidKeyboardLiftRef = useRef(0);
   const inputRef = useRef<TextInput>(null);
   const listRef = useRef<LegendListRef>(null);
+  const shouldPinInitialHistoryRef = useRef(false);
+  const contentSettleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
   const {
     profile,
     showProfileModal,
@@ -86,19 +114,62 @@ export default function CoachScreen() {
   // viewport changes — so without this the user lands mid-thread when they
   // tap the composer.
   useEffect(() => {
+    const animateKeyboardLift = (toValue: number, duration = 180) => {
+      keyboardLiftAnim.stopAnimation();
+      Animated.timing(keyboardLiftAnim, {
+        toValue,
+        duration,
+        useNativeDriver: true,
+      }).start();
+    };
     const showEvent =
       Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
-    const sub = Keyboard.addListener(showEvent, () => {
+    const hideEvent =
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+    const showSub = Keyboard.addListener(showEvent, (event) => {
+      if (isAndroid) {
+        const keyboardLift = getAndroidKeyboardLift(event, windowHeight);
+        lastAndroidKeyboardLiftRef.current = keyboardLift;
+        animateKeyboardLift(keyboardLift, 120);
+      }
       listRef.current?.scrollToEnd({ animated: true });
     });
-    return () => sub.remove();
-  }, []);
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      if (isAndroid) {
+        animateKeyboardLift(insets.bottom, 160);
+      }
+    });
 
-  // Android `behavior="height"` shrinks the view by the keyboard's reported
-  // height but doesn't account for the bottom tab bar, so the last message
-  // ends up behind the keyboard. `padding` with the status-bar offset is
-  // reliable on both platforms.
-  const kbOffset = Platform.OS === "ios" ? 0 : (StatusBar.currentHeight ?? 0);
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, [insets.bottom, isAndroid, keyboardLiftAnim, windowHeight]);
+
+  const animateAndroidComposerTo = useCallback(
+    (toValue: number, duration = 180) => {
+      keyboardLiftAnim.stopAnimation();
+      Animated.timing(keyboardLiftAnim, {
+        toValue,
+        duration,
+        useNativeDriver: true,
+      }).start();
+    },
+    [keyboardLiftAnim]
+  );
+
+  const handleComposerFocus = useCallback(() => {
+    if (!isAndroid) return;
+    const cachedKeyboardLift = lastAndroidKeyboardLiftRef.current;
+    if (cachedKeyboardLift > 0) {
+      animateAndroidComposerTo(cachedKeyboardLift, 180);
+    }
+  }, [animateAndroidComposerTo, isAndroid]);
+
+  const handleComposerBlur = useCallback(() => {
+    if (!isAndroid) return;
+    animateAndroidComposerTo(insets.bottom, 180);
+  }, [animateAndroidComposerTo, insets.bottom, isAndroid]);
 
   // ---- Initial messages from server ----
   const {
@@ -145,6 +216,7 @@ export default function CoachScreen() {
   useEffect(() => {
     if (serverMessages != null && !hydratedRef.current) {
       hydratedRef.current = true;
+      shouldPinInitialHistoryRef.current = serverMessages.length > 0;
       setMessages(serverMessages);
       setHistoryHydrated(true);
     }
@@ -156,6 +228,10 @@ export default function CoachScreen() {
   // measured the hydrated rows. `initialScrollIndex` handles the remount, and
   // this fallback catches late markdown/tool layout on physical devices.
   const didAutoScrollHistoryRef = useRef(false);
+  const scrollToLatestHistoryMessage = useCallback(() => {
+    listRef.current?.scrollToEnd({ animated: false });
+  }, []);
+
   useEffect(() => {
     if (
       !historyHydrated ||
@@ -166,16 +242,44 @@ export default function CoachScreen() {
     }
 
     didAutoScrollHistoryRef.current = true;
-    const timeout = setTimeout(() => {
-      listRef.current?.scrollToEnd({ animated: false });
-    }, 80);
+    const timeouts = [0, 50, 150, 350, 700, 1200].map((delay) =>
+      setTimeout(scrollToLatestHistoryMessage, delay)
+    );
 
     requestAnimationFrame(() => {
-      listRef.current?.scrollToEnd({ animated: false });
+      scrollToLatestHistoryMessage();
     });
 
-    return () => clearTimeout(timeout);
-  }, [historyHydrated, messages.length]);
+    return () => {
+      timeouts.forEach(clearTimeout);
+    };
+  }, [historyHydrated, messages.length, scrollToLatestHistoryMessage]);
+
+  useEffect(() => {
+    return () => {
+      if (contentSettleTimeoutRef.current != null) {
+        clearTimeout(contentSettleTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const handleMessageListContentSizeChange = useCallback(
+    (_width: number, _height: number) => {
+      if (!shouldPinInitialHistoryRef.current) return;
+
+      scrollToLatestHistoryMessage();
+
+      if (contentSettleTimeoutRef.current != null) {
+        clearTimeout(contentSettleTimeoutRef.current);
+      }
+
+      contentSettleTimeoutRef.current = setTimeout(() => {
+        shouldPinInitialHistoryRef.current = false;
+        contentSettleTimeoutRef.current = null;
+      }, 250);
+    },
+    [scrollToLatestHistoryMessage]
+  );
 
   // ---- Clear conversation ----
   const clearMutation = useMutation({
@@ -229,13 +333,23 @@ export default function CoachScreen() {
 
   // ---- Render ----
   const canSend = draft.trim().length > 0 && !isStreaming;
+  const androidDockTravel = windowHeight;
+  const composerDockStyle = isAndroid
+    ? {
+        height: composerHeight + androidDockTravel,
+        transform: [
+          { translateY: Animated.subtract(androidDockTravel, keyboardLiftAnim) },
+        ],
+      }
+    : null;
+  const listBottomSpacerHeight = isAndroid ? composerHeight + 16 : 0;
 
   return (
     <SafeAreaView style={styles.root} edges={["top"]}>
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior="padding"
-        keyboardVerticalOffset={kbOffset}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={0}
       >
         <CoachHeader
           showMenu={showMenu}
@@ -253,6 +367,8 @@ export default function CoachScreen() {
           historyHydrated={historyHydrated}
           starterPrompts={STARTER_PROMPTS}
           onStarterPress={handleStarterPress}
+          onContentSizeChange={handleMessageListContentSizeChange}
+          bottomSpacerHeight={listBottomSpacerHeight}
         />
 
         {chatError != null ? (
@@ -262,17 +378,35 @@ export default function CoachScreen() {
           />
         ) : null}
 
-        <CoachComposer
-          ref={inputRef}
-          value={draft}
-          canSend={canSend}
-          isStreaming={isStreaming}
-          isRecordingMic={isRecordingMic}
-          isTranscribing={isTranscribing}
-          onChangeText={setDraft}
-          onMicPress={handleMicPress}
-          onSendPress={handleSend}
-        />
+        <Animated.View
+          style={[
+            isAndroid ? styles.androidComposerDock : styles.iosComposerDock,
+            composerDockStyle,
+          ]}
+        >
+          <View
+            onLayout={(event) => {
+              const nextHeight = event.nativeEvent.layout.height;
+              setComposerHeight((height) =>
+                Math.abs(height - nextHeight) > 1 ? nextHeight : height
+              );
+            }}
+          >
+            <CoachComposer
+              ref={inputRef}
+              value={draft}
+              canSend={canSend}
+              isStreaming={isStreaming}
+              isRecordingMic={isRecordingMic}
+              isTranscribing={isTranscribing}
+              onChangeText={setDraft}
+              onInputBlur={handleComposerBlur}
+              onInputFocus={handleComposerFocus}
+              onMicPress={handleMicPress}
+              onSendPress={handleSend}
+            />
+          </View>
+        </Animated.View>
 
         <Modal
           visible={showProfileModal}
@@ -304,5 +438,13 @@ const styles = StyleSheet.create({
   },
   flex: {
     flex: 1,
+  },
+  iosComposerDock: {},
+  androidComposerDock: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: token.bg,
   },
 });
