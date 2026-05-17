@@ -539,6 +539,9 @@ export default function WorkoutSessionScreen() {
       });
     },
     onSettled: () => {
+      if (sessionId) {
+        queryClient.invalidateQueries({ queryKey: ["workout-session-detail", sessionId] });
+      }
       queryClient.invalidateQueries({ queryKey: ["workout-sessions"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
     },
