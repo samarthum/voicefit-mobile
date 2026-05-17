@@ -3,12 +3,12 @@ import { useEffect, useState } from "react";
 import {
   Alert,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
   ScrollView,
-  StatusBar,
   StyleSheet,
   Text,
   TextInput,
@@ -158,15 +158,30 @@ function Sheet({
   closeButtonTestID?: string;
 }) {
   const insets = useSafeAreaInsets();
-  // Android's `adjustResize` doesn't fire under transparent statusBarTranslucent
-  // Modals, so we lift the bottom-anchored sheet ourselves. On iOS `padding`
-  // on the bottom-anchored container slides the whole sheet above the keyboard.
-  const kbOffset = Platform.OS === "ios" ? 0 : (StatusBar.currentHeight ?? 0);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const isKeyboardVisible = keyboardHeight > 0;
+  const androidKeyboardLift = Platform.OS === "android" ? keyboardHeight : 0;
+  const sheetBottomPadding = isKeyboardVisible ? 14 : insets.bottom + 22;
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener("keyboardDidShow", (event) => {
+      setKeyboardHeight(event.endCoordinates.height);
+    });
+    const hideSub = Keyboard.addListener("keyboardDidHide", () => {
+      setKeyboardHeight(0);
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
   return (
     <KeyboardAvoidingView
       style={styles.sheetRoot}
-      behavior="padding"
-      keyboardVerticalOffset={kbOffset}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      keyboardVerticalOffset={0}
     >
       <Pressable
         style={styles.sheetBackdrop}
@@ -174,7 +189,15 @@ function Sheet({
           if (canCloseViaBackdrop) onClose();
         }}
       />
-      <View style={[styles.sheetContainer, { paddingBottom: insets.bottom + 22 }]}>
+      <View
+        style={[
+          styles.sheetContainer,
+          {
+            paddingBottom: sheetBottomPadding,
+            marginBottom: androidKeyboardLift,
+          },
+        ]}
+      >
         <View style={styles.sheetHandleRow}>
           <View style={styles.sheetHandle} />
         </View>

@@ -60,6 +60,7 @@ type Props = {
   onSave: (data: CoachProfileData) => Promise<void>;
   onSkip?: () => void;
   isSaving: boolean;
+  errorMessage?: string;
 };
 
 function SegmentedControl({
@@ -118,6 +119,7 @@ export function CoachProfileForm({
   onSave,
   onSkip,
   isSaving,
+  errorMessage,
 }: Props) {
   const [goal, setGoal] = useState<string | null>(initialData?.goal ?? null);
   const [heightCm, setHeightCm] = useState(
@@ -248,6 +250,9 @@ export function CoachProfileForm({
       />
 
       <View style={styles.buttonRow}>
+        {errorMessage ? (
+          <Text style={styles.errorText}>{errorMessage}</Text>
+        ) : null}
         <Pressable
           style={[styles.saveButton, isSaving ? styles.buttonDisabled : null]}
           onPress={handleSave}
@@ -312,6 +317,11 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.bg,
   },
   buttonRow: { marginTop: 28, gap: 12 },
+  errorText: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: "#FF6B6B",
+  },
   saveButton: {
     backgroundColor: COLORS.accent,
     borderRadius: 12,
