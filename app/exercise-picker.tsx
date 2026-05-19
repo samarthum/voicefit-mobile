@@ -82,7 +82,7 @@ function ExerciseRow({
           </View>
         </View>
       </View>
-      <Pressable style={styles.addCircle} onPress={onAdd}>
+      <Pressable style={styles.addCircle} onPress={onAdd} hitSlop={8}>
         <PlusGlyph />
       </Pressable>
     </View>
@@ -145,7 +145,11 @@ export default function ExercisePickerScreen() {
 
   return (
     <SafeAreaView style={styles.root} edges={["top"]}>
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={styles.header}>
           <Pressable style={styles.iconButton} onPress={() => router.back()}>
             <CloseGlyph />

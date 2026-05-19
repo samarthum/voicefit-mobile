@@ -1100,7 +1100,11 @@ export default function WorkoutSessionScreen() {
 
   return (
     <SafeAreaView style={styles.root} edges={["top"]}>
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={styles.header}>
           <View style={styles.headerLeft}>
             <Pressable
@@ -1353,7 +1357,7 @@ export default function WorkoutSessionScreen() {
                 })}
 
                 {!session.finished && (
-                  <Pressable style={styles.addSetRow} onPress={() => void handleAddSet(card)}>
+                  <Pressable style={styles.addSetRow} onPress={() => void handleAddSet(card)} hitSlop={8}>
                     <Text style={styles.addSetText}>＋ Add Set</Text>
                   </Pressable>
                 )}
