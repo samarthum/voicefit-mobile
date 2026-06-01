@@ -1,4 +1,4 @@
-import type { DashboardData, InterpretEntryResponse } from "@voicefit/contracts/types";
+import type { DashboardData, InterpretEntryResponse, MealIngredient } from "@voicefit/contracts/types";
 
 export type CommandState =
   | "cc_collapsed"
@@ -120,3 +120,82 @@ export interface ScreenContext {
   /** Current screen context — determines quick-add suggestions */
   screen?: "workout" | "default";
 }
+
+export type CommandCenterContext = ScreenContext;
+
+export interface CommandCenterLauncherProps {
+  onPress: () => void;
+  onMicPress: () => Promise<void>;
+}
+
+export interface CommandCenterHandle {
+  isOpen: boolean;
+  toast: string | null;
+  open: () => void;
+  record: () => Promise<void>;
+  close: () => void;
+  launcherProps: CommandCenterLauncherProps;
+}
+
+export interface CommandCenterErrorCopy {
+  title: string;
+  body: string;
+  primary: string;
+  secondary: string | null;
+  tertiary: string | null;
+}
+
+export interface CommandCenterSnapshot {
+  state: CommandState;
+  isOpen: boolean;
+  input: {
+    text: string;
+    voiceTranscript: string;
+    recordingSeconds: number;
+    isInterpretingVoice: boolean;
+    selectedMealPhoto: PhotoAttachment | null;
+  };
+  review: ReviewDraft | null;
+  toast: {
+    message: string | null;
+    lastSavedKcalLeft: number | null;
+  };
+  error: {
+    subtype: CommandErrorSubtype;
+    detail: string | null;
+    copy: CommandCenterErrorCopy | null;
+  };
+  quickAddItems: QuickAddItem[];
+  screenContext: ScreenContext;
+  isWebPreview: boolean;
+}
+
+export type CommandCenterEvent =
+  | { type: "open" }
+  | { type: "close" }
+  | { type: "text.change"; text: string }
+  | { type: "text.set"; text: string }
+  | { type: "text.edit" }
+  | { type: "text.submit" }
+  | { type: "voice.start" }
+  | { type: "voice.stop" }
+  | { type: "voice.transcript.change"; text: string }
+  | { type: "photo.menu.open" }
+  | { type: "photo.context.edit" }
+  | { type: "photo.submit" }
+  | { type: "quick-add.save"; item: QuickAddItem }
+  | { type: "review.save" }
+  | { type: "review.transcript.edit" }
+  | {
+      type: "workout-set.update";
+      index: number;
+      patch: Partial<Pick<WorkoutReviewSet, "weightKg" | "reps" | "notes">>;
+    }
+  | { type: "workout-set.add" }
+  | { type: "ingredient.edit-grams"; id: string; grams: number }
+  | { type: "ingredient.replace"; id: string; replacement: MealIngredient }
+  | { type: "ingredient.add"; ingredient: MealIngredient }
+  | { type: "ingredient.remove"; id: string }
+  | { type: "ingredient.lookup"; name: string; grams?: number }
+  | { type: "error.primary" }
+  | { type: "error.secondary" };

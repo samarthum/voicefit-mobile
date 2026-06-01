@@ -422,10 +422,12 @@ export default function WorkoutSessionScreen() {
   const addExerciseNonce = Array.isArray(params.addExerciseNonce) ? params.addExerciseNonce[0] : params.addExerciseNonce;
 
   const { getToken, isLoaded, isSignedIn } = useAuth();
-  const cc = useCommandCenter();
   const isWebPreview = isWebPreviewMode();
   const isPreviewId =
     sessionId === "preview-active" || sessionId === "preview-leg-day" || sessionId === "preview-empty";
+  const cc = useCommandCenter(
+    sessionId && !isPreviewId ? { sessionId, screen: "workout" } : undefined,
+  );
 
   const [previewFinished, setPreviewFinished] = useState(false);
   const [previewSession, setPreviewSession] = useState<SessionViewModel | null>(() => getPreviewSession(sessionId));
@@ -977,13 +979,6 @@ export default function WorkoutSessionScreen() {
     sessionId,
   ]);
 
-  useEffect(() => {
-    if (sessionId && !isPreviewId) {
-      cc.setScreenContext({ sessionId, screen: "workout" });
-    }
-    return () => cc.clearScreenContext();
-  }, [sessionId, isPreviewId]);
-
   if (!isLoaded) {
     return (
       <View style={styles.center}>
@@ -1188,7 +1183,7 @@ export default function WorkoutSessionScreen() {
                 </View>
                 <Pressable
                   style={styles.voicePrompt}
-                  onPress={() => cc.startRecording()}
+                  onPress={cc.record}
                 >
                   <View style={styles.voicePromptMic}>
                     <MicGlyph />
@@ -1395,8 +1390,7 @@ export default function WorkoutSessionScreen() {
       {!session?.finished && (
         <FloatingCommandBar
           hint={session?.empty ? "Did 3 sets of squats at 100kg…" : "80 kilos for 10 reps…"}
-          onPress={() => cc.open()}
-          onMicPress={() => cc.startRecording()}
+          {...cc.launcherProps}
           bottomOffset={91}
         />
       )}

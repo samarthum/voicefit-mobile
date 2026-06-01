@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Alert, Keyboard, Linking, Platform } from "react-native";
 import { Audio } from "expo-av";
 import * as ImagePicker from "expo-image-picker";
@@ -10,112 +10,86 @@ import { isWebPreviewMode } from "../../lib/web-preview-mode";
 import { fetchInterpretedIngredient as fetchInterpretedIngredientApi } from "../../lib/api/ingredient";
 import type {
   CommandErrorSubtype,
+  CommandCenterContext,
+  CommandCenterEvent,
+  CommandCenterHandle,
+  CommandCenterLauncherProps,
+  CommandCenterSnapshot,
   CommandState,
   EntrySource,
-  MealReviewIngredient,
   PhotoAttachment,
-  QuickAddItem,
   RecentMeal,
   ReviewDraft,
   SaveAction,
   ScreenContext,
-  WorkoutReviewSet,
 } from "./types";
 import {
+  createCommandCenterController,
+  type CommandCenterVoiceRecording,
+  type PhotoPickerMode,
+} from "./controller";
+import {
   buildQuickAddItems,
-  buildWorkoutReviewDraft,
   ensureQuickSession,
-  ERROR_COPY,
-  generateIngredientId,
-  getErrorMessage,
   hasWebPreviewFlag,
   inferCalories,
   inferMealDescription,
   inferMealType,
-  isLikelyMealEntry,
-  MIN_RECORDING_DURATION_MS,
-  parsePositiveNumber,
-  recalculateMealTotals,
-  scaleIngredientByGrams,
-  toLocalDateString,
 } from "./helpers";
 
 // ---------------------------------------------------------------------------
 // Public context — what screens see via useCommandCenter()
 // ---------------------------------------------------------------------------
 
-interface CommandCenterPublicValue {
+interface CommandCenterLegacyHandle {
   commandState: CommandState;
-  isOpen: boolean;
   commandToast: string | null;
-  open: () => void;
   startRecording: () => Promise<void>;
-  close: () => void;
   setScreenContext: (ctx: ScreenContext) => void;
   clearScreenContext: () => void;
 }
 
+type CommandCenterPublicValue = CommandCenterHandle & CommandCenterLegacyHandle;
+
 const CommandCenterPublicContext = createContext<CommandCenterPublicValue | null>(null);
 
-export function useCommandCenter() {
+export function useCommandCenter(context?: CommandCenterContext): CommandCenterPublicValue {
   const ctx = useContext(CommandCenterPublicContext);
+  const setScreenContext = ctx?.setScreenContext;
+  const clearScreenContext = ctx?.clearScreenContext;
+  const hasContext = context !== undefined;
+  const sessionId = context?.sessionId;
+  const screen = context?.screen;
+
+  useEffect(() => {
+    if (!hasContext || !setScreenContext || !clearScreenContext) return;
+
+    setScreenContext({ sessionId, screen });
+    return () => clearScreenContext();
+  }, [clearScreenContext, hasContext, screen, sessionId, setScreenContext]);
+
   if (!ctx) throw new Error("useCommandCenter must be used within CommandCenterProvider");
   return ctx;
 }
 
 // ---------------------------------------------------------------------------
-// Internal context — what CommandCenterOverlay sees
+// Overlay context — what CommandCenterOverlay sees
 // ---------------------------------------------------------------------------
 
-export interface CommandCenterInternalValue {
-  commandState: CommandState;
-  commandText: string;
-  voiceTranscript: string;
-  recordingSeconds: number;
-  isInterpretingVoice: boolean;
-  reviewDraft: ReviewDraft | null;
-  selectedMealPhoto: PhotoAttachment | null;
-  commandToast: string | null;
-  lastSavedKcalLeft: number | null;
-  commandErrorSubtype: CommandErrorSubtype;
-  commandErrorDetail: string | null;
-  activeErrorCopy: (typeof ERROR_COPY)[Exclude<CommandErrorSubtype, null>] | null;
-  quickAddItems: QuickAddItem[];
-  screenContext: ScreenContext;
-  isWebPreview: boolean;
+type CommandCenterOverlayDispatch = (
+  event: CommandCenterEvent,
+) => void | Promise<void> | Promise<MealIngredient>;
 
-  closeCommandCenter: () => void;
-  openCommandCenter: () => void;
-  startRecording: () => Promise<void>;
-  stopRecording: () => Promise<void>;
-  sendTyped: () => Promise<void>;
-  openPhotoMenu: () => void;
-  sendPhotoMeal: () => Promise<void>;
-  handleCommandInputChange: (text: string) => void;
-  handleErrorPrimary: () => Promise<void>;
-  handleErrorSecondary: () => void;
-  saveReviewedEntry: () => Promise<void>;
-  editReviewTranscript: () => void;
-  updateWorkoutSet: (idx: number, patch: Partial<Pick<WorkoutReviewSet, "weightKg" | "reps" | "notes">>) => void;
-  addWorkoutSet: () => void;
-  /** Pre-save ingredient editing in the meal review sheet. */
-  editIngredientGrams: (id: string, grams: number) => void;
-  replaceIngredient: (id: string, replacement: MealIngredient) => void;
-  addIngredient: (ingredient: MealIngredient) => void;
-  removeIngredient: (id: string) => void;
-  /** Hits POST /api/interpret/ingredient. Used by the editor sheet directly. */
-  fetchInterpretedIngredient: (name: string, grams?: number) => Promise<MealIngredient>;
-  runSaveAction: (action: SaveAction) => Promise<void>;
-  setVoiceTranscript: (text: string) => void;
-  setCommandState: (state: CommandState) => void;
-  setCommandText: (text: string) => void;
+interface CommandCenterOverlayValue {
+  snapshot: CommandCenterSnapshot;
+  dispatch: CommandCenterOverlayDispatch;
 }
 
-export const CommandCenterInternalContext = createContext<CommandCenterInternalValue | null>(null);
+const CommandCenterOverlayContext = createContext<CommandCenterOverlayValue | null>(null);
 
-export function useCommandCenterInternal() {
-  const ctx = useContext(CommandCenterInternalContext);
-  if (!ctx) throw new Error("useCommandCenterInternal must be used within CommandCenterProvider");
+export function useCommandCenterOverlay() {
+  const ctx = useContext(CommandCenterOverlayContext);
+  if (!ctx) throw new Error("useCommandCenterOverlay must be used within CommandCenterProvider");
   return ctx;
 }
 
@@ -133,7 +107,7 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
   const [commandState, setCommandState] = useState<CommandState>("cc_collapsed");
   const [commandText, setCommandText] = useState("");
   const [voiceTranscript, setVoiceTranscript] = useState("");
-  const [recording, setRecording] = useState<Audio.Recording | null>(null);
+  const [recording, setRecording] = useState<CommandCenterVoiceRecording | null>(null);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [isInterpretingVoice, setIsInterpretingVoice] = useState(false);
   const [reviewDraft, setReviewDraft] = useState<ReviewDraft | null>(null);
@@ -166,7 +140,7 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
 
   useEffect(() => {
     return () => {
-      if (recording) recording.stopAndUnloadAsync().catch(() => undefined);
+      if (recording) recording.stopAndUnload().catch(() => undefined);
     };
   }, [recording]);
 
@@ -222,7 +196,7 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
 
   const closeCommandCenter = useCallback(() => {
     if (recording) {
-      recording.stopAndUnloadAsync().catch(() => undefined);
+      recording.stopAndUnload().catch(() => undefined);
       setRecording(null);
     }
     Keyboard.dismiss();
@@ -254,18 +228,6 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
     return Math.max(0, cached.today.calories.goal - cached.today.calories.consumed - justSavedKcal);
   }, [queryClient]);
 
-  const openCommandCenter = useCallback(() => {
-    setCommandText("");
-    setVoiceTranscript("");
-    setRecordingSeconds(0);
-    setIsInterpretingVoice(false);
-    setReviewDraft(null);
-    setSelectedMealPhoto(null);
-    setCommandErrorSubtype(null);
-    setCommandErrorDetail(null);
-    setCommandState("cc_expanded_empty");
-  }, []);
-
   const getPhotoFileName = useCallback((uri: string, fileName?: string | null) => {
     if (fileName?.trim()) return fileName.trim();
     const extension = uri.split(".").pop()?.split("?")[0] || "jpg";
@@ -291,6 +253,12 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
     height: Number.isFinite(asset.height) ? asset.height : null,
   }), [getPhotoFileName, getPhotoMimeType]);
 
+  const getAuthToken = useCallback(async () => {
+    const token = await getToken();
+    if (!token) throw new Error("Not signed in");
+    return token;
+  }, [getToken]);
+
   const createPendingMealFromText = useCallback(async (transcript: string, source: EntrySource) => {
     if (isWebPreview) {
       await new Promise((resolve) => setTimeout(resolve, 650));
@@ -299,8 +267,7 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
       return;
     }
 
-    const token = await getToken();
-    if (!token) throw new Error("Not signed in");
+    const token = await getAuthToken();
 
     await apiRequest("/api/meals/interpret", {
       method: "POST",
@@ -316,7 +283,7 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
     });
     await refreshAfterPendingMeal();
     finishWithSaved("Logging your meal…");
-  }, [isWebPreview, getToken, timezone, refreshAfterPendingMeal, finishWithSaved]);
+  }, [isWebPreview, getAuthToken, timezone, refreshAfterPendingMeal, finishWithSaved]);
 
   const createPendingMealFromPhoto = useCallback(async (photo: PhotoAttachment, context: string) => {
     if (isWebPreview) {
@@ -326,8 +293,7 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
       return;
     }
 
-    const token = await getToken();
-    if (!token) throw new Error("Not signed in");
+    const token = await getAuthToken();
 
     const formData = new FormData();
     formData.append("photo", { uri: photo.uri, name: photo.name, type: photo.type } as unknown as Blob);
@@ -346,7 +312,7 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
     });
     await refreshAfterPendingMeal();
     finishWithSaved("Looking at your photo…");
-  }, [isWebPreview, getToken, timezone, refreshAfterPendingMeal, finishWithSaved]);
+  }, [isWebPreview, getAuthToken, timezone, refreshAfterPendingMeal, finishWithSaved]);
 
   const interpretEntry = useCallback(async (transcript: string, source: EntrySource): Promise<InterpretEntryResponse> => {
     if (isWebPreview) {
@@ -402,8 +368,7 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
       } as InterpretEntryResponse;
     }
 
-    const token = await getToken();
-    if (!token) throw new Error("Not signed in");
+    const token = await getAuthToken();
     return apiRequest<InterpretEntryResponse>("/api/interpret/entry", {
       method: "POST",
       token,
@@ -412,610 +377,265 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
       // server-side; 15s default isn't enough.
       timeoutMs: 60_000,
     });
-  }, [isWebPreview, getToken, timezone]);
+  }, [isWebPreview, getAuthToken, timezone]);
 
-  const runSaveAction = useCallback(async (action: SaveAction) => {
-    pendingSaveRef.current = action;
-    setCommandErrorSubtype(null);
-    setCommandErrorDetail(null);
-    setCommandState(action.kind === "quick_add" ? "cc_quick_add_saving" : "cc_saving");
-
-    // Snapshot pre-save kcal-left for the saved-toast footer (meal saves only).
-    const isMealSave =
-      action.kind === "quick_add" ||
-      (action.kind === "entry" && action.interpreted.intent === "meal");
-    const justSavedKcal = action.kind === "quick_add"
-      ? action.item.calories
-      : action.kind === "entry" && action.interpreted.intent === "meal"
-        ? action.interpreted.payload.calories
-        : 0;
-    const kcalLeftAfterSave = isMealSave ? computeKcalLeftAfterMeal(justSavedKcal) : null;
-
-    try {
-      if (isWebPreview) {
-        if (action.kind === "entry" && hasWebPreviewFlag("save_fail")) throw new Error("Mock auto-save failure.");
-        if (action.kind === "quick_add" && hasWebPreviewFlag("quick_add_fail")) throw new Error("Mock quick-add save failure.");
-        await new Promise((resolve) => setTimeout(resolve, 550));
-        await refreshAfterSave();
-        finishWithSaved("Saved", kcalLeftAfterSave);
-        return;
-      }
-
-      const token = await getToken();
-      if (!token) throw new Error("Not signed in");
-
-      if (action.kind === "quick_add") {
+  const commandCenterController = useMemo(() => createCommandCenterController({
+    state: {
+      getCommandState: () => commandState,
+      getCommandText: () => commandText,
+      getVoiceTranscript: () => voiceTranscript,
+      getRecordingSeconds: () => recordingSeconds,
+      getIsInterpretingVoice: () => isInterpretingVoice,
+      getScreenContext: () => screenContext,
+      getSelectedMealPhoto: () => selectedMealPhoto,
+      getActiveRecording: () => recording,
+      getReviewDraft: () => reviewDraft,
+      getCommandToast: () => commandToast,
+      getLastSavedKcalLeft: () => lastSavedKcalLeft,
+      getCommandErrorSubtype: () => commandErrorSubtype,
+      getCommandErrorDetail: () => commandErrorDetail,
+      getQuickAddItems: () => quickAddItems,
+      getIsWebPreview: () => isWebPreview,
+      getPendingSaveAction: () => pendingSaveRef.current,
+      setCommandState,
+      setCommandError,
+      setCommandErrorDetail,
+      setReviewDraft,
+      setPendingSaveAction: (action) => {
+        pendingSaveRef.current = action;
+      },
+      clearCommandError: () => {
+        setCommandErrorSubtype(null);
+        setCommandErrorDetail(null);
+      },
+      setSelectedMealPhoto,
+      setCommandText,
+      setVoiceTranscript,
+      setRecordingSeconds,
+      setActiveRecording: setRecording,
+      setIsInterpretingVoice,
+      setCommandToast,
+      closeCommandCenter,
+    },
+    auth: {
+      getToken: getAuthToken,
+    },
+    backend: {
+      interpretEntry,
+      createPendingMealFromText,
+      createPendingMealFromPhoto,
+      transcribeAudio: async (audio) => {
+        const token = await getAuthToken();
+        const formData = new FormData();
+        formData.append("audio", audio as unknown as Blob);
+        const { transcript } = await apiFormRequest<{ transcript: string }>("/api/transcribe", formData, { token });
+        return transcript;
+      },
+      createMeal: async (input) => {
+        const token = await getAuthToken();
         await apiRequest("/api/meals", {
           method: "POST",
           token,
-          body: JSON.stringify({
-            eatenAt: new Date().toISOString(),
-            mealType: action.item.mealType,
-            description: action.item.description,
-            calories: action.item.calories,
-            transcriptRaw: `quick_add:${action.item.description}`,
-          }),
+          body: JSON.stringify(input),
         });
-      } else {
-        const { interpreted, transcript, source } = action;
+      },
+      ensureQuickSession: async () => {
+        const token = await getAuthToken();
+        return ensureQuickSession(token);
+      },
+      createWorkoutSet: async (input) => {
+        const token = await getAuthToken();
+        await apiRequest("/api/workout-sets", {
+          method: "POST",
+          token,
+          body: JSON.stringify(input),
+        });
+      },
+      upsertDailyMetrics: async (input) => {
+        const token = await getAuthToken();
+        await apiRequest("/api/daily-metrics", {
+          method: "POST",
+          token,
+          body: JSON.stringify(input),
+        });
+      },
+      createConversation: async (input) => {
+        const token = await getAuthToken();
+        await apiRequest("/api/conversation", {
+          method: "POST",
+          token,
+          body: JSON.stringify(input),
+        });
+      },
+      fetchInterpretedIngredient: async (name, grams) => {
+        const token = await getAuthToken();
+        return fetchInterpretedIngredientApi(token, name, grams);
+      },
+    },
+    cache: {
+      refreshAfterSave,
+      computeKcalLeftAfterMeal,
+    },
+    clock: {
+      now: () => new Date(),
+    },
+    preview: {
+      isEnabled: () => isWebPreview,
+      hasFlag: hasWebPreviewFlag,
+      delay: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    },
+    feedback: {
+      finishWithSaved,
+    },
+    media: {
+      requestMicrophonePermission: async () => {
+        const permission = await Audio.requestPermissionsAsync();
+        return permission.granted;
+      },
+      startVoiceRecording: async (onDurationSeconds) => {
+        await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+        const nextRecording = new Audio.Recording();
+        await nextRecording.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+        nextRecording.setOnRecordingStatusUpdate((status) => {
+          onDurationSeconds(Math.floor((status.durationMillis ?? 0) / 1000));
+        });
+        await nextRecording.startAsync();
+        return {
+          clearDurationUpdates: () => nextRecording.setOnRecordingStatusUpdate(null),
+          stopAndUnload: async () => {
+            await nextRecording.stopAndUnloadAsync();
+          },
+          getDurationMillis: async () => {
+            const status = await nextRecording.getStatusAsync();
+            return status.durationMillis ?? 0;
+          },
+          getUri: () => nextRecording.getURI(),
+        };
+      },
+      requestPhotoPermission: async (mode) => {
+        const permission = mode === "camera"
+          ? await ImagePicker.requestCameraPermissionsAsync()
+          : await ImagePicker.requestMediaLibraryPermissionsAsync();
+        return permission.granted;
+      },
+      pickMealPhoto: async (mode) => {
+        const result = mode === "camera"
+          ? await ImagePicker.launchCameraAsync({
+              allowsEditing: false,
+              exif: false,
+              mediaTypes: ["images"],
+              quality: 0.82,
+            })
+          : await ImagePicker.launchImageLibraryAsync({
+              allowsEditing: false,
+              exif: false,
+              mediaTypes: ["images"],
+              quality: 0.82,
+            });
+        if (result.canceled || !result.assets[0]) return null;
+        return buildPhotoAttachment(result.assets[0]);
+      },
+    },
+    platform: {
+      isWeb: () => Platform.OS === "web",
+      openSettings: () => Linking.openSettings(),
+      selectPhotoSource: () => new Promise<PhotoPickerMode | null>((resolve) => {
+        Alert.alert("Log meal photo", "Add optional context after selecting a photo.", [
+          { text: "Take photo", onPress: () => resolve("camera") },
+          { text: "Choose from library", onPress: () => resolve("library") },
+          { text: "Cancel", style: "cancel", onPress: () => resolve(null) },
+        ]);
+      }),
+    },
+  }), [
+    commandText,
+    commandState,
+    voiceTranscript,
+    recordingSeconds,
+    isInterpretingVoice,
+    screenContext,
+    selectedMealPhoto,
+    recording,
+    reviewDraft,
+    commandToast,
+    lastSavedKcalLeft,
+    commandErrorSubtype,
+    commandErrorDetail,
+    quickAddItems,
+    closeCommandCenter,
+    setCommandError,
+    interpretEntry,
+    createPendingMealFromText,
+    createPendingMealFromPhoto,
+    getAuthToken,
+    buildPhotoAttachment,
+    refreshAfterSave,
+    computeKcalLeftAfterMeal,
+    isWebPreview,
+    finishWithSaved,
+  ]);
 
-        if (interpreted.intent === "meal") {
-          // The user may have added/removed/edited ingredients in the review
-          // sheet — `recalculateMealTotals` keeps interpreted.payload in sync
-          // with the in-memory edits, so we can read straight from it here.
-          await apiRequest("/api/meals", {
-            method: "POST",
-            token,
-            body: JSON.stringify({
-              eatenAt: new Date().toISOString(),
-              mealType: interpreted.payload.mealType,
-              description: interpreted.payload.description,
-              calories: interpreted.payload.calories,
-              proteinG: interpreted.payload.proteinG,
-              carbsG: interpreted.payload.carbsG,
-              fatG: interpreted.payload.fatG,
-              ingredients: interpreted.payload.ingredients,
-              transcriptRaw: transcript,
-            }),
-          });
-        } else if (interpreted.intent === "workout_set") {
-          const sessionId = screenContext.sessionId ?? await ensureQuickSession(token);
-          await apiRequest("/api/workout-sets", {
-            method: "POST",
-            token,
-            body: JSON.stringify({
-              sessionId,
-              exerciseName: interpreted.payload.exerciseName,
-              exerciseType: interpreted.payload.exerciseType,
-              reps: interpreted.payload.reps,
-              weightKg: interpreted.payload.weightKg,
-              durationMinutes: interpreted.payload.durationMinutes,
-              notes: interpreted.payload.notes,
-              performedAt: new Date().toISOString(),
-              transcriptRaw: transcript,
-            }),
-          });
-        } else if (interpreted.intent === "steps") {
-          await apiRequest("/api/daily-metrics", {
-            method: "POST",
-            token,
-            body: JSON.stringify({ date: toLocalDateString(new Date()), steps: Math.round(interpreted.payload.value) }),
-          });
-        } else if (interpreted.intent === "weight") {
-          await apiRequest("/api/daily-metrics", {
-            method: "POST",
-            token,
-            body: JSON.stringify({ date: toLocalDateString(new Date()), weightKg: interpreted.payload.value }),
-          });
-        } else {
-          await apiRequest("/api/conversation", {
-            method: "POST",
-            token,
-            body: JSON.stringify({
-              kind: "question",
-              userText: transcript,
-              systemText: interpreted.payload.answer,
-              source,
-              referenceType: null,
-              referenceId: null,
-              metadata: { answer: interpreted.payload.answer },
-            }),
-          });
-          await refreshAfterSave();
-          finishWithSaved(interpreted.payload.answer);
-          return;
-        }
-      }
+  const overlaySnapshot = useSyncExternalStore(
+    commandCenterController.subscribe,
+    commandCenterController.getSnapshot,
+    commandCenterController.getSnapshot,
+  );
 
-      await refreshAfterSave();
-      finishWithSaved("Saved", kcalLeftAfterSave);
-    } catch (error) {
-      setCommandError(
-        action.kind === "quick_add" ? "quick_add_failure" : "auto_save_failure",
-        getErrorMessage(error),
-      );
-    }
-  }, [isWebPreview, getToken, refreshAfterSave, finishWithSaved, setCommandError, screenContext.sessionId, computeKcalLeftAfterMeal]);
+  const openCommandCenter = useCallback(
+    () => {
+      void commandCenterController.dispatch({ type: "open" });
+    },
+    [commandCenterController],
+  );
 
-  const routeInterpretedEntry = useCallback(async (interpreted: InterpretEntryResponse, transcript: string, source: EntrySource) => {
-    if (interpreted.intent === "meal") {
-      await createPendingMealFromText(transcript, source);
-    } else if (interpreted.intent === "workout_set") {
-      setReviewDraft(buildWorkoutReviewDraft(interpreted, transcript, source));
-      setCommandState("cc_review_workout");
-    } else {
-      await runSaveAction({ kind: "entry", interpreted, transcript, source });
-    }
-  }, [createPendingMealFromText, runSaveAction]);
+  const closeCommandCenterForConsumers = useCallback(
+    () => {
+      void commandCenterController.dispatch({ type: "close" });
+    },
+    [commandCenterController],
+  );
 
-  const sendTyped = useCallback(async () => {
-    const trimmed = commandText.trim();
-    if (!trimmed) return;
-    setCommandState("cc_submitting_typed");
-    setCommandErrorSubtype(null);
-    setCommandErrorDetail(null);
-    try {
-      if (isLikelyMealEntry(trimmed)) {
-        await createPendingMealFromText(trimmed, "text");
-        return;
-      }
-      const interpreted = await interpretEntry(trimmed, "text");
-      await routeInterpretedEntry(interpreted, trimmed, "text");
-    } catch (error) {
-      setCommandError("typed_interpret_failure", getErrorMessage(error));
-    }
-  }, [commandText, createPendingMealFromText, interpretEntry, routeInterpretedEntry, setCommandError]);
-
-  const launchPhotoPicker = useCallback(async (mode: "camera" | "library") => {
-    setCommandErrorSubtype(null);
-    setCommandErrorDetail(null);
-    try {
-      const permission = mode === "camera"
-        ? await ImagePicker.requestCameraPermissionsAsync()
-        : await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-      if (!permission.granted) {
-        setCommandError("photo_permission_denied");
-        return;
-      }
-
-      const result = mode === "camera"
-        ? await ImagePicker.launchCameraAsync({
-            allowsEditing: false,
-            exif: false,
-            mediaTypes: ["images"],
-            quality: 0.82,
-          })
-        : await ImagePicker.launchImageLibraryAsync({
-            allowsEditing: false,
-            exif: false,
-            mediaTypes: ["images"],
-            quality: 0.82,
-          });
-
-      if (result.canceled || !result.assets[0]) return;
-
-      setSelectedMealPhoto(buildPhotoAttachment(result.assets[0]));
-      setCommandText("");
-      setCommandState("cc_photo_context");
-    } catch (error) {
-      setCommandError("photo_interpret_failure", getErrorMessage(error));
-    }
-  }, [buildPhotoAttachment, setCommandError]);
-
-  const openPhotoMenu = useCallback(() => {
-    if (Platform.OS === "web") {
-      void launchPhotoPicker("library");
-      return;
-    }
-
-    Alert.alert("Log meal photo", "Add optional context after selecting a photo.", [
-      { text: "Take photo", onPress: () => void launchPhotoPicker("camera") },
-      { text: "Choose from library", onPress: () => void launchPhotoPicker("library") },
-      { text: "Cancel", style: "cancel" },
-    ]);
-  }, [launchPhotoPicker]);
-
-  const sendPhotoMeal = useCallback(async () => {
-    if (!selectedMealPhoto) return;
-    setCommandState("cc_submitting_photo");
-    setCommandErrorSubtype(null);
-    setCommandErrorDetail(null);
-    try {
-      await createPendingMealFromPhoto(selectedMealPhoto, commandText);
-    } catch (error) {
-      setCommandError("photo_interpret_failure", getErrorMessage(error));
-    }
-  }, [selectedMealPhoto, commandText, createPendingMealFromPhoto, setCommandError]);
-
-  const interpretVoiceTranscript = useCallback(async (text: string) => {
-    const transcript = text.trim();
-    if (!transcript) {
-      setCommandError("voice_interpret_failure", "Transcript cannot be empty.");
-      return;
-    }
-    setIsInterpretingVoice(true);
-    setCommandState("cc_interpreting_voice");
-    setCommandErrorSubtype(null);
-    setCommandErrorDetail(null);
-    try {
-      if (isLikelyMealEntry(transcript)) {
-        await createPendingMealFromText(transcript, "voice");
-        return;
-      }
-      const interpreted = await interpretEntry(transcript, "voice");
-      await routeInterpretedEntry(interpreted, transcript, "voice");
-    } catch (error) {
-      setCommandError("voice_interpret_failure", getErrorMessage(error));
-    } finally {
-      setIsInterpretingVoice(false);
-    }
-  }, [createPendingMealFromText, interpretEntry, routeInterpretedEntry, setCommandError]);
-
-  const startRecording = useCallback(async () => {
-    setCommandErrorSubtype(null);
-    setCommandErrorDetail(null);
-    setVoiceTranscript("");
-    try {
-      if (isWebPreview) {
-        if (hasWebPreviewFlag("mic_denied")) {
-          setCommandError("mic_permission_denied");
-          return;
-        }
-        setRecordingSeconds(0);
-        setCommandState("cc_recording");
-        return;
-      }
-      const permission = await Audio.requestPermissionsAsync();
-      if (!permission.granted) {
-        setCommandError("mic_permission_denied");
-        return;
-      }
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-      const nextRecording = new Audio.Recording();
-      await nextRecording.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
-      nextRecording.setOnRecordingStatusUpdate((status) => {
-        setRecordingSeconds(Math.floor((status.durationMillis ?? 0) / 1000));
-      });
-      await nextRecording.startAsync();
-      setRecording(nextRecording);
-      setRecordingSeconds(0);
-      setCommandState("cc_recording");
-    } catch (error) {
-      setCommandError("voice_interpret_failure", getErrorMessage(error));
-    }
-  }, [isWebPreview, setCommandError]);
-
-  const stopRecording = useCallback(async () => {
-    if (isWebPreview) {
-      const previewTranscript = "I had a chicken salad with rice for lunch, about 500 calories";
-      setCommandState("cc_transcribing_voice");
-      if (hasWebPreviewFlag("hold_transcribing")) return;
-      await new Promise((resolve) => setTimeout(resolve, 700));
-      setVoiceTranscript(previewTranscript);
-      if (hasWebPreviewFlag("hold_interpreting")) {
-        setCommandState("cc_interpreting_voice");
-        setIsInterpretingVoice(true);
-        return;
-      }
-      await interpretVoiceTranscript(previewTranscript);
-      return;
-    }
-    if (!recording) return;
-    setCommandState("cc_transcribing_voice");
-    setCommandErrorSubtype(null);
-    setCommandErrorDetail(null);
-    const activeRecording = recording;
-    setRecording(null);
-    try {
-      activeRecording.setOnRecordingStatusUpdate(null);
-      await activeRecording.stopAndUnloadAsync();
-      const status = await activeRecording.getStatusAsync();
-      const durationMillis = status.durationMillis ?? 0;
-      const uri = activeRecording.getURI();
-      if (!uri || durationMillis < MIN_RECORDING_DURATION_MS) {
-        throw new Error("Recording is too short. Please record at least 1 second.");
-      }
-      const token = await getToken();
-      if (!token) throw new Error("Not signed in");
-      const formData = new FormData();
-      formData.append("audio", { uri, name: `voicefit-${Date.now()}.m4a`, type: "audio/m4a" } as unknown as Blob);
-      const { transcript } = await apiFormRequest<{ transcript: string }>("/api/transcribe", formData, { token });
-      const cleaned = transcript.trim();
-      if (!cleaned) throw new Error("Transcript was empty. Please try again.");
-      setVoiceTranscript(cleaned);
-      await interpretVoiceTranscript(cleaned);
-    } catch (error) {
-      setCommandError("voice_interpret_failure", getErrorMessage(error));
-    }
-  }, [isWebPreview, recording, getToken, interpretVoiceTranscript, setCommandError]);
-
-  // ---- Review/edit helpers ----
-
-  const updateWorkoutSet = useCallback((setIndex: number, patch: Partial<Pick<WorkoutReviewSet, "weightKg" | "reps" | "notes">>) => {
-    setReviewDraft((prev) => {
-      if (!prev || prev.kind !== "workout") return prev;
-      const nextSets = prev.sets.map((set, i) => (i === setIndex ? { ...set, ...patch } : set));
-      return { ...prev, sets: nextSets };
-    });
-  }, []);
-
-  const addWorkoutSet = useCallback(() => {
-    setReviewDraft((prev) => {
-      if (!prev || prev.kind !== "workout") return prev;
-      const n = prev.sets.length + 1;
-      return { ...prev, sets: [...prev.sets, { id: `set-${n}`, setNumber: n, weightKg: "", reps: "", notes: "" }] };
-    });
-  }, []);
-
-  // -------------------------------------------------------------------------
-  // Pre-save ingredient editing — every mutation runs through these so totals
-  // stay in sync (`recalculateMealTotals` updates both display state and the
-  // mirror-of-payload that the existing save path reads from).
-  // -------------------------------------------------------------------------
-
-  const editIngredientGrams = useCallback((id: string, grams: number) => {
-    setReviewDraft((prev) => {
-      if (!prev || prev.kind !== "meal") return prev;
-      const ingredients = prev.ingredients.map((ing) =>
-        ing.id === id ? scaleIngredientByGrams(ing, grams) : ing,
-      );
-      return recalculateMealTotals({ ...prev, ingredients });
-    });
-  }, []);
-
-  const replaceIngredient = useCallback((id: string, replacement: MealIngredient) => {
-    setReviewDraft((prev) => {
-      if (!prev || prev.kind !== "meal") return prev;
-      const ingredients = prev.ingredients.map<MealReviewIngredient>((ing) =>
-        ing.id === id
-          ? {
-              id: ing.id,
-              name: replacement.name,
-              grams: replacement.grams,
-              calories: replacement.calories,
-              proteinG: replacement.proteinG,
-              carbsG: replacement.carbsG,
-              fatG: replacement.fatG,
-            }
-          : ing,
-      );
-      return recalculateMealTotals({ ...prev, ingredients });
-    });
-  }, []);
-
-  const addIngredient = useCallback((ingredient: MealIngredient) => {
-    setReviewDraft((prev) => {
-      if (!prev || prev.kind !== "meal") return prev;
-      const next: MealReviewIngredient = {
-        id: generateIngredientId(),
-        name: ingredient.name,
-        grams: ingredient.grams,
-        calories: ingredient.calories,
-        proteinG: ingredient.proteinG,
-        carbsG: ingredient.carbsG,
-        fatG: ingredient.fatG,
-      };
-      return recalculateMealTotals({ ...prev, ingredients: [...prev.ingredients, next] });
-    });
-  }, []);
-
-  const removeIngredient = useCallback((id: string) => {
-    setReviewDraft((prev) => {
-      if (!prev || prev.kind !== "meal") return prev;
-      const ingredients = prev.ingredients.filter((ing) => ing.id !== id);
-      return recalculateMealTotals({ ...prev, ingredients });
-    });
-  }, []);
-
-  /**
-   * Thin wrapper over the shared `fetchInterpretedIngredient` helper that
-   * resolves the Clerk token and short-circuits in web preview mode. The
-   * actual network call lives in `lib/api/ingredient.ts` so the meals-tab
-   * post-save editor can reuse it without depending on this provider.
-   */
-  const fetchInterpretedIngredient = useCallback(async (name: string, grams?: number): Promise<MealIngredient> => {
-    const trimmedName = name.trim();
-    if (!trimmedName) throw new Error("Name is required");
-
-    if (isWebPreview) {
-      await new Promise((resolve) => setTimeout(resolve, 700));
-      const g = grams && Number.isFinite(grams) && grams > 0 ? Math.round(grams) : 100;
-      // Crude per-100g defaults so the preview UI shows non-zero numbers.
-      const calories = Math.round((g / 100) * 150);
-      return {
-        name: trimmedName,
-        grams: g,
-        calories,
-        proteinG: Math.round(calories * 0.06),
-        carbsG: Math.round(calories * 0.04),
-        fatG: Math.round(calories * 0.02),
-      };
-    }
-
-    const token = await getToken();
-    return fetchInterpretedIngredientApi(token, trimmedName, grams);
-  }, [isWebPreview, getToken]);
-
-  const saveReviewedEntry = useCallback(async () => {
-    if (!reviewDraft) return;
-    if (reviewDraft.kind === "workout") {
-      const filledSets = reviewDraft.sets.filter((s) => s.weightKg.trim() || s.reps.trim() || s.notes.trim());
-      const setsToSave = filledSets.length > 0 ? filledSets : [reviewDraft.sets[0]];
-      setCommandState("cc_saving");
-      setCommandErrorSubtype(null);
-      setCommandErrorDetail(null);
-      try {
-        if (isWebPreview) {
-          await new Promise((resolve) => setTimeout(resolve, 550));
-          await refreshAfterSave();
-          setCommandToast("Saved");
-          closeCommandCenter();
-          return;
-        }
-        const token = await getToken();
-        if (!token) throw new Error("Not signed in");
-        const sessionId = screenContext.sessionId ?? await ensureQuickSession(token);
-        await Promise.all(
-          setsToSave.map((set) =>
-            apiRequest("/api/workout-sets", {
-              method: "POST",
-              token,
-              body: JSON.stringify({
-                sessionId,
-                exerciseName: reviewDraft.interpreted.payload.exerciseName,
-                exerciseType: reviewDraft.interpreted.payload.exerciseType,
-                reps: parsePositiveNumber(set.reps),
-                weightKg: parsePositiveNumber(set.weightKg),
-                durationMinutes: null,
-                notes: set.notes.trim() || reviewDraft.interpreted.payload.notes,
-                performedAt: new Date().toISOString(),
-                transcriptRaw: reviewDraft.transcript,
-              }),
-            }),
-          ),
-        );
-        await refreshAfterSave();
-        setCommandToast(`Saved ${setsToSave.length} set${setsToSave.length > 1 ? "s" : ""}`);
-        closeCommandCenter();
-      } catch (error) {
-        setCommandError("auto_save_failure", getErrorMessage(error));
-      }
-      return;
-    }
-    await runSaveAction({ kind: "entry", interpreted: reviewDraft.interpreted, transcript: reviewDraft.transcript, source: reviewDraft.source });
-  }, [reviewDraft, isWebPreview, getToken, refreshAfterSave, closeCommandCenter, setCommandError, screenContext.sessionId, runSaveAction]);
-
-  const editReviewTranscript = useCallback(() => {
-    if (!reviewDraft) return;
-    setCommandText(reviewDraft.transcript);
-    setVoiceTranscript(reviewDraft.transcript);
-    setReviewDraft(null);
-    setCommandState(reviewDraft.transcript.trim() ? "cc_expanded_typing" : "cc_expanded_empty");
-  }, [reviewDraft]);
-
-  const handleErrorPrimary = useCallback(async () => {
-    if (!commandErrorSubtype) return;
-    if (commandErrorSubtype === "typed_interpret_failure") { await sendTyped(); return; }
-    if (commandErrorSubtype === "voice_interpret_failure") { await startRecording(); return; }
-    if (commandErrorSubtype === "photo_interpret_failure") { await sendPhotoMeal(); return; }
-    if (commandErrorSubtype === "mic_permission_denied") {
-      try { await Linking.openSettings(); } catch { setCommandErrorDetail("Open your device settings and enable microphone access."); }
-      return;
-    }
-    if (commandErrorSubtype === "photo_permission_denied") {
-      try { await Linking.openSettings(); } catch { setCommandErrorDetail("Open your device settings and enable camera or photo access."); }
-      return;
-    }
-    if ((commandErrorSubtype === "auto_save_failure" || commandErrorSubtype === "quick_add_failure") && pendingSaveRef.current) {
-      await runSaveAction(pendingSaveRef.current);
-    }
-  }, [commandErrorSubtype, sendTyped, startRecording, sendPhotoMeal, runSaveAction]);
-
-  const handleErrorSecondary = useCallback(() => {
-    if (!commandErrorSubtype) return;
-    if (commandErrorSubtype === "typed_interpret_failure") {
-      setCommandState(commandText.trim() ? "cc_expanded_typing" : "cc_expanded_empty");
-      return;
-    }
-    if (commandErrorSubtype === "voice_interpret_failure") {
-      if (voiceTranscript.trim()) setCommandText(voiceTranscript.trim());
-      setCommandState(voiceTranscript.trim() ? "cc_expanded_typing" : "cc_expanded_empty");
-      return;
-    }
-    if (commandErrorSubtype === "photo_interpret_failure" || commandErrorSubtype === "photo_permission_denied") {
-      setSelectedMealPhoto(null);
-      setCommandState(commandText.trim() ? "cc_expanded_typing" : "cc_expanded_empty");
-      return;
-    }
-    if (commandErrorSubtype === "mic_permission_denied") {
-      setCommandState(commandText.trim() ? "cc_expanded_typing" : "cc_expanded_empty");
-      return;
-    }
-    closeCommandCenter();
-  }, [commandErrorSubtype, commandText, voiceTranscript, closeCommandCenter]);
-
-  const handleCommandInputChange = useCallback((text: string) => {
-    setCommandText(text);
-    if (commandState === "cc_expanded_empty" && text.trim()) setCommandState("cc_expanded_typing");
-    if (commandState === "cc_expanded_typing" && !text.trim()) setCommandState("cc_expanded_empty");
-  }, [commandState]);
+  const startRecording = useCallback(
+    async () => {
+      await commandCenterController.dispatch({ type: "voice.start" });
+    },
+    [commandCenterController],
+  );
 
   // ---- Screen context ----
   const setScreenContext = useCallback((ctx: ScreenContext) => setScreenContextState(ctx), []);
   const clearScreenContext = useCallback(() => setScreenContextState({}), []);
 
-  // ---- Derived ----
-  const activeErrorCopy = commandErrorSubtype ? ERROR_COPY[commandErrorSubtype] : null;
-
   // ---- Context values ----
+  const launcherProps = useMemo<CommandCenterLauncherProps>(() => ({
+    onPress: openCommandCenter,
+    onMicPress: startRecording,
+  }), [openCommandCenter, startRecording]);
+
   const publicValue = useMemo<CommandCenterPublicValue>(() => ({
     commandState,
     isOpen: commandState !== "cc_collapsed",
+    toast: commandToast,
     commandToast,
     open: openCommandCenter,
+    record: startRecording,
     startRecording,
-    close: closeCommandCenter,
+    close: closeCommandCenterForConsumers,
+    launcherProps,
     setScreenContext,
     clearScreenContext,
-  }), [commandState, commandToast, openCommandCenter, startRecording, closeCommandCenter, setScreenContext, clearScreenContext]);
+  }), [commandState, commandToast, openCommandCenter, startRecording, closeCommandCenterForConsumers, launcherProps, setScreenContext, clearScreenContext]);
 
-  const internalValue = useMemo<CommandCenterInternalValue>(() => ({
-    commandState,
-    commandText,
-    voiceTranscript,
-    recordingSeconds,
-    isInterpretingVoice,
-    reviewDraft,
-    selectedMealPhoto,
-    commandToast,
-    lastSavedKcalLeft,
-    commandErrorSubtype,
-    commandErrorDetail,
-    activeErrorCopy,
-    quickAddItems,
-    screenContext,
-    isWebPreview,
-    closeCommandCenter,
-    openCommandCenter,
-    startRecording,
-    stopRecording,
-    sendTyped,
-    openPhotoMenu,
-    sendPhotoMeal,
-    handleCommandInputChange,
-    handleErrorPrimary,
-    handleErrorSecondary,
-    saveReviewedEntry,
-    editReviewTranscript,
-    updateWorkoutSet,
-    addWorkoutSet,
-    editIngredientGrams,
-    replaceIngredient,
-    addIngredient,
-    removeIngredient,
-    fetchInterpretedIngredient,
-    runSaveAction,
-    setVoiceTranscript,
-    setCommandState,
-    setCommandText,
-  }), [
-    commandState, commandText, voiceTranscript, recordingSeconds, isInterpretingVoice,
-    reviewDraft, selectedMealPhoto, commandToast, lastSavedKcalLeft, commandErrorSubtype, commandErrorDetail, activeErrorCopy,
-    quickAddItems, screenContext, isWebPreview,
-    closeCommandCenter, openCommandCenter, startRecording, stopRecording, sendTyped,
-    openPhotoMenu, sendPhotoMeal,
-    handleCommandInputChange, handleErrorPrimary, handleErrorSecondary,
-    saveReviewedEntry, editReviewTranscript, updateWorkoutSet, addWorkoutSet,
-    editIngredientGrams, replaceIngredient, addIngredient, removeIngredient, fetchInterpretedIngredient,
-    runSaveAction,
-  ]);
+  const overlayValue = useMemo<CommandCenterOverlayValue>(() => ({
+    snapshot: overlaySnapshot,
+    dispatch: commandCenterController.dispatch,
+  }), [commandCenterController.dispatch, overlaySnapshot]);
 
   return (
     <CommandCenterPublicContext.Provider value={publicValue}>
-      <CommandCenterInternalContext.Provider value={internalValue}>
+      <CommandCenterOverlayContext.Provider value={overlayValue}>
         {children}
-      </CommandCenterInternalContext.Provider>
+      </CommandCenterOverlayContext.Provider>
     </CommandCenterPublicContext.Provider>
   );
 }

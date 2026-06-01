@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
+import type { MealIngredient } from "@voicefit/contracts/types";
 import {
   Alert,
   Image,
@@ -22,7 +23,7 @@ import {
   formatMealTypeLabel,
   formatRecordingDuration,
 } from "./helpers";
-import { useCommandCenterInternal } from "./CommandCenterProvider";
+import { useCommandCenterOverlay } from "./CommandCenterProvider";
 import { IngredientEditor, type IngredientEditorMode } from "./IngredientEditor";
 import type { MealReviewIngredient } from "./types";
 import { EXERCISE_CATALOG } from "../../lib/exercise-catalog";
@@ -248,31 +249,34 @@ function getInterpretingCopy(
 }
 
 function InterpretingScreen() {
-  const cc = useCommandCenterInternal();
-  const isTyped = cc.commandState === "cc_submitting_typed";
-  const isPhoto = cc.commandState === "cc_submitting_photo";
-  const transcript = isTyped || isPhoto ? cc.commandText : cc.voiceTranscript;
-  const setTranscript = isTyped || isPhoto ? cc.setCommandText : cc.setVoiceTranscript;
+  const { snapshot, dispatch } = useCommandCenterOverlay();
+  const { state, input } = snapshot;
+  const isTyped = state === "cc_submitting_typed";
+  const isPhoto = state === "cc_submitting_photo";
+  const transcript = isTyped || isPhoto ? input.text : input.voiceTranscript;
+  const setTranscript = (text: string) => {
+    dispatch(isTyped || isPhoto ? { type: "text.set", text } : { type: "voice.transcript.change", text });
+  };
   const copy = getInterpretingCopy(
-    cc.commandState as "cc_submitting_typed" | "cc_submitting_photo" | "cc_transcribing_voice" | "cc_interpreting_voice",
-    cc.recordingSeconds,
+    state as "cc_submitting_typed" | "cc_submitting_photo" | "cc_transcribing_voice" | "cc_interpreting_voice",
+    input.recordingSeconds,
   );
   const [isEditingTranscript, setIsEditingTranscript] = useState(false);
 
   const headerCloseTestID =
-    cc.commandState === "cc_transcribing_voice"
+    state === "cc_transcribing_voice"
       ? "cc-transcribing-close"
-      : cc.commandState === "cc_interpreting_voice"
+      : state === "cc_interpreting_voice"
       ? "cc-interpreting-close"
       : undefined;
 
   const onEditPress = () => {
     if (isPhoto) {
-      cc.setCommandState("cc_photo_context");
+      dispatch({ type: "photo.context.edit" });
       return;
     }
     if (isTyped) {
-      cc.setCommandState("cc_expanded_typing");
+      dispatch({ type: "text.edit" });
       return;
     }
     setIsEditingTranscript(true);
@@ -283,7 +287,7 @@ function InterpretingScreen() {
   return (
     <Sheet
       title={null}
-      onClose={cc.closeCommandCenter}
+      onClose={() => dispatch({ type: "close" })}
       canCloseViaBackdrop={false}
       showCloseButton={false}
     >
@@ -297,7 +301,7 @@ function InterpretingScreen() {
             {headerCloseTestID ? (
               <Pressable
                 style={styles.interpretingHeaderClose}
-                onPress={cc.closeCommandCenter}
+                onPress={() => dispatch({ type: "close" })}
                 testID={headerCloseTestID}
               >
                 <CloseGlyph />
@@ -362,7 +366,7 @@ function InterpretingScreen() {
           {!isTyped && !isPhoto ? (
             <Pressable
               style={styles.interpretingButton}
-              onPress={() => void cc.startRecording()}
+              onPress={() => void dispatch({ type: "voice.start" })}
               testID="cc-interpreting-retry-voice"
             >
               <Text style={styles.interpretingButtonText}>Retry</Text>
@@ -377,11 +381,646 @@ function InterpretingScreen() {
           </Pressable>
           <Pressable
             style={styles.interpretingButton}
-            onPress={cc.closeCommandCenter}
+            onPress={() => dispatch({ type: "close" })}
             testID="cc-interpreting-discard"
           >
             <Text style={styles.interpretingButtonTextMute}>Discard</Text>
           </Pressable>
+        </View>
+      </View>
+    </Sheet>
+  );
+}
+
+function IdleSheet() {
+  const { snapshot, dispatch } = useCommandCenterOverlay();
+  const { input, quickAddItems, screenContext } = snapshot;
+  const sendDisabled = !input.text.trim();
+  const isWorkout = screenContext.screen === "workout";
+  const placeholder = isWorkout
+    ? 'Try "did 3 sets of squats at 80…"'
+    : 'Try "had a chicken caesar and a diet coke for lunch"…';
+
+  return (
+    <View style={styles.idleBody}>
+      <View style={styles.idleInputCard}>
+        <TextInput
+          style={styles.idleInput}
+          placeholder={placeholder}
+          placeholderTextColor={t.textSoft}
+          value={input.text}
+          onChangeText={(text) => dispatch({ type: "text.change", text })}
+          multiline
+          testID="cc-input-text"
+        />
+      </View>
+
+      <View style={styles.idleActionsRow}>
+        <Pressable
+          style={styles.idleSquareBtn}
+          onPress={() => void dispatch({ type: "photo.menu.open" })}
+          testID="cc-camera"
+        >
+          <CameraGlyph />
+        </Pressable>
+
+        <Pressable
+          style={styles.idleMicWrap}
+          onPress={() => void dispatch({ type: "voice.start" })}
+          testID="cc-big-mic"
+        >
+          <View pointerEvents="none" style={styles.idleMicHaloOuter} />
+          <View pointerEvents="none" style={styles.idleMicHaloMid} />
+          <View style={styles.idleMicCore}>
+            <MicGlyph />
+          </View>
+        </Pressable>
+
+        <Pressable
+          style={[styles.idleSquareBtn, sendDisabled && styles.idleSquareBtnDisabled]}
+          disabled={sendDisabled}
+          onPress={() => void dispatch({ type: "text.submit" })}
+          testID="cc-send"
+        >
+          <SparkSendGlyph />
+        </Pressable>
+      </View>
+
+      <Text style={styles.idleCaption}>HOLD TO SPEAK · OR TYPE</Text>
+
+      {isWorkout ? (
+        <View style={styles.frequentSection}>
+          <Text style={styles.frequentLabel}>FREQUENT</Text>
+          {EXERCISE_CATALOG.slice(0, 5).map((exercise, index) => (
+            <Pressable
+              key={exercise.name}
+              style={styles.frequentRow}
+              onPress={() => {
+                dispatch({ type: "text.change", text: `3 sets of ${exercise.name}` });
+              }}
+              testID={`cc-exercise-${index}`}
+            >
+              <View style={styles.frequentText}>
+                <Text style={styles.frequentName}>{exercise.name}</Text>
+                <Text style={styles.frequentSub}>
+                  {exercise.equipment} · {exercise.group}
+                </Text>
+              </View>
+              <View style={styles.frequentPlus}>
+                <PlusGlyph />
+              </View>
+            </Pressable>
+          ))}
+        </View>
+      ) : (
+        <View style={styles.frequentSection}>
+          <Text style={styles.frequentLabel}>FREQUENT</Text>
+          {quickAddItems.slice(0, 3).map((item, index) => (
+            <Pressable
+              key={item.id}
+              style={styles.frequentRow}
+              onPress={() => {
+                void dispatch({ type: "quick-add.save", item });
+              }}
+              testID={`cc-quick-add-${index}`}
+            >
+              <View style={styles.frequentText}>
+                <Text style={styles.frequentName}>{item.description}</Text>
+                <Text style={styles.frequentSub}>{item.calories} kcal</Text>
+              </View>
+              <View style={styles.frequentPlus}>
+                <PlusGlyph />
+              </View>
+            </Pressable>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
+function PhotoContextSheet({ onClose }: { onClose: () => void }) {
+  const { snapshot, dispatch } = useCommandCenterOverlay();
+  const photo = snapshot.input.selectedMealPhoto;
+
+  return (
+    <Sheet title="Log meal photo" onClose={onClose} canCloseViaBackdrop={false}>
+      <View style={styles.photoBody}>
+        {photo ? (
+          <Image
+            source={{ uri: photo.uri }}
+            style={styles.photoPreview}
+            resizeMode="cover"
+            testID="cc-photo-preview"
+          />
+        ) : (
+          <View style={styles.photoPreviewFallback}>
+            <CameraGlyph color={t.textMute} />
+          </View>
+        )}
+
+        <View style={styles.photoContextCard}>
+          <TextInput
+            style={styles.photoContextInput}
+            placeholder="Add context, e.g. chicken, rice, and sauce"
+            placeholderTextColor={t.textSoft}
+            value={snapshot.input.text}
+            onChangeText={(text) => dispatch({ type: "text.change", text })}
+            multiline
+            testID="cc-photo-context"
+          />
+        </View>
+
+        <View style={styles.photoActions}>
+          <Pressable
+            style={styles.photoSecondaryButton}
+            onPress={() => void dispatch({ type: "photo.menu.open" })}
+            testID="cc-photo-replace"
+          >
+            <Text style={styles.photoSecondaryText}>Change photo</Text>
+          </Pressable>
+          <Pressable
+            style={styles.photoPrimaryButton}
+            onPress={() => void dispatch({ type: "photo.submit" })}
+            testID="cc-photo-submit"
+          >
+            <Text style={styles.photoPrimaryText}>Submit photo</Text>
+            <SparkSendGlyph color={t.accentInk} />
+          </Pressable>
+        </View>
+      </View>
+    </Sheet>
+  );
+}
+
+function RecordingSheet({ onClose }: { onClose: () => void }) {
+  const { snapshot, dispatch } = useCommandCenterOverlay();
+  const liveText = snapshot.input.voiceTranscript.trim();
+
+  return (
+    <Sheet title={null} onClose={onClose} canCloseViaBackdrop={false} showCloseButton={false}>
+      <View style={styles.listeningBody}>
+        <View style={styles.listeningHeader}>
+          <View style={styles.listeningHeaderSide}>
+            <View style={styles.listeningTimerWrap}>
+              <View style={styles.listeningDot} />
+              <Text style={styles.listeningTimer}>{formatRecordingDuration(snapshot.input.recordingSeconds)}</Text>
+            </View>
+          </View>
+          <View style={styles.listeningHeaderCenter}>
+            <Text style={styles.listeningTitle}>Listening</Text>
+          </View>
+          <View style={[styles.listeningHeaderSide, styles.listeningHeaderSideRight]}>
+            <Pressable style={styles.sheetCloseCircle} onPress={onClose} testID="cc-recording-discard">
+              <CloseGlyph />
+            </Pressable>
+          </View>
+        </View>
+
+        <View style={styles.listeningTranscriptWrap}>
+          <Text style={styles.listeningTranscriptText}>
+            {liveText ? liveText : <Text style={styles.listeningTranscriptPlaceholder}>Start speaking…</Text>}
+          </Text>
+          <BlinkingCursor />
+        </View>
+
+        <View style={styles.listeningWaveformRow}>
+          {LISTENING_BAR_HEIGHTS.map((h, i) => (
+            <View
+              key={i}
+              style={[
+                styles.listeningBar,
+                {
+                  height: h * 1.4,
+                  backgroundColor: i > 9 ? t.accent : t.textSoft,
+                  opacity: i > 15 ? 0.3 : 1,
+                },
+                i > 9 && styles.listeningBarGlow,
+              ]}
+            />
+          ))}
+        </View>
+
+        <View style={styles.listeningStopWrap}>
+          <View pointerEvents="none" style={styles.listeningStopHaloOuter} />
+          <View pointerEvents="none" style={styles.listeningStopHaloMid} />
+          <Pressable style={styles.listeningStopCore} onPress={() => void dispatch({ type: "voice.stop" })} testID="cc-recording-stop">
+            <View style={styles.listeningStopSquare} />
+          </Pressable>
+        </View>
+
+        <Text style={styles.listeningCaption}>TAP TO STOP</Text>
+      </View>
+    </Sheet>
+  );
+}
+
+function MealReviewSheet({
+  onClose,
+  onAddIngredient,
+  onEditIngredient,
+  onLongPressIngredient,
+}: {
+  onClose: () => void;
+  onAddIngredient: () => void;
+  onEditIngredient: (ingredient: MealReviewIngredient) => void;
+  onLongPressIngredient: (ingredient: MealReviewIngredient) => void;
+}) {
+  const { snapshot, dispatch } = useCommandCenterOverlay();
+  const reviewDraft = snapshot.review?.kind === "meal" ? snapshot.review : null;
+  if (!reviewDraft) return null;
+
+  const meal = reviewDraft.interpreted.payload;
+  const mealTypeLabel = formatMealTypeLabel(meal.mealType).toUpperCase();
+  const totalGramsLabel = `${Math.round(reviewDraft.totalGrams)} G`;
+  const eyebrowParts = [mealTypeLabel, reviewDraft.eatenAtLabel, totalGramsLabel].filter(Boolean);
+  const eyebrow = eyebrowParts.join(" · ");
+
+  return (
+    <Sheet
+      title={null}
+      onClose={onClose}
+      canCloseViaBackdrop={false}
+      showCloseButton={false}
+      closeButtonTestID="cc-review-close"
+    >
+      <ScrollView
+        style={styles.reviewScroll}
+        contentContainerStyle={styles.mealReviewContent}
+        showsVerticalScrollIndicator={false}
+        keyboardDismissMode="on-drag"
+      >
+        <View style={styles.mealReviewYouSaidRow}>
+          <Text style={styles.mealReviewYouSaidLabel}>YOU SAID</Text>
+          <Pressable onPress={() => dispatch({ type: "review.transcript.edit" })} testID="cc-review-edit-transcript">
+            <Text style={styles.mealReviewEditLink}>EDIT</Text>
+          </Pressable>
+        </View>
+        <Text style={styles.mealReviewTranscript}>{`"${reviewDraft.transcript}"`}</Text>
+
+        <View style={styles.mealReviewBigCard}>
+          <View style={styles.mealReviewHeroRow}>
+            <View style={styles.mealReviewHeroLeft}>
+              <Text style={styles.mealReviewEyebrow}>{eyebrow}</Text>
+              <Text style={styles.mealReviewName}>{meal.description}</Text>
+            </View>
+            <View style={styles.mealReviewHeroRight}>
+              <Text style={styles.mealReviewKcal}>{meal.calories}</Text>
+              <Text style={styles.mealReviewKcalCaption}>KCAL · EST.</Text>
+            </View>
+          </View>
+
+          <View style={styles.mealReviewMacrosGrid}>
+            <View style={styles.mealReviewMacroCell}>
+              <Text style={styles.mealReviewMacroLabel}>PROTEIN</Text>
+              <View style={styles.mealReviewMacroValueRow}>
+                <Text style={[styles.mealReviewMacroValue, styles.mealReviewMacroValueAccent]}>
+                  {reviewDraft.macros.protein}
+                </Text>
+                <Text style={styles.mealReviewMacroUnit}>g</Text>
+              </View>
+            </View>
+            <View style={styles.mealReviewMacroCell}>
+              <Text style={styles.mealReviewMacroLabel}>CARBS</Text>
+              <View style={styles.mealReviewMacroValueRow}>
+                <Text style={[styles.mealReviewMacroValue, styles.mealReviewMacroValueSoft]}>
+                  {reviewDraft.macros.carbs}
+                </Text>
+                <Text style={styles.mealReviewMacroUnit}>g</Text>
+              </View>
+            </View>
+            <View style={styles.mealReviewMacroCell}>
+              <Text style={styles.mealReviewMacroLabel}>FAT</Text>
+              <View style={styles.mealReviewMacroValueRow}>
+                <Text style={[styles.mealReviewMacroValue, styles.mealReviewMacroValueSoft]}>
+                  {reviewDraft.macros.fat}
+                </Text>
+                <Text style={styles.mealReviewMacroUnit}>g</Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.mealReviewDivider} />
+
+          <View style={styles.mealReviewIngredientsHeader}>
+            <Text style={styles.mealReviewIngredientsTitle}>INGREDIENTS</Text>
+            <Pressable onPress={onAddIngredient} testID="cc-review-add-ingredient">
+              <Text style={styles.mealReviewAddLink}>+ ADD</Text>
+            </Pressable>
+          </View>
+
+          {reviewDraft.ingredients.map((ingredient, index) => (
+            <Pressable
+              key={ingredient.id}
+              onPress={() => onEditIngredient(ingredient)}
+              onLongPress={() => onLongPressIngredient(ingredient)}
+              delayLongPress={400}
+              style={[
+                styles.mealReviewIngredientRow,
+                index === 0 ? null : styles.mealReviewIngredientRowDivider,
+              ]}
+              testID={`cc-review-ingredient-${index}`}
+            >
+              <View style={styles.mealReviewIngredientCopy}>
+                <Text style={styles.mealReviewIngredientName}>{ingredient.name}</Text>
+                <Text style={styles.mealReviewIngredientMacros}>
+                  {`P ${Math.round(ingredient.proteinG)}g · C ${Math.round(ingredient.carbsG)}g · F ${Math.round(ingredient.fatG)}g`}
+                </Text>
+              </View>
+              <Text style={styles.mealReviewIngredientQty}>{`${Math.round(ingredient.grams)} g`}</Text>
+              <Text style={styles.mealReviewIngredientCal}>{ingredient.calories}</Text>
+            </Pressable>
+          ))}
+        </View>
+
+        <View style={styles.mealReviewActions}>
+          <Pressable
+            style={styles.mealReviewDiscardButton}
+            onPress={onClose}
+            testID="cc-review-discard"
+          >
+            <Text style={styles.mealReviewDiscardText}>DISCARD</Text>
+          </Pressable>
+          <Pressable
+            style={styles.mealReviewSaveButton}
+            onPress={() => void dispatch({ type: "review.save" })}
+            testID="cc-review-save"
+          >
+            <Text style={styles.mealReviewSaveText}>Save meal</Text>
+            <CheckGlyph color={t.accentInk} />
+          </Pressable>
+        </View>
+      </ScrollView>
+    </Sheet>
+  );
+}
+
+function WorkoutReviewSheet({ onClose }: { onClose: () => void }) {
+  const { snapshot, dispatch } = useCommandCenterOverlay();
+  const reviewDraft = snapshot.review?.kind === "workout" ? snapshot.review : null;
+  if (!reviewDraft) return null;
+
+  const workout = reviewDraft.interpreted.payload;
+  const confidence = confidenceLabel(reviewDraft.confidence);
+  const segmentCount = Math.max(0, Math.min(4, Math.round(reviewDraft.confidence * 4)));
+  const eyebrow = reviewDraft.exerciseTypeLabel.toUpperCase();
+  const sessionLabel = snapshot.screenContext.sessionId ? "Current session" : reviewDraft.sessionLabel;
+
+  return (
+    <Sheet
+      title={null}
+      onClose={onClose}
+      canCloseViaBackdrop={false}
+      showCloseButton={false}
+      closeButtonTestID="cc-review-close"
+    >
+      <ScrollView
+        style={styles.reviewScroll}
+        contentContainerStyle={styles.mealReviewContent}
+        showsVerticalScrollIndicator={false}
+        keyboardDismissMode="on-drag"
+      >
+        <View style={styles.mealReviewYouSaidRow}>
+          <Text style={styles.mealReviewYouSaidLabel}>YOU SAID</Text>
+          <Pressable onPress={() => dispatch({ type: "review.transcript.edit" })} testID="cc-review-edit-transcript">
+            <Text style={styles.mealReviewEditLink}>EDIT</Text>
+          </Pressable>
+        </View>
+        <Text style={styles.mealReviewTranscript}>{`"${reviewDraft.transcript}"`}</Text>
+
+        <View style={styles.mealReviewBigCard}>
+          <View style={styles.mealReviewHeroRow}>
+            <View style={styles.mealReviewHeroLeft}>
+              <Text style={styles.mealReviewEyebrow}>{eyebrow}</Text>
+              <Text style={styles.mealReviewName}>{workout.exerciseName}</Text>
+            </View>
+          </View>
+
+          <View style={styles.mealReviewDivider} />
+
+          <View style={styles.mealReviewIngredientsHeader}>
+            <Text style={styles.mealReviewIngredientsTitle}>SETS</Text>
+          </View>
+
+          <View style={styles.workoutSetTableHeader}>
+            <Text style={[styles.workoutSetColLabel, styles.workoutSetColSet]}>SET</Text>
+            <Text style={[styles.workoutSetColLabel, styles.workoutSetColKg]}>KG</Text>
+            <Text style={[styles.workoutSetColLabel, styles.workoutSetColReps]}>REPS</Text>
+            <Text style={[styles.workoutSetColLabel, styles.workoutSetColNotes]}>NOTES</Text>
+          </View>
+
+          {reviewDraft.sets.map((set, index) => (
+            <View
+              key={set.id}
+              style={[
+                styles.workoutSetTableRow,
+                index === 0 ? null : styles.workoutSetTableRowDivider,
+              ]}
+            >
+              <Text style={[styles.workoutSetCellNumber, styles.workoutSetColSet]}>
+                {set.setNumber}
+              </Text>
+              <TextInput
+                style={[styles.workoutSetCellInput, styles.workoutSetColKg]}
+                value={set.weightKg}
+                onChangeText={(v) =>
+                  dispatch({ type: "workout-set.update", index, patch: { weightKg: v.replace(/[^0-9.]/g, "") } })
+                }
+                keyboardType="decimal-pad"
+                placeholder="—"
+                placeholderTextColor={t.textMute}
+                testID={`cc-review-workout-kg-${index}`}
+              />
+              <TextInput
+                style={[styles.workoutSetCellInput, styles.workoutSetColReps]}
+                value={set.reps}
+                onChangeText={(v) =>
+                  dispatch({ type: "workout-set.update", index, patch: { reps: v.replace(/[^0-9]/g, "") } })
+                }
+                keyboardType="number-pad"
+                placeholder="—"
+                placeholderTextColor={t.textMute}
+                testID={`cc-review-workout-reps-${index}`}
+              />
+              <TextInput
+                style={[styles.workoutSetCellNotesInput, styles.workoutSetColNotes]}
+                value={set.notes}
+                onChangeText={(v) => dispatch({ type: "workout-set.update", index, patch: { notes: v } })}
+                placeholder="—"
+                placeholderTextColor={t.textMute}
+                testID={`cc-review-workout-notes-${index}`}
+              />
+            </View>
+          ))}
+
+          <Pressable
+            style={styles.workoutAddSetButton}
+            onPress={() => dispatch({ type: "workout-set.add" })}
+            testID="cc-review-add-set"
+          >
+            <Text style={styles.workoutAddSetButtonText}>+ ADD SET</Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.mealReviewConfidenceRow}>
+          <View style={styles.mealReviewConfidenceBar}>
+            {[0, 1, 2, 3].map((i) => (
+              <View
+                key={i}
+                style={[
+                  styles.mealReviewConfidenceSegment,
+                  { backgroundColor: i < segmentCount ? t.accent : t.line },
+                ]}
+              />
+            ))}
+          </View>
+          <Text style={styles.mealReviewConfidenceText}>{confidence.text}</Text>
+        </View>
+
+        <View style={styles.workoutSessionRowNew}>
+          <Text style={styles.workoutSessionLabelNew}>Add to session</Text>
+          <Text style={styles.workoutSessionValueNew}>{sessionLabel}</Text>
+        </View>
+
+        <View style={styles.mealReviewActions}>
+          <Pressable
+            style={styles.mealReviewDiscardButton}
+            onPress={onClose}
+            testID="cc-review-discard"
+          >
+            <Text style={styles.mealReviewDiscardText}>DISCARD</Text>
+          </Pressable>
+          <Pressable
+            style={styles.mealReviewSaveButton}
+            onPress={() => void dispatch({ type: "review.save" })}
+            testID="cc-review-save"
+          >
+            <Text style={styles.mealReviewSaveText}>Save sets</Text>
+            <CheckGlyph color={t.accentInk} />
+          </Pressable>
+        </View>
+      </ScrollView>
+    </Sheet>
+  );
+}
+
+function SavingSheet({ onClose }: { onClose: () => void }) {
+  return (
+    <Sheet title={null} onClose={onClose} canCloseViaBackdrop={false} showCloseButton={false}>
+      <View style={styles.sheetContentCentered}>
+        <VoiceRing state="interpreting" size={180} />
+        <Text style={styles.savingCaption}>Saving…</Text>
+      </View>
+    </Sheet>
+  );
+}
+
+function ErrorSheet({ onClose }: { onClose: () => void }) {
+  const { snapshot, dispatch } = useCommandCenterOverlay();
+  const { error, input } = snapshot;
+  if (!error.copy) return null;
+
+  const isMicError = error.subtype === "mic_permission_denied";
+  const isVoiceError = error.subtype === "voice_interpret_failure";
+  const tone = isMicError ? t.warn : t.negative;
+  const toneTintBg = isMicError ? "rgba(255,179,71,0.12)" : "rgba(255,107,107,0.12)";
+  const toneTintBorder = isMicError ? "rgba(255,179,71,0.35)" : "rgba(255,107,107,0.35)";
+  const recBars = [4, 6, 3, 5, 4, 6, 5, 3, 4, 5, 4, 3];
+
+  return (
+    <Sheet
+      title={null}
+      onClose={onClose}
+      canCloseViaBackdrop={false}
+      showCloseButton={false}
+    >
+      <View style={styles.errorBody}>
+        <View
+          style={[
+            styles.errorIconTile,
+            { backgroundColor: toneTintBg, borderColor: toneTintBorder },
+          ]}
+        >
+          <Svg width={22} height={22} viewBox="0 0 22 22">
+            <Path
+              d="M11 2L20 19H2L11 2Z"
+              stroke={tone}
+              strokeWidth={1.8}
+              strokeLinejoin="round"
+              fill="none"
+            />
+            <Path d="M11 9V13" stroke={tone} strokeWidth={1.8} strokeLinecap="round" />
+            <Path d="M11 16L11 16.01" stroke={tone} strokeWidth={2.4} strokeLinecap="round" />
+          </Svg>
+        </View>
+
+        <Text style={styles.errorHeading}>{error.copy.title}</Text>
+        <Text style={styles.errorMessage}>{error.copy.body}</Text>
+        {error.detail ? (
+          <Text style={[styles.errorDetailLine, { color: tone }]}>
+            {error.detail}
+          </Text>
+        ) : null}
+
+        {isVoiceError ? (
+          <View style={styles.errorRecStrip} testID="cc-error-rec-strip">
+            <Text style={styles.errorRecLabel}>REC</Text>
+            <View style={styles.errorRecBars}>
+              {recBars.map((h, i) => (
+                <View key={i} style={[styles.errorRecBar, { height: h }]} />
+              ))}
+            </View>
+            <Text style={[styles.errorRecDuration, { color: tone }]}>
+              {formatRecordingDuration(input.recordingSeconds)}
+            </Text>
+          </View>
+        ) : null}
+
+        <View style={styles.errorActions}>
+          <Pressable
+            style={styles.errorPrimaryButton}
+            onPress={() => void dispatch({ type: "error.primary" })}
+            testID="cc-error-primary"
+          >
+            <Svg width={14} height={14} viewBox="0 0 14 14">
+              <Path
+                d="M3 3V1L0 4L3 7V5C6 5 8 7 8 10H10C10 6 7 3 3 3Z"
+                fill={t.accentInk}
+              />
+              <Path
+                d="M11 11V13L14 10L11 7V9C8 9 6 7 6 4H4C4 8 7 11 11 11Z"
+                fill={t.accentInk}
+              />
+            </Svg>
+            <Text style={styles.errorPrimaryText}>{error.copy.primary}</Text>
+          </Pressable>
+          {error.copy.secondary ? (
+            <Pressable
+              style={styles.errorSecondaryButton}
+              onPress={() => dispatch({ type: "error.secondary" })}
+              testID="cc-error-secondary"
+            >
+              <Svg width={14} height={14} viewBox="0 0 14 14">
+                <Path
+                  d="M2 10L10 2L13 5L5 13H2V10Z"
+                  stroke={t.text}
+                  strokeWidth={1.4}
+                  strokeLinejoin="round"
+                  fill="none"
+                />
+              </Svg>
+              <Text style={styles.errorSecondaryText}>{error.copy.secondary}</Text>
+            </Pressable>
+          ) : null}
+          {error.copy.tertiary ? (
+            <Pressable
+              style={styles.errorTertiaryButton}
+              onPress={onClose}
+              testID="cc-error-tertiary"
+            >
+              <Text style={styles.errorTertiaryText}>{error.copy.tertiary}</Text>
+            </Pressable>
+          ) : null}
         </View>
       </View>
     </Sheet>
@@ -393,13 +1032,14 @@ function InterpretingScreen() {
 // ---------------------------------------------------------------------------
 
 export function CommandCenterOverlay() {
-  const cc = useCommandCenterInternal();
+  const { snapshot, dispatch } = useCommandCenterOverlay();
 
-  const { commandState } = cc;
+  const { state: commandState, review: reviewDraft, error, toast } = snapshot;
   const isVisible = commandState !== "cc_collapsed";
   const canCloseViaBackdrop =
     commandState === "cc_expanded_empty" || commandState === "cc_expanded_typing";
   const modalAnimationType = Platform.OS === "web" ? "none" : "slide";
+  const closeCommandCenter = () => dispatch({ type: "close" });
 
   // Ingredient editor sheet state — local to the overlay because nothing else
   // needs to read it. The editor mounts on top of the meal review sheet so
@@ -428,180 +1068,23 @@ export function CommandCenterOverlay() {
         {
           text: "Delete",
           style: "destructive",
-          onPress: () => cc.removeIngredient(ingredient.id),
+          onPress: () => dispatch({ type: "ingredient.remove", id: ingredient.id }),
         },
       ],
-    );
-  };
-
-  const renderIdle = () => {
-    const sendDisabled = !cc.commandText.trim();
-    const isWorkout = cc.screenContext.screen === "workout";
-    const placeholder = isWorkout
-      ? 'Try "did 3 sets of squats at 80…"'
-      : 'Try "had a chicken caesar and a diet coke for lunch"…';
-
-    return (
-      <View style={styles.idleBody}>
-        <View style={styles.idleInputCard}>
-          <TextInput
-            style={styles.idleInput}
-            placeholder={placeholder}
-            placeholderTextColor={t.textSoft}
-            value={cc.commandText}
-            onChangeText={cc.handleCommandInputChange}
-            multiline
-            testID="cc-input-text"
-          />
-        </View>
-
-        <View style={styles.idleActionsRow}>
-          <Pressable
-            style={styles.idleSquareBtn}
-            onPress={cc.openPhotoMenu}
-            testID="cc-camera"
-          >
-            <CameraGlyph />
-          </Pressable>
-
-          <Pressable
-            style={styles.idleMicWrap}
-            onPress={() => void cc.startRecording()}
-            testID="cc-big-mic"
-          >
-            <View pointerEvents="none" style={styles.idleMicHaloOuter} />
-            <View pointerEvents="none" style={styles.idleMicHaloMid} />
-            <View style={styles.idleMicCore}>
-              <MicGlyph />
-            </View>
-          </Pressable>
-
-          <Pressable
-            style={[styles.idleSquareBtn, sendDisabled && styles.idleSquareBtnDisabled]}
-            disabled={sendDisabled}
-            onPress={() => void cc.sendTyped()}
-            testID="cc-send"
-          >
-            <SparkSendGlyph />
-          </Pressable>
-        </View>
-
-        <Text style={styles.idleCaption}>HOLD TO SPEAK · OR TYPE</Text>
-
-        {isWorkout ? (
-          <View style={styles.frequentSection}>
-            <Text style={styles.frequentLabel}>FREQUENT</Text>
-            {EXERCISE_CATALOG.slice(0, 5).map((exercise, index) => (
-              <Pressable
-                key={exercise.name}
-                style={styles.frequentRow}
-                onPress={() => {
-                  cc.handleCommandInputChange(`3 sets of ${exercise.name}`);
-                }}
-                testID={`cc-exercise-${index}`}
-              >
-                <View style={styles.frequentText}>
-                  <Text style={styles.frequentName}>{exercise.name}</Text>
-                  <Text style={styles.frequentSub}>
-                    {exercise.equipment} · {exercise.group}
-                  </Text>
-                </View>
-                <View style={styles.frequentPlus}>
-                  <PlusGlyph />
-                </View>
-              </Pressable>
-            ))}
-          </View>
-        ) : (
-          <View style={styles.frequentSection}>
-            <Text style={styles.frequentLabel}>FREQUENT</Text>
-            {cc.quickAddItems.slice(0, 3).map((item, index) => (
-              <Pressable
-                key={item.id}
-                style={styles.frequentRow}
-                onPress={() => {
-                  void cc.runSaveAction({ kind: "quick_add", item });
-                }}
-                testID={`cc-quick-add-${index}`}
-              >
-                <View style={styles.frequentText}>
-                  <Text style={styles.frequentName}>{item.description}</Text>
-                  <Text style={styles.frequentSub}>{item.calories} kcal</Text>
-                </View>
-                <View style={styles.frequentPlus}>
-                  <PlusGlyph />
-                </View>
-              </Pressable>
-            ))}
-          </View>
-        )}
-      </View>
-    );
-  };
-
-  const renderPhotoContext = () => {
-    const photo = cc.selectedMealPhoto;
-    return (
-      <Sheet title="Log meal photo" onClose={cc.closeCommandCenter} canCloseViaBackdrop={false}>
-        <View style={styles.photoBody}>
-          {photo ? (
-            <Image
-              source={{ uri: photo.uri }}
-              style={styles.photoPreview}
-              resizeMode="cover"
-              testID="cc-photo-preview"
-            />
-          ) : (
-            <View style={styles.photoPreviewFallback}>
-              <CameraGlyph color={t.textMute} />
-            </View>
-          )}
-
-          <View style={styles.photoContextCard}>
-            <TextInput
-              style={styles.photoContextInput}
-              placeholder="Add context, e.g. chicken, rice, and sauce"
-              placeholderTextColor={t.textSoft}
-              value={cc.commandText}
-              onChangeText={cc.handleCommandInputChange}
-              multiline
-              testID="cc-photo-context"
-            />
-          </View>
-
-          <View style={styles.photoActions}>
-            <Pressable
-              style={styles.photoSecondaryButton}
-              onPress={cc.openPhotoMenu}
-              testID="cc-photo-replace"
-            >
-              <Text style={styles.photoSecondaryText}>Change photo</Text>
-            </Pressable>
-            <Pressable
-              style={styles.photoPrimaryButton}
-              onPress={() => void cc.sendPhotoMeal()}
-              testID="cc-photo-submit"
-            >
-              <Text style={styles.photoPrimaryText}>Submit photo</Text>
-              <SparkSendGlyph color={t.accentInk} />
-            </Pressable>
-          </View>
-        </View>
-      </Sheet>
     );
   };
 
   const renderContent = () => {
     if (commandState === "cc_expanded_empty" || commandState === "cc_expanded_typing") {
       return (
-        <Sheet title="Log anything" onClose={cc.closeCommandCenter} canCloseViaBackdrop={canCloseViaBackdrop}>
-          {renderIdle()}
+        <Sheet title="Log anything" onClose={closeCommandCenter} canCloseViaBackdrop={canCloseViaBackdrop}>
+          <IdleSheet />
         </Sheet>
       );
     }
 
     if (commandState === "cc_photo_context") {
-      return renderPhotoContext();
+      return <PhotoContextSheet onClose={closeCommandCenter} />;
     }
 
     if (
@@ -614,332 +1097,22 @@ export function CommandCenterOverlay() {
     }
 
     if (commandState === "cc_recording") {
-      const liveText = cc.voiceTranscript.trim();
+      return <RecordingSheet onClose={closeCommandCenter} />;
+    }
+
+    if (commandState === "cc_review_meal" && reviewDraft?.kind === "meal") {
       return (
-        <Sheet title={null} onClose={cc.closeCommandCenter} canCloseViaBackdrop={false} showCloseButton={false}>
-          <View style={styles.listeningBody}>
-            <View style={styles.listeningHeader}>
-              <View style={styles.listeningHeaderSide}>
-                <View style={styles.listeningTimerWrap}>
-                  <View style={styles.listeningDot} />
-                  <Text style={styles.listeningTimer}>{formatRecordingDuration(cc.recordingSeconds)}</Text>
-                </View>
-              </View>
-              <View style={styles.listeningHeaderCenter}>
-                <Text style={styles.listeningTitle}>Listening</Text>
-              </View>
-              <View style={[styles.listeningHeaderSide, styles.listeningHeaderSideRight]}>
-                <Pressable style={styles.sheetCloseCircle} onPress={cc.closeCommandCenter} testID="cc-recording-discard">
-                  <CloseGlyph />
-                </Pressable>
-              </View>
-            </View>
-
-            <View style={styles.listeningTranscriptWrap}>
-              <Text style={styles.listeningTranscriptText}>
-                {liveText ? liveText : <Text style={styles.listeningTranscriptPlaceholder}>Start speaking…</Text>}
-              </Text>
-              <BlinkingCursor />
-            </View>
-
-            <View style={styles.listeningWaveformRow}>
-              {LISTENING_BAR_HEIGHTS.map((h, i) => (
-                <View
-                  key={i}
-                  style={[
-                    styles.listeningBar,
-                    {
-                      height: h * 1.4,
-                      backgroundColor: i > 9 ? t.accent : t.textSoft,
-                      opacity: i > 15 ? 0.3 : 1,
-                    },
-                    i > 9 && styles.listeningBarGlow,
-                  ]}
-                />
-              ))}
-            </View>
-
-            <View style={styles.listeningStopWrap}>
-              <View pointerEvents="none" style={styles.listeningStopHaloOuter} />
-              <View pointerEvents="none" style={styles.listeningStopHaloMid} />
-              <Pressable style={styles.listeningStopCore} onPress={() => void cc.stopRecording()} testID="cc-recording-stop">
-                <View style={styles.listeningStopSquare} />
-              </Pressable>
-            </View>
-
-            <Text style={styles.listeningCaption}>TAP TO STOP</Text>
-          </View>
-        </Sheet>
+        <MealReviewSheet
+          onClose={closeCommandCenter}
+          onAddIngredient={openAddIngredientEditor}
+          onEditIngredient={openEditIngredientEditor}
+          onLongPressIngredient={handleLongPressIngredient}
+        />
       );
     }
 
-    if (commandState === "cc_review_meal" && cc.reviewDraft?.kind === "meal") {
-      const meal = cc.reviewDraft.interpreted.payload;
-      const mealTypeLabel = formatMealTypeLabel(meal.mealType).toUpperCase();
-      const totalGramsLabel = `${Math.round(cc.reviewDraft.totalGrams)} G`;
-      const eyebrowParts = [mealTypeLabel, cc.reviewDraft.eatenAtLabel, totalGramsLabel].filter(Boolean);
-      const eyebrow = eyebrowParts.join(" · ");
-      return (
-        <Sheet
-          title={null}
-          onClose={cc.closeCommandCenter}
-          canCloseViaBackdrop={false}
-          showCloseButton={false}
-          closeButtonTestID="cc-review-close"
-        >
-          <ScrollView
-            style={styles.reviewScroll}
-            contentContainerStyle={styles.mealReviewContent}
-            showsVerticalScrollIndicator={false}
-            keyboardDismissMode="on-drag"
-          >
-            <View style={styles.mealReviewYouSaidRow}>
-              <Text style={styles.mealReviewYouSaidLabel}>YOU SAID</Text>
-              <Pressable onPress={cc.editReviewTranscript} testID="cc-review-edit-transcript">
-                <Text style={styles.mealReviewEditLink}>EDIT</Text>
-              </Pressable>
-            </View>
-            <Text style={styles.mealReviewTranscript}>{`"${cc.reviewDraft.transcript}"`}</Text>
-
-            <View style={styles.mealReviewBigCard}>
-              <View style={styles.mealReviewHeroRow}>
-                <View style={styles.mealReviewHeroLeft}>
-                  <Text style={styles.mealReviewEyebrow}>{eyebrow}</Text>
-                  <Text style={styles.mealReviewName}>{meal.description}</Text>
-                </View>
-                <View style={styles.mealReviewHeroRight}>
-                  <Text style={styles.mealReviewKcal}>{meal.calories}</Text>
-                  <Text style={styles.mealReviewKcalCaption}>KCAL · EST.</Text>
-                </View>
-              </View>
-
-              <View style={styles.mealReviewMacrosGrid}>
-                <View style={styles.mealReviewMacroCell}>
-                  <Text style={styles.mealReviewMacroLabel}>PROTEIN</Text>
-                  <View style={styles.mealReviewMacroValueRow}>
-                    <Text style={[styles.mealReviewMacroValue, styles.mealReviewMacroValueAccent]}>
-                      {cc.reviewDraft.macros.protein}
-                    </Text>
-                    <Text style={styles.mealReviewMacroUnit}>g</Text>
-                  </View>
-                </View>
-                <View style={styles.mealReviewMacroCell}>
-                  <Text style={styles.mealReviewMacroLabel}>CARBS</Text>
-                  <View style={styles.mealReviewMacroValueRow}>
-                    <Text style={[styles.mealReviewMacroValue, styles.mealReviewMacroValueSoft]}>
-                      {cc.reviewDraft.macros.carbs}
-                    </Text>
-                    <Text style={styles.mealReviewMacroUnit}>g</Text>
-                  </View>
-                </View>
-                <View style={styles.mealReviewMacroCell}>
-                  <Text style={styles.mealReviewMacroLabel}>FAT</Text>
-                  <View style={styles.mealReviewMacroValueRow}>
-                    <Text style={[styles.mealReviewMacroValue, styles.mealReviewMacroValueSoft]}>
-                      {cc.reviewDraft.macros.fat}
-                    </Text>
-                    <Text style={styles.mealReviewMacroUnit}>g</Text>
-                  </View>
-                </View>
-              </View>
-
-              <View style={styles.mealReviewDivider} />
-
-              <View style={styles.mealReviewIngredientsHeader}>
-                <Text style={styles.mealReviewIngredientsTitle}>INGREDIENTS</Text>
-                <Pressable onPress={openAddIngredientEditor} testID="cc-review-add-ingredient">
-                  <Text style={styles.mealReviewAddLink}>+ ADD</Text>
-                </Pressable>
-              </View>
-
-              {cc.reviewDraft.ingredients.map((ingredient, index) => (
-                <Pressable
-                  key={ingredient.id}
-                  onPress={() => openEditIngredientEditor(ingredient)}
-                  onLongPress={() => handleLongPressIngredient(ingredient)}
-                  delayLongPress={400}
-                  style={[
-                    styles.mealReviewIngredientRow,
-                    index === 0 ? null : styles.mealReviewIngredientRowDivider,
-                  ]}
-                  testID={`cc-review-ingredient-${index}`}
-                >
-                  <View style={styles.mealReviewIngredientCopy}>
-                    <Text style={styles.mealReviewIngredientName}>{ingredient.name}</Text>
-                    <Text style={styles.mealReviewIngredientMacros}>
-                      {`P ${Math.round(ingredient.proteinG)}g · C ${Math.round(ingredient.carbsG)}g · F ${Math.round(ingredient.fatG)}g`}
-                    </Text>
-                  </View>
-                  <Text style={styles.mealReviewIngredientQty}>{`${Math.round(ingredient.grams)} g`}</Text>
-                  <Text style={styles.mealReviewIngredientCal}>{ingredient.calories}</Text>
-                </Pressable>
-              ))}
-            </View>
-
-            <View style={styles.mealReviewActions}>
-              <Pressable
-                style={styles.mealReviewDiscardButton}
-                onPress={cc.closeCommandCenter}
-                testID="cc-review-discard"
-              >
-                <Text style={styles.mealReviewDiscardText}>DISCARD</Text>
-              </Pressable>
-              <Pressable
-                style={styles.mealReviewSaveButton}
-                onPress={() => void cc.saveReviewedEntry()}
-                testID="cc-review-save"
-              >
-                <Text style={styles.mealReviewSaveText}>Save meal</Text>
-                <CheckGlyph color={t.accentInk} />
-              </Pressable>
-            </View>
-          </ScrollView>
-        </Sheet>
-      );
-    }
-
-    if (commandState === "cc_review_workout" && cc.reviewDraft?.kind === "workout") {
-      const workout = cc.reviewDraft.interpreted.payload;
-      const confidence = confidenceLabel(cc.reviewDraft.confidence);
-      const segmentCount = Math.max(0, Math.min(4, Math.round(cc.reviewDraft.confidence * 4)));
-      const eyebrow = cc.reviewDraft.exerciseTypeLabel.toUpperCase();
-      const sessionLabel = cc.screenContext.sessionId ? "Current session" : cc.reviewDraft.sessionLabel;
-      return (
-        <Sheet
-          title={null}
-          onClose={cc.closeCommandCenter}
-          canCloseViaBackdrop={false}
-          showCloseButton={false}
-          closeButtonTestID="cc-review-close"
-        >
-          <ScrollView
-            style={styles.reviewScroll}
-            contentContainerStyle={styles.mealReviewContent}
-            showsVerticalScrollIndicator={false}
-            keyboardDismissMode="on-drag"
-          >
-            <View style={styles.mealReviewYouSaidRow}>
-              <Text style={styles.mealReviewYouSaidLabel}>YOU SAID</Text>
-              <Pressable onPress={cc.editReviewTranscript} testID="cc-review-edit-transcript">
-                <Text style={styles.mealReviewEditLink}>EDIT</Text>
-              </Pressable>
-            </View>
-            <Text style={styles.mealReviewTranscript}>{`"${cc.reviewDraft.transcript}"`}</Text>
-
-            <View style={styles.mealReviewBigCard}>
-              <View style={styles.mealReviewHeroRow}>
-                <View style={styles.mealReviewHeroLeft}>
-                  <Text style={styles.mealReviewEyebrow}>{eyebrow}</Text>
-                  <Text style={styles.mealReviewName}>{workout.exerciseName}</Text>
-                </View>
-              </View>
-
-              <View style={styles.mealReviewDivider} />
-
-              <View style={styles.mealReviewIngredientsHeader}>
-                <Text style={styles.mealReviewIngredientsTitle}>SETS</Text>
-              </View>
-
-              <View style={styles.workoutSetTableHeader}>
-                <Text style={[styles.workoutSetColLabel, styles.workoutSetColSet]}>SET</Text>
-                <Text style={[styles.workoutSetColLabel, styles.workoutSetColKg]}>KG</Text>
-                <Text style={[styles.workoutSetColLabel, styles.workoutSetColReps]}>REPS</Text>
-                <Text style={[styles.workoutSetColLabel, styles.workoutSetColNotes]}>NOTES</Text>
-              </View>
-
-              {cc.reviewDraft.sets.map((set, index) => (
-                <View
-                  key={set.id}
-                  style={[
-                    styles.workoutSetTableRow,
-                    index === 0 ? null : styles.workoutSetTableRowDivider,
-                  ]}
-                >
-                  <Text style={[styles.workoutSetCellNumber, styles.workoutSetColSet]}>
-                    {set.setNumber}
-                  </Text>
-                  <TextInput
-                    style={[styles.workoutSetCellInput, styles.workoutSetColKg]}
-                    value={set.weightKg}
-                    onChangeText={(v) =>
-                      cc.updateWorkoutSet(index, { weightKg: v.replace(/[^0-9.]/g, "") })
-                    }
-                    keyboardType="decimal-pad"
-                    placeholder="—"
-                    placeholderTextColor={t.textMute}
-                    testID={`cc-review-workout-kg-${index}`}
-                  />
-                  <TextInput
-                    style={[styles.workoutSetCellInput, styles.workoutSetColReps]}
-                    value={set.reps}
-                    onChangeText={(v) =>
-                      cc.updateWorkoutSet(index, { reps: v.replace(/[^0-9]/g, "") })
-                    }
-                    keyboardType="number-pad"
-                    placeholder="—"
-                    placeholderTextColor={t.textMute}
-                    testID={`cc-review-workout-reps-${index}`}
-                  />
-                  <TextInput
-                    style={[styles.workoutSetCellNotesInput, styles.workoutSetColNotes]}
-                    value={set.notes}
-                    onChangeText={(v) => cc.updateWorkoutSet(index, { notes: v })}
-                    placeholder="—"
-                    placeholderTextColor={t.textMute}
-                    testID={`cc-review-workout-notes-${index}`}
-                  />
-                </View>
-              ))}
-
-              <Pressable
-                style={styles.workoutAddSetButton}
-                onPress={cc.addWorkoutSet}
-                testID="cc-review-add-set"
-              >
-                <Text style={styles.workoutAddSetButtonText}>+ ADD SET</Text>
-              </Pressable>
-            </View>
-
-            <View style={styles.mealReviewConfidenceRow}>
-              <View style={styles.mealReviewConfidenceBar}>
-                {[0, 1, 2, 3].map((i) => (
-                  <View
-                    key={i}
-                    style={[
-                      styles.mealReviewConfidenceSegment,
-                      { backgroundColor: i < segmentCount ? t.accent : t.line },
-                    ]}
-                  />
-                ))}
-              </View>
-              <Text style={styles.mealReviewConfidenceText}>{confidence.text}</Text>
-            </View>
-
-            <View style={styles.workoutSessionRowNew}>
-              <Text style={styles.workoutSessionLabelNew}>Add to session</Text>
-              <Text style={styles.workoutSessionValueNew}>{sessionLabel}</Text>
-            </View>
-
-            <View style={styles.mealReviewActions}>
-              <Pressable
-                style={styles.mealReviewDiscardButton}
-                onPress={cc.closeCommandCenter}
-                testID="cc-review-discard"
-              >
-                <Text style={styles.mealReviewDiscardText}>DISCARD</Text>
-              </Pressable>
-              <Pressable
-                style={styles.mealReviewSaveButton}
-                onPress={() => void cc.saveReviewedEntry()}
-                testID="cc-review-save"
-              >
-                <Text style={styles.mealReviewSaveText}>Save sets</Text>
-                <CheckGlyph color={t.accentInk} />
-              </Pressable>
-            </View>
-          </ScrollView>
-        </Sheet>
-      );
+    if (commandState === "cc_review_workout" && reviewDraft?.kind === "workout") {
+      return <WorkoutReviewSheet onClose={closeCommandCenter} />;
     }
 
     if (
@@ -947,141 +1120,31 @@ export function CommandCenterOverlay() {
       commandState === "cc_auto_saving" ||
       commandState === "cc_quick_add_saving"
     ) {
-      return (
-        <Sheet title={null} onClose={cc.closeCommandCenter} canCloseViaBackdrop={false} showCloseButton={false}>
-          <View style={styles.sheetContentCentered}>
-            <VoiceRing state="interpreting" size={180} />
-            <Text style={styles.savingCaption}>Saving…</Text>
-          </View>
-        </Sheet>
-      );
+      return <SavingSheet onClose={closeCommandCenter} />;
     }
 
-    if (commandState === "cc_error" && cc.activeErrorCopy) {
-      const isMicError = cc.commandErrorSubtype === "mic_permission_denied";
-      const isVoiceError = cc.commandErrorSubtype === "voice_interpret_failure";
-      const tone = isMicError ? t.warn : t.negative;
-      const toneTintBg = isMicError ? "rgba(255,179,71,0.12)" : "rgba(255,107,107,0.12)";
-      const toneTintBorder = isMicError ? "rgba(255,179,71,0.35)" : "rgba(255,107,107,0.35)";
-      const recBars = [4, 6, 3, 5, 4, 6, 5, 3, 4, 5, 4, 3];
-      return (
-        <Sheet
-          title={null}
-          onClose={cc.closeCommandCenter}
-          canCloseViaBackdrop={false}
-          showCloseButton={false}
-        >
-          <View style={styles.errorBody}>
-            <View
-              style={[
-                styles.errorIconTile,
-                { backgroundColor: toneTintBg, borderColor: toneTintBorder },
-              ]}
-            >
-              <Svg width={22} height={22} viewBox="0 0 22 22">
-                <Path
-                  d="M11 2L20 19H2L11 2Z"
-                  stroke={tone}
-                  strokeWidth={1.8}
-                  strokeLinejoin="round"
-                  fill="none"
-                />
-                <Path d="M11 9V13" stroke={tone} strokeWidth={1.8} strokeLinecap="round" />
-                <Path d="M11 16L11 16.01" stroke={tone} strokeWidth={2.4} strokeLinecap="round" />
-              </Svg>
-            </View>
-
-            <Text style={styles.errorHeading}>{cc.activeErrorCopy.title}</Text>
-            <Text style={styles.errorMessage}>{cc.activeErrorCopy.body}</Text>
-            {cc.commandErrorDetail ? (
-              <Text style={[styles.errorDetailLine, { color: tone }]}>
-                {cc.commandErrorDetail}
-              </Text>
-            ) : null}
-
-            {isVoiceError ? (
-              <View style={styles.errorRecStrip} testID="cc-error-rec-strip">
-                <Text style={styles.errorRecLabel}>REC</Text>
-                <View style={styles.errorRecBars}>
-                  {recBars.map((h, i) => (
-                    <View key={i} style={[styles.errorRecBar, { height: h }]} />
-                  ))}
-                </View>
-                <Text style={[styles.errorRecDuration, { color: tone }]}>
-                  {formatRecordingDuration(cc.recordingSeconds)}
-                </Text>
-              </View>
-            ) : null}
-
-            <View style={styles.errorActions}>
-              <Pressable
-                style={styles.errorPrimaryButton}
-                onPress={() => void cc.handleErrorPrimary()}
-                testID="cc-error-primary"
-              >
-                <Svg width={14} height={14} viewBox="0 0 14 14">
-                  <Path
-                    d="M3 3V1L0 4L3 7V5C6 5 8 7 8 10H10C10 6 7 3 3 3Z"
-                    fill={t.accentInk}
-                  />
-                  <Path
-                    d="M11 11V13L14 10L11 7V9C8 9 6 7 6 4H4C4 8 7 11 11 11Z"
-                    fill={t.accentInk}
-                  />
-                </Svg>
-                <Text style={styles.errorPrimaryText}>{cc.activeErrorCopy.primary}</Text>
-              </Pressable>
-              {cc.activeErrorCopy.secondary ? (
-                <Pressable
-                  style={styles.errorSecondaryButton}
-                  onPress={cc.handleErrorSecondary}
-                  testID="cc-error-secondary"
-                >
-                  <Svg width={14} height={14} viewBox="0 0 14 14">
-                    <Path
-                      d="M2 10L10 2L13 5L5 13H2V10Z"
-                      stroke={t.text}
-                      strokeWidth={1.4}
-                      strokeLinejoin="round"
-                      fill="none"
-                    />
-                  </Svg>
-                  <Text style={styles.errorSecondaryText}>{cc.activeErrorCopy.secondary}</Text>
-                </Pressable>
-              ) : null}
-              {cc.activeErrorCopy.tertiary ? (
-                <Pressable
-                  style={styles.errorTertiaryButton}
-                  onPress={cc.closeCommandCenter}
-                  testID="cc-error-tertiary"
-                >
-                  <Text style={styles.errorTertiaryText}>{cc.activeErrorCopy.tertiary}</Text>
-                </Pressable>
-              ) : null}
-            </View>
-          </View>
-        </Sheet>
-      );
+    if (commandState === "cc_error" && error.copy) {
+      return <ErrorSheet onClose={closeCommandCenter} />;
     }
 
     return null;
   };
 
-  const toast = cc.commandToast ? (
+  const toastNode = toast.message ? (
     <View style={styles.toastWrap} pointerEvents="none" testID="cc-toast">
-      <Text style={styles.toastText}>{cc.commandToast}</Text>
+      <Text style={styles.toastText}>{toast.message}</Text>
     </View>
   ) : null;
 
-  if (!isVisible) return toast;
+  if (!isVisible) return toastNode;
 
   if (commandState === "cc_saved") {
     return (
       <>
-        <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={cc.closeCommandCenter}>
+        <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={closeCommandCenter}>
           <SavedToast />
         </Modal>
-        {toast}
+        {toastNode}
       </>
     );
   }
@@ -1094,7 +1157,7 @@ export function CommandCenterOverlay() {
         animationType={modalAnimationType}
         statusBarTranslucent
         onRequestClose={() => {
-          if (canCloseViaBackdrop) cc.closeCommandCenter();
+          if (canCloseViaBackdrop) closeCommandCenter();
         }}
       >
         {renderContent()}
@@ -1109,9 +1172,11 @@ export function CommandCenterOverlay() {
         >
           <IngredientEditor
             mode={ingredientEditor}
-            fetchInterpreted={cc.fetchInterpretedIngredient}
+            fetchInterpreted={(name, grams) =>
+              dispatch({ type: "ingredient.lookup", name, grams }) as Promise<MealIngredient>
+            }
             onSubmitAdd={(ingredient) => {
-              cc.addIngredient(ingredient);
+              dispatch({ type: "ingredient.add", ingredient });
               closeIngredientEditor();
             }}
             onSubmitEdit={(replacement) => {
@@ -1120,26 +1185,26 @@ export function CommandCenterOverlay() {
               // grams-only edit returns a MealReviewIngredient (already scaled
               // locally); rename returns an authoritative MealIngredient from
               // the LLM. Either works as a replacement input.
-              cc.replaceIngredient(id, replacement);
+              dispatch({ type: "ingredient.replace", id, replacement });
               closeIngredientEditor();
             }}
             onCancel={closeIngredientEditor}
           />
         </Modal>
       ) : null}
-      {toast}
+      {toastNode}
     </>
   );
 }
 
 function SavedToast() {
-  const cc = useCommandCenterInternal();
+  const { snapshot } = useCommandCenterOverlay();
   const insets = useSafeAreaInsets();
-  const draft = cc.reviewDraft;
+  const draft = snapshot.review;
 
   let titleNode: ReactNode;
-  const footerLabel = cc.lastSavedKcalLeft != null
-    ? `${cc.lastSavedKcalLeft.toLocaleString()} KCAL LEFT TODAY`
+  const footerLabel = snapshot.toast.lastSavedKcalLeft != null
+    ? `${snapshot.toast.lastSavedKcalLeft.toLocaleString()} KCAL LEFT TODAY`
     : "ENTRY SAVED";
 
   if (draft?.kind === "meal") {
@@ -1159,8 +1224,8 @@ function SavedToast() {
         {exerciseName} — <Text style={styles.savedToastBodyAccent}>{setsCount} {setsLabel}</Text> saved.
       </Text>
     );
-  } else if (cc.commandToast) {
-    titleNode = <Text style={styles.savedToastBody}>{cc.commandToast}</Text>;
+  } else if (snapshot.toast.message) {
+    titleNode = <Text style={styles.savedToastBody}>{snapshot.toast.message}</Text>;
   } else {
     titleNode = <Text style={styles.savedToastBody}>Entry saved.</Text>;
   }
