@@ -162,7 +162,7 @@ const styles = StyleSheet.create({
     backgroundColor: token.accent,
     alignItems: "center",
     justifyContent: "center",
-    // NUI-1: replace shadowColor/shadowOpacity/shadowRadius with boxShadow
+    // NUI-1: boxShadow replaces the legacy RN shadow props
     boxShadow: `0 0 10px ${token.accent}66`,
   },
   headerTitle: {
@@ -201,7 +201,7 @@ const styles = StyleSheet.create({
     borderCurve: "continuous", // NUI-2
     borderWidth: 1,
     borderColor: token.line2,
-    // NUI-1: replace shadowColor/shadowOpacity/shadowRadius/elevation with boxShadow
+    // NUI-1: boxShadow replaces the legacy RN shadow/elevation props
     boxShadow: "0 20px 40px rgba(0,0,0,0.40)",
     zIndex: 100,
     overflow: "hidden",
