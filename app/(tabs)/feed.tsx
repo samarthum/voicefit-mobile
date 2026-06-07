@@ -14,8 +14,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "@clerk/clerk-expo";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ConversationEvent, ConversationEventKind, InterpretEntryResponse } from "@voicefit/contracts/types";
-import { apiRequest } from "../../lib/api-client";
-import { color } from "../../lib/tokens";
+import { apiRequest } from "@/lib/api-client";
+import { color } from "@/lib/tokens";
 
 interface ConversationResponse {
   events: ConversationEvent[];

@@ -1,4 +1,4 @@
-import "../polyfills";
+import "@/polyfills";
 import { ClerkProvider } from "@clerk/clerk-expo";
 import { focusManager, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import * as SecureStore from "expo-secure-store";
@@ -23,8 +23,8 @@ import {
   GeistMono_500Medium,
   GeistMono_600SemiBold,
 } from "@expo-google-fonts/geist-mono";
-import { CommandCenterProvider, CommandCenterOverlay } from "../components/command-center";
-import { color } from "../lib/tokens";
+import { CommandCenterProvider, CommandCenterOverlay } from "@/components/command-center";
+import { color } from "@/lib/tokens";
 
 const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
 

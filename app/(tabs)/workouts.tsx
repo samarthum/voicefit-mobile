@@ -14,11 +14,11 @@ import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-q
 import { useRouter } from "expo-router";
 import Svg, { Path } from "react-native-svg";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { FloatingCommandBar } from "../../components/FloatingCommandBar";
-import { useCommandCenter } from "../../components/command-center";
-import { apiRequest } from "../../lib/api-client";
-import { color as token, font, radius as r } from "../../lib/tokens";
-import { isWebPreviewMode } from "../../lib/web-preview-mode";
+import { FloatingCommandBar } from "@/components/FloatingCommandBar";
+import { useCommandCenter } from "@/components/command-center";
+import { apiRequest } from "@/lib/api-client";
+import { color as token, font, radius as r } from "@/lib/tokens";
+import { isWebPreviewMode } from "@/lib/web-preview-mode";
 import type { WorkoutSessionsListResponse } from "@voicefit/contracts/types";
 
 const COLORS = {

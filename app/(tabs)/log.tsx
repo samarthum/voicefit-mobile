@@ -13,8 +13,8 @@ import { Audio } from "expo-av";
 import { useAuth } from "@clerk/clerk-expo";
 import { useQueryClient } from "@tanstack/react-query";
 import type { MealInterpretation, RecordingState } from "@voicefit/contracts/types";
-import { apiFormRequest, apiRequest } from "../../lib/api-client";
-import { color } from "../../lib/tokens";
+import { apiFormRequest, apiRequest } from "@/lib/api-client";
+import { color } from "@/lib/tokens";
 
 type MealType = MealInterpretation["mealType"];
 

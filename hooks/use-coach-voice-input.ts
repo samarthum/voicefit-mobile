@@ -3,7 +3,7 @@ import { Audio } from "expo-av";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert } from "react-native";
 
-import { apiFormRequest } from "../lib/api-client";
+import { apiFormRequest } from "@/lib/api-client";
 
 type UseCoachVoiceInputOptions = {
   onTranscript: (transcript: string) => void;

@@ -12,7 +12,7 @@ import type {
   SaveAction,
   ScreenContext,
   WorkoutReviewSet,
-} from "./types";
+} from "@/components/command-center/types";
 import {
   buildWorkoutReviewDraft,
   ERROR_COPY,
@@ -24,7 +24,7 @@ import {
   recalculateMealTotals,
   scaleIngredientByGrams,
   toLocalDateString,
-} from "./helpers";
+} from "@/components/command-center/helpers";
 
 export type PhotoPickerMode = "camera" | "library";
 

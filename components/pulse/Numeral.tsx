@@ -1,5 +1,5 @@
 import { Text, type TextProps } from "react-native";
-import { color, font } from "../../lib/tokens";
+import { color, font } from "@/lib/tokens";
 
 const SIZES = {
   xs: { fontFamily: font.mono[400], fontSize: 11, lineHeight: 14, letterSpacing: 0 },

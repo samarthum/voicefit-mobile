@@ -1,5 +1,5 @@
 import { View, type ViewProps } from "react-native";
-import { color, radius } from "../../lib/tokens";
+import { color, radius } from "@/lib/tokens";
 
 type CardProps = ViewProps & {
   variant?: "surface" | "accentTint";

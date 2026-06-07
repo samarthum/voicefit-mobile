@@ -4,8 +4,8 @@ import {
   createCommandCenterController,
   type CommandCenterVoiceRecording,
   type CommandCenterPorts,
-} from "../controller";
-import type { CommandErrorSubtype, CommandState, PhotoAttachment, ReviewDraft, SaveAction, ScreenContext } from "../types";
+} from "@/components/command-center/controller";
+import type { CommandErrorSubtype, CommandState, PhotoAttachment, ReviewDraft, SaveAction, ScreenContext } from "@/components/command-center/types";
 
 const fixedNow = new Date("2026-05-19T10:15:00.000Z");
 

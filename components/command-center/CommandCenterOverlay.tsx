@@ -26,14 +26,14 @@ import {
   confidenceLabel,
   formatMealTypeLabel,
   formatRecordingDuration,
-} from "./helpers";
-import { useCommandCenterOverlay } from "./CommandCenterProvider";
-import { IngredientEditor, type IngredientEditorMode } from "./IngredientEditor";
-import type { MealReviewIngredient } from "./types";
-import { EXERCISE_CATALOG } from "../../lib/exercise-catalog";
-import { color as t, font, radius } from "../../lib/tokens";
-import { LoadingBlock } from "../pulse/LoadingSkeleton";
-import { VoiceRing } from "../pulse/VoiceRing";
+} from "@/components/command-center/helpers";
+import { useCommandCenterOverlay } from "@/components/command-center/CommandCenterProvider";
+import { IngredientEditor, type IngredientEditorMode } from "@/components/command-center/IngredientEditor";
+import type { MealReviewIngredient } from "@/components/command-center/types";
+import { EXERCISE_CATALOG } from "@/lib/exercise-catalog";
+import { color as t, font, radius } from "@/lib/tokens";
+import { LoadingBlock } from "@/components/pulse/LoadingSkeleton";
+import { VoiceRing } from "@/components/pulse/VoiceRing";
 
 // ---------------------------------------------------------------------------
 // SVG Glyphs

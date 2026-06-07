@@ -1,5 +1,5 @@
 import type { MealIngredient } from "@voicefit/contracts/types";
-import { apiRequest } from "../api-client";
+import { apiRequest } from "@/lib/api-client";
 
 /**
  * Resolves a (name, grams) pair into authoritative macros via the

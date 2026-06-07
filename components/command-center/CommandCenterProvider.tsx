@@ -5,9 +5,9 @@ import * as ImagePicker from "expo-image-picker";
 import { useAuth } from "@clerk/clerk-expo";
 import { useQueryClient } from "@tanstack/react-query";
 import type { DashboardData, InterpretEntryResponse, MealIngredient } from "@voicefit/contracts/types";
-import { apiFormRequest, apiRequest } from "../../lib/api-client";
-import { isWebPreviewMode } from "../../lib/web-preview-mode";
-import { fetchInterpretedIngredient as fetchInterpretedIngredientApi } from "../../lib/api/ingredient";
+import { apiFormRequest, apiRequest } from "@/lib/api-client";
+import { isWebPreviewMode } from "@/lib/web-preview-mode";
+import { fetchInterpretedIngredient as fetchInterpretedIngredientApi } from "@/lib/api/ingredient";
 import type {
   CommandErrorSubtype,
   CommandCenterContext,
@@ -22,12 +22,12 @@ import type {
   ReviewDraft,
   SaveAction,
   ScreenContext,
-} from "./types";
+} from "@/components/command-center/types";
 import {
   createCommandCenterController,
   type CommandCenterVoiceRecording,
   type PhotoPickerMode,
-} from "./controller";
+} from "@/components/command-center/controller";
 import {
   buildQuickAddItems,
   ensureQuickSession,
@@ -35,7 +35,7 @@ import {
   inferCalories,
   inferMealDescription,
   inferMealType,
-} from "./helpers";
+} from "@/components/command-center/helpers";
 
 // ---------------------------------------------------------------------------
 // Public context — what screens see via useCommandCenter()

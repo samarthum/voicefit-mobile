@@ -1,6 +1,6 @@
 // Bridges design-token motion values to React Native Animated API helpers.
 import { Animated, Easing, type EasingFunction } from "react-native";
-import { motion } from "./tokens";
+import { motion } from "@/lib/tokens";
 
 const bezier = (c: { x1: number; y1: number; x2: number; y2: number }): EasingFunction =>
   Easing.bezier(c.x1, c.y1, c.x2, c.y2);

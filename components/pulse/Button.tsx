@@ -1,5 +1,5 @@
 import { Pressable, Text, type PressableProps } from "react-native";
-import { color, elevation, font, radius } from "../../lib/tokens";
+import { color, elevation, font, radius } from "@/lib/tokens";
 
 type ButtonProps = Omit<PressableProps, "children"> & {
   title: string;

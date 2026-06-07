@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { router } from "expo-router";
 import { useAuth } from "@clerk/clerk-expo";
 import { ActivityIndicator, View } from "react-native";
-import { color } from "../lib/tokens";
+import { color } from "@/lib/tokens";
 
 export default function OAuthNativeCallbackScreen() {
   const { isSignedIn, isLoaded } = useAuth();

@@ -2,7 +2,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import Svg, { Circle, Path } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { color as token, font } from "../lib/tokens";
+import { color as token, font } from "@/lib/tokens";
 
 const COLORS = {
   bg: token.bg,

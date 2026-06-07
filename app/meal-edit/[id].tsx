@@ -15,23 +15,23 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Path } from "react-native-svg";
 import type { MealIngredient } from "@voicefit/contracts/types";
-import { apiRequest } from "../../lib/api-client";
-import { fetchInterpretedIngredient } from "../../lib/api/ingredient";
+import { apiRequest } from "@/lib/api-client";
+import { fetchInterpretedIngredient } from "@/lib/api/ingredient";
 import {
   type AsyncMealStatus,
   formatNullableCalories,
   isFiniteNumber,
   normalizeMealStatus,
   roundNullable,
-} from "../../lib/meal-status";
-import { color as t, font, radius as r } from "../../lib/tokens";
-import { IngredientEditor, type IngredientEditorMode } from "../../components/command-center/IngredientEditor";
+} from "@/lib/meal-status";
+import { color as t, font, radius as r } from "@/lib/tokens";
+import { IngredientEditor, type IngredientEditorMode } from "@/components/command-center/IngredientEditor";
 import {
   generateIngredientId,
   recalculateMealTotals,
   scaleIngredientByGrams,
-} from "../../components/command-center/helpers";
-import type { MealReviewIngredient, MealReviewDraft } from "../../components/command-center/types";
+} from "@/components/command-center/helpers";
+import type { MealReviewIngredient, MealReviewDraft } from "@/components/command-center/types";
 
 // ---------------------------------------------------------------------------
 // Types

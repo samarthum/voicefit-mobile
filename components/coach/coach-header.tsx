@@ -1,7 +1,7 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import Svg, { Path } from "react-native-svg";
-import { color as token, font, radius as rad } from "../../lib/tokens";
+import { color as token, font, radius as rad } from "@/lib/tokens";
 
 type CoachHeaderProps = {
   showMenu: boolean;

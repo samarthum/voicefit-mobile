@@ -10,10 +10,10 @@ import {
 import { useLocalSearchParams, useRouter } from "expo-router";
 import Svg, { Path } from "react-native-svg";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { FloatingCommandBar } from "../components/FloatingCommandBar";
-import { useCommandCenter } from "../components/command-center";
-import { EXERCISE_CATALOG, type ExerciseCatalogItem } from "../lib/exercise-catalog";
-import { color as token, font, radius as r } from "../lib/tokens";
+import { FloatingCommandBar } from "@/components/FloatingCommandBar";
+import { useCommandCenter } from "@/components/command-center";
+import { EXERCISE_CATALOG, type ExerciseCatalogItem } from "@/lib/exercise-catalog";
+import { color as token, font, radius as r } from "@/lib/tokens";
 
 const COLORS = {
   bg: token.bg,

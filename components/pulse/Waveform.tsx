@@ -1,7 +1,7 @@
 import type { ReactElement } from "react";
 import { useEffect, useMemo, useRef } from "react";
 import { Animated, Easing, View } from "react-native";
-import { color as token } from "../../lib/tokens";
+import { color as token } from "@/lib/tokens";
 
 export type WaveformProps = {
   active: boolean;

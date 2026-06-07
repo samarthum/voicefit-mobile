@@ -12,9 +12,9 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { MealIngredient } from "@voicefit/contracts/types";
-import { color as t, font } from "../../lib/tokens";
-import type { MealReviewIngredient } from "./types";
-import { getErrorMessage, scaleIngredientByGrams } from "./helpers";
+import { color as t, font } from "@/lib/tokens";
+import type { MealReviewIngredient } from "@/components/command-center/types";
+import { getErrorMessage, scaleIngredientByGrams } from "@/components/command-center/helpers";
 
 export type IngredientEditorMode =
   | { kind: "add" }

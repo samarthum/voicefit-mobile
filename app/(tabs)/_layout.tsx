@@ -3,8 +3,8 @@ import { ActivityIndicator, Platform, View } from "react-native";
 import { useAuth } from "@clerk/clerk-expo";
 import Svg, { Circle, Path } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { color, font } from "../../lib/tokens";
-import { isWebPreviewMode } from "../../lib/web-preview-mode";
+import { color, font } from "@/lib/tokens";
+import { isWebPreviewMode } from "@/lib/web-preview-mode";
 
 // Line-art icons matching screens-c.jsx C_TabBar — stroke-only, currentColor-driven.
 function TodayIcon({ tint }: { tint: string }) {

@@ -19,14 +19,14 @@ import { useAuth } from "@clerk/clerk-expo";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Svg, { Path } from "react-native-svg";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { FakeTabBar } from "../../components/FakeTabBar";
-import { FloatingCommandBar } from "../../components/FloatingCommandBar";
-import { UndoToast } from "../../components/pulse";
-import { useCommandCenter } from "../../components/command-center";
-import { getExerciseCatalogItem } from "../../lib/exercise-catalog";
-import { apiRequest } from "../../lib/api-client";
-import { color as token, font, radius as rad } from "../../lib/tokens";
-import { isWebPreviewMode } from "../../lib/web-preview-mode";
+import { FakeTabBar } from "@/components/FakeTabBar";
+import { FloatingCommandBar } from "@/components/FloatingCommandBar";
+import { UndoToast } from "@/components/pulse";
+import { useCommandCenter } from "@/components/command-center";
+import { getExerciseCatalogItem } from "@/lib/exercise-catalog";
+import { apiRequest } from "@/lib/api-client";
+import { color as token, font, radius as rad } from "@/lib/tokens";
+import { isWebPreviewMode } from "@/lib/web-preview-mode";
 
 const COLORS = {
   bg: token.bg,

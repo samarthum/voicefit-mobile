@@ -15,15 +15,15 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CoachProfileForm,
   type CoachProfileData,
-} from "../../components/CoachProfileForm";
+} from "@/components/CoachProfileForm";
 import { useRouter } from "expo-router";
 import Svg, { Circle, Path } from "react-native-svg";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { FloatingCommandBar } from "../../components/FloatingCommandBar";
-import { useCommandCenter } from "../../components/command-center";
-import { apiRequest } from "../../lib/api-client";
-import { color as token, font, radius as r } from "../../lib/tokens";
-import { isWebPreviewMode } from "../../lib/web-preview-mode";
+import { FloatingCommandBar } from "@/components/FloatingCommandBar";
+import { useCommandCenter } from "@/components/command-center";
+import { apiRequest } from "@/lib/api-client";
+import { color as token, font, radius as r } from "@/lib/tokens";
+import { isWebPreviewMode } from "@/lib/web-preview-mode";
 
 const COLORS = {
   bg: token.bg,

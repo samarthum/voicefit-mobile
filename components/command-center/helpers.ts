@@ -1,6 +1,6 @@
 import type { InterpretEntryResponse } from "@voicefit/contracts/types";
-import { apiRequest } from "../../lib/api-client";
-import { color as token } from "../../lib/tokens";
+import { apiRequest } from "@/lib/api-client";
+import { color as token } from "@/lib/tokens";
 import type {
   CommandErrorSubtype,
   EntrySource,
@@ -11,7 +11,7 @@ import type {
   WorkoutReviewDraft,
   WorkoutReviewSet,
   WorkoutSessionsResponse,
-} from "./types";
+} from "@/components/command-center/types";
 
 // ---------------------------------------------------------------------------
 // Constants

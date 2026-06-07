@@ -13,7 +13,7 @@
 
 import { SymbolView, type SymbolViewProps } from "expo-symbols";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import { color as tokens } from "../lib/tokens";
+import { color as tokens } from "@/lib/tokens";
 
 // ---------------------------------------------------------------------------
 // Name map: semantic glyph name → platform-specific icon identifiers

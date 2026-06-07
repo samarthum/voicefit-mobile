@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Animated, Easing, type StyleProp, type ViewStyle } from "react-native";
-import { color } from "../../lib/tokens";
+import { color } from "@/lib/tokens";
 
 type LoadingBlockProps = {
   width?: number | `${number}%` | "100%";

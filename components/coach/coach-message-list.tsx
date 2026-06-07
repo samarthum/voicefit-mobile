@@ -11,7 +11,7 @@ import { getToolName, isStaticToolUIPart } from "ai";
 import type { CoachUIMessage } from "@voicefit/contracts/coach";
 import Markdown from "react-native-markdown-display";
 import Svg, { Path } from "react-native-svg";
-import { color as token, font, radius as rad } from "../../lib/tokens";
+import { color as token, font, radius as rad } from "@/lib/tokens";
 
 type CoachMessageListProps = {
   messages: CoachUIMessage[];

@@ -20,26 +20,26 @@ import Svg, {
   Path,
   Stop,
 } from "react-native-svg";
-import { apiRequest } from "../../lib/api-client";
-import { FloatingCommandBar } from "../../components/FloatingCommandBar";
-import { useCommandCenter, COLORS, toLocalDateString } from "../../components/command-center";
-import { getErrorMessage } from "../../components/command-center/helpers";
-import { color as token, font, radius as r } from "../../lib/tokens";
-import { isWebPreviewMode } from "../../lib/web-preview-mode";
-import { Wordmark, LoadingBlock, OfflineBanner } from "../../components/pulse";
+import { apiRequest } from "@/lib/api-client";
+import { FloatingCommandBar } from "@/components/FloatingCommandBar";
+import { useCommandCenter, COLORS, toLocalDateString } from "@/components/command-center";
+import { getErrorMessage } from "@/components/command-center/helpers";
+import { color as token, font, radius as r } from "@/lib/tokens";
+import { isWebPreviewMode } from "@/lib/web-preview-mode";
+import { Wordmark, LoadingBlock, OfflineBanner } from "@/components/pulse";
 import NetInfo from "@react-native-community/netinfo";
 import {
   type AsyncMealStatus,
   formatNullableCalories,
   normalizeMealStatus,
-} from "../../lib/meal-status";
+} from "@/lib/meal-status";
 import {
   type TrendMetric,
   TREND_TABS,
   safeNumber,
   buildLinePaths,
   metricValueFromPoint,
-} from "../../lib/trends";
+} from "@/lib/trends";
 
 type RecentMeal = Omit<DashboardData["recentMeals"][number], "calories"> & {
   calories: number | null;

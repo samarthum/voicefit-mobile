@@ -21,13 +21,13 @@ import Svg, {
   Polyline,
   Stop,
 } from "react-native-svg";
-import { apiRequest } from "../../lib/api-client";
-import { FloatingCommandBar } from "../../components/FloatingCommandBar";
-import { useCommandCenter, toLocalDateString } from "../../components/command-center";
-import { Wordmark } from "../../components/pulse";
-import { color as token, font, radius as r } from "../../lib/tokens";
-import { type TrendMetric, getISOWeek, safeNumber, metricValueFromPoint } from "../../lib/trends";
-import { isWebPreviewMode } from "../../lib/web-preview-mode";
+import { apiRequest } from "@/lib/api-client";
+import { FloatingCommandBar } from "@/components/FloatingCommandBar";
+import { useCommandCenter, toLocalDateString } from "@/components/command-center";
+import { Wordmark } from "@/components/pulse";
+import { color as token, font, radius as r } from "@/lib/tokens";
+import { type TrendMetric, getISOWeek, safeNumber, metricValueFromPoint } from "@/lib/trends";
+import { isWebPreviewMode } from "@/lib/web-preview-mode";
 
 const TAB_LABELS: Record<TrendMetric, string> = {
   calories: "Calories",

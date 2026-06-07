@@ -1,6 +1,6 @@
 import { Link, Stack } from "expo-router";
 import { View, Text } from "react-native";
-import { color, type } from "../lib/tokens";
+import { color, type } from "@/lib/tokens";
 
 export default function NotFound() {
   return (

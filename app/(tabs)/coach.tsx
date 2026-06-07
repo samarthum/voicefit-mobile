@@ -17,17 +17,17 @@ import type { CoachUIMessage } from "@voicefit/contracts/coach";
 import { fetch as expoFetch } from "expo/fetch";
 import type { LegendListRef } from "@legendapp/list";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiRequest } from "../../lib/api-client";
-import { CoachProfileForm } from "../../components/CoachProfileForm";
+import { apiRequest } from "@/lib/api-client";
+import { CoachProfileForm } from "@/components/CoachProfileForm";
 import {
   CoachComposer,
   CoachHeader,
   CoachMessageList,
   ErrorBubble,
-} from "../../components/coach";
-import { useCoachProfile } from "../../hooks/use-coach-profile";
-import { useCoachVoiceInput } from "../../hooks/use-coach-voice-input";
-import { color as token } from "../../lib/tokens";
+} from "@/components/coach";
+import { useCoachProfile } from "@/hooks/use-coach-profile";
+import { useCoachVoiceInput } from "@/hooks/use-coach-voice-input";
+import { color as token } from "@/lib/tokens";
 
 // ---------------------------------------------------------------------------
 // Constants

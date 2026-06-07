@@ -13,17 +13,17 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import Svg, { Path } from "react-native-svg";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { FloatingCommandBar } from "../../components/FloatingCommandBar";
-import { useCommandCenter, toLocalDateString } from "../../components/command-center";
-import { apiRequest } from "../../lib/api-client";
-import { isWebPreviewMode } from "../../lib/web-preview-mode";
+import { FloatingCommandBar } from "@/components/FloatingCommandBar";
+import { useCommandCenter, toLocalDateString } from "@/components/command-center";
+import { apiRequest } from "@/lib/api-client";
+import { isWebPreviewMode } from "@/lib/web-preview-mode";
 import {
   type AsyncMealStatus,
   formatNullableCalories,
   isFiniteNumber,
   normalizeMealStatus,
-} from "../../lib/meal-status";
-import { color as token, font, radius as r } from "../../lib/tokens";
+} from "@/lib/meal-status";
+import { color as token, font, radius as r } from "@/lib/tokens";
 
 type MealType = "breakfast" | "lunch" | "dinner" | "snack";
 

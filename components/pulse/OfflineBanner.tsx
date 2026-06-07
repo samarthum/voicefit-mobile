@@ -1,5 +1,5 @@
 import { Text, View } from "react-native";
-import { color, font } from "../../lib/tokens";
+import { color, font } from "@/lib/tokens";
 
 type OfflineBannerProps = {
   queuedCount?: number;

@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Circle, Path, Rect } from "react-native-svg";
-import { color, font, radius } from "../lib/tokens";
+import { color, font, radius } from "@/lib/tokens";
 
 function PulseDot() {
   return (

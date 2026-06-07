@@ -12,8 +12,8 @@ import { useSSO } from "@clerk/clerk-expo";
 import { router } from "expo-router";
 import Svg, { Path, Rect } from "react-native-svg";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { color, font, radius } from "../lib/tokens";
-import { Wordmark } from "../components/pulse";
+import { color, font, radius } from "@/lib/tokens";
+import { Wordmark } from "@/components/pulse";
 
 function HeroOrb() {
   return (

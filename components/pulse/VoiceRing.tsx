@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Animated, Easing, StyleSheet, View } from "react-native";
 import Svg, { Circle, Path, Rect } from "react-native-svg";
-import { color, motion } from "../../lib/tokens";
+import { color, motion } from "@/lib/tokens";
 
 export type VoiceRingState = "idle" | "listening" | "interpreting" | "saved" | "error";
 

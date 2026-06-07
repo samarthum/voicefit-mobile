@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Animated, Pressable, Text } from "react-native";
-import { color, font, radius } from "../../lib/tokens";
-import { ease } from "../../lib/motion";
+import { color, font, radius } from "@/lib/tokens";
+import { ease } from "@/lib/motion";
 
 // onUndo fires when the user taps Undo — caller should reverse the action.
 // onDismiss fires *only* when the timer expires — caller should commit the
