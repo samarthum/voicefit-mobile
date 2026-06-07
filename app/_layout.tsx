@@ -115,13 +115,19 @@ export default function RootLayout() {
         <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
           <QueryClientProvider client={queryClient}>
             <SafeAreaProvider>
-              <BottomSheetModalProvider>
-                <StatusBar barStyle="dark-content" backgroundColor={color.bg} />
-                <CommandCenterProvider>
+              {/* CommandCenterProvider must sit ABOVE BottomSheetModalProvider:
+                  gorhom renders sheet content through @gorhom/portal into a host
+                  inside BottomSheetModalProvider, so anything the sheet consumes
+                  (the command-center context) has to be provided higher up — or
+                  the portaled content throws "must be used within
+                  CommandCenterProvider". */}
+              <CommandCenterProvider>
+                <BottomSheetModalProvider>
+                  <StatusBar barStyle="dark-content" backgroundColor={color.bg} />
                   <Slot />
                   <CommandCenterOverlay />
-                </CommandCenterProvider>
-              </BottomSheetModalProvider>
+                </BottomSheetModalProvider>
+              </CommandCenterProvider>
             </SafeAreaProvider>
           </QueryClientProvider>
         </ClerkProvider>
