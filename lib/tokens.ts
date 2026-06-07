@@ -47,6 +47,11 @@ export const radius = {
   pill: 9999,
 } as const;
 
+// Rounded-corner helper: pairs a radius with iOS continuous (squircle) curvature.
+// borderCurve is a no-op on Android, so it is always safe. Use for every
+// non-capsule corner (skip radius.pill / 9999).
+export const rounded = (r: number) => ({ borderRadius: r, borderCurve: "continuous" as const });
+
 // React Native does not support cubic-bezier strings — these mirror the named
 // curves so callers can request them by name and pick the right Easing on RN
 // or pass the bezier string on web.
@@ -106,31 +111,12 @@ export const type = {
 } as const;
 
 // Shadows tuned for a light canvas — neutral charcoal, low opacity.
+// RN 0.81 (New Arch) supports the CSS boxShadow string on both iOS and Android.
 export const elevation = {
   flat: { borderColor: color.line, borderWidth: 1 },
-  sheet: {
-    borderColor: color.line,
-    borderWidth: 1,
-    shadowColor: "#0F1419",
-    shadowOpacity: 0.08,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 8,
-  },
-  primaryCTA: {
-    shadowColor: "#0F1419",
-    shadowOpacity: 0.10,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
-  },
-  accentGlow: {
-    shadowColor: color.accent,
-    shadowOpacity: 0.18,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 0 },
-    elevation: 4,
-  },
+  sheet: { borderColor: color.line, borderWidth: 1, boxShadow: "0 12px 24px rgba(15,20,25,0.08)" },
+  primaryCTA: { boxShadow: "0 4px 12px rgba(15,20,25,0.10)" },
+  accentGlow: { boxShadow: "0 0 16px rgba(94,140,122,0.18)" },
 } as const;
 
 export type ColorToken = keyof typeof color;

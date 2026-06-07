@@ -48,7 +48,8 @@
           "cameraPermission": "VoiceFit needs camera access to log meals from photos.",
           "photosPermission": "VoiceFit needs photo library access to log meals from existing photos."
         }
-      ]
+      ],
+      "expo-audio"
     ],
     "extra": {
       "router": {},
