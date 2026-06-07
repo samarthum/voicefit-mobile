@@ -82,7 +82,13 @@ function ExerciseRow({
           </View>
         </View>
       </View>
-      <Pressable style={styles.addCircle} onPress={onAdd} hitSlop={8}>
+      <Pressable
+        style={styles.addCircle}
+        onPress={onAdd}
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityLabel={`Add ${item.name}`}
+      >
         <PlusGlyph />
       </Pressable>
     </View>
@@ -151,7 +157,12 @@ export default function ExercisePickerScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.header}>
-          <Pressable style={styles.iconButton} onPress={() => router.back()}>
+          <Pressable
+            style={styles.iconButton}
+            onPress={() => router.back()}
+            accessibilityRole="button"
+            accessibilityLabel="Close"
+          >
             <CloseGlyph />
           </Pressable>
           <Text style={styles.title}>Add exercise</Text>
@@ -215,6 +226,8 @@ export default function ExercisePickerScreen() {
         hint="Add tricep pushdowns…"
         onPress={() => cc.open()}
         onMicPress={() => cc.startRecording()}
+        bottomOffset={8}
+        safeAreaBottom
       />
     </SafeAreaView>
   );

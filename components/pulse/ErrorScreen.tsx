@@ -44,6 +44,8 @@ export function ErrorScreen({
             onPress={onClose}
             style={({ pressed }) => [styles.closeBtn, { opacity: pressed ? 0.7 : 1 }]}
             hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Close"
           >
             <Text style={styles.closeGlyph}>×</Text>
           </Pressable>

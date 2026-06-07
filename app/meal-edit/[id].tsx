@@ -479,6 +479,8 @@ export default function MealEditScreen() {
           hitSlop={12}
           style={styles.closeButton}
           testID="meal-edit-close"
+          accessibilityRole="button"
+          accessibilityLabel="Close"
         >
           <CloseGlyph />
         </Pressable>

@@ -90,7 +90,12 @@ function mockTopMeals(): TopMealsResponse {
   };
 }
 
-function mockDashboard(date: string): DashboardData {
+type MockDashboardData = Omit<DashboardData, "today" | "recentMeals"> & {
+  today: DashboardData["today"] & { proteinGoal?: number };
+  recentMeals: (DashboardData["recentMeals"][number] & { interpretationStatus?: string })[];
+};
+
+function mockDashboard(date: string): MockDashboardData {
   const base = new Date();
   const trends = Array.from({ length: 14 }, (_, idx) => {
     const d = new Date(base);

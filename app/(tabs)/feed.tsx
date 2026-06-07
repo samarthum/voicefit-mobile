@@ -10,6 +10,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "@clerk/clerk-expo";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ConversationEvent, ConversationEventKind, InterpretEntryResponse } from "@voicefit/contracts/types";
@@ -305,136 +306,142 @@ export default function FeedScreen() {
   };
 
   return (
-    <FlatList
-      data={events}
-      keyExtractor={(item) => item.id}
-      keyboardShouldPersistTaps="handled"
-      keyboardDismissMode="on-drag"
-      contentContainerStyle={styles.listContent}
-      refreshControl={
-        <RefreshControl
-          refreshing={conversationQuery.isRefetching && !conversationQuery.isFetchingNextPage}
-          onRefresh={() => conversationQuery.refetch()}
-        />
-      }
-      ListHeaderComponent={
-        <View style={styles.container}>
-          <Text style={styles.title}>Conversation Feed</Text>
-          <Text style={styles.subtitle}>Quick text logging + timeline of saved events.</Text>
+    <SafeAreaView style={styles.root} edges={["top"]}>
+      <FlatList
+        data={events}
+        keyExtractor={(item) => item.id}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        contentContainerStyle={styles.listContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={conversationQuery.isRefetching && !conversationQuery.isFetchingNextPage}
+            onRefresh={() => conversationQuery.refetch()}
+          />
+        }
+        ListHeaderComponent={
+          <View style={styles.container}>
+            <Text style={styles.title}>Conversation Feed</Text>
+            <Text style={styles.subtitle}>Quick text logging + timeline of saved events.</Text>
 
-          <View style={styles.card}>
-            <Text style={styles.label}>Quick log entry</Text>
-            <TextInput
-              style={styles.input}
-              value={input}
-              onChangeText={setInput}
-              placeholder="e.g. Lunch was chicken salad and avocado"
-              multiline
-            />
-            {entryError ? <Text style={styles.error}>{entryError}</Text> : null}
-            {entryMessage ? <Text style={styles.success}>{entryMessage}</Text> : null}
-            <Pressable
-              style={[styles.buttonPrimary, entryMutation.isPending ? styles.disabledButton : null]}
-              onPress={() => entryMutation.mutate()}
-              disabled={entryMutation.isPending}
-            >
-              <Text style={styles.buttonPrimaryText}>
-                {entryMutation.isPending ? "Processing..." : "Interpret and Save"}
-              </Text>
-            </Pressable>
-          </View>
+            <View style={styles.card}>
+              <Text style={styles.label}>Quick log entry</Text>
+              <TextInput
+                style={styles.input}
+                value={input}
+                onChangeText={setInput}
+                placeholder="e.g. Lunch was chicken salad and avocado"
+                multiline
+              />
+              {entryError ? <Text style={styles.error}>{entryError}</Text> : null}
+              {entryMessage ? <Text style={styles.success}>{entryMessage}</Text> : null}
+              <Pressable
+                style={[styles.buttonPrimary, entryMutation.isPending ? styles.disabledButton : null]}
+                onPress={() => entryMutation.mutate()}
+                disabled={entryMutation.isPending}
+              >
+                <Text style={styles.buttonPrimaryText}>
+                  {entryMutation.isPending ? "Processing..." : "Interpret and Save"}
+                </Text>
+              </Pressable>
+            </View>
 
-          <View style={styles.card}>
-            <Text style={styles.label}>Filters</Text>
-            <TextInput
-              style={styles.input}
-              value={dateInput}
-              onChangeText={setDateInput}
-              autoCapitalize="none"
-              autoCorrect={false}
-              placeholder="Date YYYY-MM-DD (optional)"
-            />
-            {filterError ? <Text style={styles.error}>{filterError}</Text> : null}
-            <View style={styles.kindRow}>
-              {kinds.map((kind) => (
-                <Pressable
-                  key={kind}
-                  style={[
-                    styles.kindChip,
-                    selectedKind === kind ? styles.kindChipActive : null,
-                  ]}
-                  onPress={() => setSelectedKind(kind)}
-                >
-                  <Text
+            <View style={styles.card}>
+              <Text style={styles.label}>Filters</Text>
+              <TextInput
+                style={styles.input}
+                value={dateInput}
+                onChangeText={setDateInput}
+                autoCapitalize="none"
+                autoCorrect={false}
+                placeholder="Date YYYY-MM-DD (optional)"
+              />
+              {filterError ? <Text style={styles.error}>{filterError}</Text> : null}
+              <View style={styles.kindRow}>
+                {kinds.map((kind) => (
+                  <Pressable
+                    key={kind}
                     style={[
-                      styles.kindChipText,
-                      selectedKind === kind ? styles.kindChipTextActive : null,
+                      styles.kindChip,
+                      selectedKind === kind ? styles.kindChipActive : null,
                     ]}
+                    onPress={() => setSelectedKind(kind)}
                   >
-                    {kind === "all" ? "All" : kindLabel(kind)}
-                  </Text>
+                    <Text
+                      style={[
+                        styles.kindChipText,
+                        selectedKind === kind ? styles.kindChipTextActive : null,
+                      ]}
+                    >
+                      {kind === "all" ? "All" : kindLabel(kind)}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+              <View style={styles.row}>
+                <Pressable style={styles.buttonPrimary} onPress={applyDateFilter}>
+                  <Text style={styles.buttonPrimaryText}>Apply</Text>
                 </Pressable>
-              ))}
-            </View>
-            <View style={styles.row}>
-              <Pressable style={styles.buttonPrimary} onPress={applyDateFilter}>
-                <Text style={styles.buttonPrimaryText}>Apply</Text>
-              </Pressable>
-              <Pressable style={styles.buttonSecondary} onPress={clearFilters}>
-                <Text style={styles.buttonSecondaryText}>Clear</Text>
-              </Pressable>
-            </View>
-            <Text style={styles.helperText}>
-              Loaded {events.length} of {total}
-            </Text>
-          </View>
-        </View>
-      }
-      ListEmptyComponent={
-        conversationQuery.isLoading ? (
-          <ActivityIndicator />
-        ) : conversationQuery.error ? (
-          <Text style={styles.error}>{getErrorMessage(conversationQuery.error)}</Text>
-        ) : (
-          <Text style={styles.emptyText}>No conversation events yet.</Text>
-        )
-      }
-      renderItem={({ item }) => (
-        <View style={styles.eventCard}>
-          <View style={styles.eventHeader}>
-            <Text style={styles.badge}>{kindLabel(item.kind)}</Text>
-            <Text style={styles.timestamp}>{formatTimestamp(item.createdAt)}</Text>
-          </View>
-          <Text style={styles.userText}>{item.userText}</Text>
-          {item.systemText ? <Text style={styles.systemText}>{item.systemText}</Text> : null}
-          <Text style={styles.metaText}>Source: {item.source}</Text>
-        </View>
-      )}
-      ListFooterComponent={
-        <View style={styles.footer}>
-          {conversationQuery.hasNextPage ? (
-            <Pressable
-              style={[
-                styles.buttonPrimary,
-                conversationQuery.isFetchingNextPage ? styles.disabledButton : null,
-              ]}
-              onPress={() => conversationQuery.fetchNextPage()}
-              disabled={conversationQuery.isFetchingNextPage}
-            >
-              <Text style={styles.buttonPrimaryText}>
-                {conversationQuery.isFetchingNextPage ? "Loading..." : "Load More"}
+                <Pressable style={styles.buttonSecondary} onPress={clearFilters}>
+                  <Text style={styles.buttonSecondaryText}>Clear</Text>
+                </Pressable>
+              </View>
+              <Text style={styles.helperText}>
+                Loaded {events.length} of {total}
               </Text>
-            </Pressable>
-          ) : events.length > 0 ? (
-            <Text style={styles.helperText}>All events loaded.</Text>
-          ) : null}
-        </View>
-      }
-    />
+            </View>
+          </View>
+        }
+        ListEmptyComponent={
+          conversationQuery.isLoading ? (
+            <ActivityIndicator />
+          ) : conversationQuery.error ? (
+            <Text style={styles.error}>{getErrorMessage(conversationQuery.error)}</Text>
+          ) : (
+            <Text style={styles.emptyText}>No conversation events yet.</Text>
+          )
+        }
+        renderItem={({ item }) => (
+          <View style={styles.eventCard}>
+            <View style={styles.eventHeader}>
+              <Text style={styles.badge}>{kindLabel(item.kind)}</Text>
+              <Text style={styles.timestamp}>{formatTimestamp(item.createdAt)}</Text>
+            </View>
+            <Text style={styles.userText}>{item.userText}</Text>
+            {item.systemText ? <Text style={styles.systemText}>{item.systemText}</Text> : null}
+            <Text style={styles.metaText}>Source: {item.source}</Text>
+          </View>
+        )}
+        ListFooterComponent={
+          <View style={styles.footer}>
+            {conversationQuery.hasNextPage ? (
+              <Pressable
+                style={[
+                  styles.buttonPrimary,
+                  conversationQuery.isFetchingNextPage ? styles.disabledButton : null,
+                ]}
+                onPress={() => conversationQuery.fetchNextPage()}
+                disabled={conversationQuery.isFetchingNextPage}
+              >
+                <Text style={styles.buttonPrimaryText}>
+                  {conversationQuery.isFetchingNextPage ? "Loading..." : "Load More"}
+                </Text>
+              </Pressable>
+            ) : events.length > 0 ? (
+              <Text style={styles.helperText}>All events loaded.</Text>
+            ) : null}
+          </View>
+        }
+      />
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: color.bg,
+  },
   listContent: {
     paddingBottom: 24,
   },

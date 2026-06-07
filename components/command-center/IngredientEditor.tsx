@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -53,12 +54,31 @@ export function IngredientEditor({
   onCancel,
 }: IngredientEditorProps) {
   const insets = useSafeAreaInsets();
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const androidKeyboardLift = Platform.OS === "android" ? keyboardHeight : 0;
   const [name, setName] = useState(mode.kind === "edit" ? mode.ingredient.name : "");
   const [gramsText, setGramsText] = useState(
     mode.kind === "edit" ? String(Math.round(mode.ingredient.grams)) : "",
   );
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Lift the sheet above the keyboard on Android (KeyboardAvoidingView's
+  // "padding" behavior is iOS-only). Mirrors the Sheet pattern in
+  // CommandCenterOverlay.
+  useEffect(() => {
+    const showSub = Keyboard.addListener("keyboardDidShow", (event) => {
+      setKeyboardHeight(event.endCoordinates.height);
+    });
+    const hideSub = Keyboard.addListener("keyboardDidHide", () => {
+      setKeyboardHeight(0);
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   // Clear stale errors when the user types again so they don't see an outdated
   // failure from the previous attempt.
@@ -122,12 +142,19 @@ export function IngredientEditor({
           if (!isSaving) onCancel();
         }}
         testID="cc-ingredient-editor-backdrop"
+        accessibilityRole="button"
+        accessibilityLabel="Dismiss ingredient editor"
       />
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={styles.kav}
       >
-        <View style={[styles.sheet, { paddingBottom: insets.bottom + 22 }]}>
+        <View
+          style={[
+            styles.sheet,
+            { paddingBottom: insets.bottom + 22, marginBottom: androidKeyboardLift },
+          ]}
+        >
           <View style={styles.handleRow}>
             <View style={styles.handle} />
           </View>

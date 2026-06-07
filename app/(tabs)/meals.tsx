@@ -323,7 +323,19 @@ export default function MealsScreen() {
           </View>
         ) : null}
 
-        {!meals.length && !mealsQuery.isLoading ? (
+        {mealsQuery.isError && !isWebPreview ? (
+          <View style={styles.errorCard}>
+            <Text style={styles.errorTitle}>Couldn’t load meals</Text>
+            <Text style={styles.errorBody}>
+              {mealsQuery.error instanceof Error ? mealsQuery.error.message : "Please try again."}
+            </Text>
+            <Pressable style={styles.retryButton} onPress={() => void mealsQuery.refetch()}>
+              <Text style={styles.retryButtonText}>Retry</Text>
+            </Pressable>
+          </View>
+        ) : null}
+
+        {!meals.length && !mealsQuery.isLoading && !mealsQuery.isError ? (
           <View style={styles.emptyCard}>
             <Text style={styles.emptyTitle}>No meals yet</Text>
             <Text style={styles.emptyBody}>
@@ -680,5 +692,42 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 19,
     color: token.textSoft,
+  },
+  errorCard: {
+    borderRadius: r.md,
+    backgroundColor: token.surface,
+    borderWidth: 1,
+    borderColor: token.line,
+    padding: 18,
+    gap: 8,
+    marginBottom: 18,
+    alignItems: "center",
+  },
+  errorTitle: {
+    fontFamily: font.sans[600],
+    fontSize: 16,
+    fontWeight: "600",
+    color: token.text,
+    letterSpacing: -0.16,
+  },
+  errorBody: {
+    fontFamily: font.sans[400],
+    fontSize: 13,
+    lineHeight: 19,
+    color: token.textSoft,
+    textAlign: "center",
+  },
+  retryButton: {
+    marginTop: 4,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: token.accent,
+  },
+  retryButtonText: {
+    fontFamily: font.sans[600],
+    fontSize: 13,
+    fontWeight: "600",
+    color: token.accentInk,
   },
 });

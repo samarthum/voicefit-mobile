@@ -520,7 +520,13 @@ export default function DashboardScreen() {
       >
         <View style={styles.headerRowTop}>
           <Wordmark size={22} />
-          <Pressable style={styles.addButton} onPress={() => cc.open()} testID="home-add-button">
+          <Pressable
+            style={styles.addButton}
+            onPress={() => cc.open()}
+            testID="home-add-button"
+            accessibilityRole="button"
+            accessibilityLabel="Add entry"
+          >
             <Text style={styles.addButtonText}>+</Text>
           </Pressable>
         </View>

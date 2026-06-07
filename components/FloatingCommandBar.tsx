@@ -1,4 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Circle, Path, Rect } from "react-native-svg";
 import { color, font, radius } from "../lib/tokens";
 
@@ -33,6 +34,13 @@ type FloatingCommandBarProps = {
   onMicPress?: () => void;
   testID?: string;
   bottomOffset?: number;
+  /**
+   * Add the bottom safe-area inset to the bar's offset. Only needed on
+   * full-bleed screens (no tab bar) so the bar clears the home indicator.
+   * Tab screens sit above the tab bar — which already consumes the bottom
+   * inset — so they leave this off and dock flush against the nav.
+   */
+  safeAreaBottom?: boolean;
 };
 
 export function FloatingCommandBar({
@@ -40,18 +48,34 @@ export function FloatingCommandBar({
   onPress,
   onMicPress,
   testID,
-  bottomOffset = 8,
+  bottomOffset = 0,
+  safeAreaBottom = false,
 }: FloatingCommandBarProps) {
+  const insets = useSafeAreaInsets();
   return (
-    <View style={[styles.wrap, { bottom: bottomOffset }]} pointerEvents="box-none">
+    <View
+      style={[styles.wrap, { bottom: bottomOffset + (safeAreaBottom ? insets.bottom : 0) }]}
+      pointerEvents="box-none"
+    >
       <View style={styles.bar}>
-        <Pressable style={styles.left} onPress={onPress} testID={testID}>
+        <Pressable
+          style={styles.left}
+          onPress={onPress}
+          testID={testID}
+          accessibilityRole="button"
+          accessibilityLabel="Open command center"
+        >
           <PulseDot />
           <Text style={styles.hint} numberOfLines={1}>
             {hint}
           </Text>
         </Pressable>
-        <Pressable style={styles.micButton} onPress={onMicPress ?? onPress}>
+        <Pressable
+          style={styles.micButton}
+          onPress={onMicPress ?? onPress}
+          accessibilityRole="button"
+          accessibilityLabel="Start voice input"
+        >
           <MicGlyph />
         </Pressable>
       </View>

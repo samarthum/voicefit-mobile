@@ -2,9 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  FlatList,
   Pressable,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -306,161 +306,171 @@ export default function WorkoutsScreen() {
 
   return (
     <SafeAreaView style={styles.root} edges={["top"]}>
-      <ScrollView
-        style={styles.scroll}
+      <FlatList
+        data={sessionCards}
+        keyExtractor={(item) => item.id}
         contentContainerStyle={styles.scrollContent}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         keyboardDismissMode="on-drag"
-        scrollEventThrottle={200}
-        onScroll={({ nativeEvent }) => {
-          if (
-            sessionsQuery.hasNextPage &&
-            !sessionsQuery.isFetchingNextPage &&
-            nativeEvent.contentSize.height - nativeEvent.contentOffset.y -
-              nativeEvent.layoutMeasurement.height <
-              400
-          ) {
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        onEndReachedThreshold={0.4}
+        onEndReached={() => {
+          if (sessionsQuery.hasNextPage && !sessionsQuery.isFetchingNextPage) {
             void sessionsQuery.fetchNextPage();
           }
         }}
-      >
-        <View style={styles.header}>
+        ListHeaderComponent={
           <View>
-            <Text style={styles.pageEyebrow}>{weekEyebrow}</Text>
-            <Text style={styles.pageTitle}>Train</Text>
-          </View>
-          <Pressable
-            style={[styles.newButton, createSessionMutation.isPending ? styles.buttonDisabled : null]}
-            onPress={() => void handleCreateSession()}
-            disabled={createSessionMutation.isPending}
-          >
-            <PlusGlyph />
-            <Text style={styles.newButtonText}>
-              {createSessionMutation.isPending ? "Creating…" : "New session"}
-            </Text>
-          </Pressable>
-        </View>
-
-        <View style={styles.statsRow}>
-          <View style={styles.statPill}>
-            <Text style={styles.statStatLabel}>Sessions</Text>
-            <Text style={styles.statValue}>{stats.sessions}</Text>
-            <Text style={styles.statSubLabel}>this week</Text>
-          </View>
-          <View style={styles.statPill}>
-            <Text style={styles.statStatLabel}>Volume</Text>
-            <Text style={styles.statValue}>{stats.volume}</Text>
-            <Text style={styles.statSubLabel}>kg</Text>
-          </View>
-          <View style={[styles.statPill, styles.statPillAccent]}>
-            <Text style={[styles.statStatLabel, styles.statStatLabelAccent]}>PRs</Text>
-            <Text style={[styles.statValue, styles.statValueAccent]}>{stats.prs}</Text>
-            <Text style={styles.statSubLabel}>new</Text>
-          </View>
-        </View>
-
-        <View style={styles.weekCard}>
-          <View style={styles.weekCardHeader}>
-            <Text style={styles.weekCardLabel}>Week at a glance</Text>
-            <Text style={styles.weekCardHint}>Sets per day</Text>
-          </View>
-          <View style={styles.weekBars}>
-            {weekBars.map((bar, i) => (
-              <View key={i} style={styles.weekBarColumn}>
-                <View style={styles.weekBarTrack}>
-                  <View
-                    style={[
-                      styles.weekBar,
-                      {
-                        height: Math.max(bar.v * 4, bar.v ? 12 : 3),
-                        backgroundColor: bar.live ? token.accent : bar.v ? token.textSoft : token.line,
-                      },
-                    ]}
-                  />
-                </View>
-                <Text
-                  style={[
-                    styles.weekBarLabel,
-                    bar.live ? styles.weekBarLabelLive : null,
-                  ]}
-                >
-                  {bar.d}
+            <View style={styles.header}>
+              <View>
+                <Text style={styles.pageEyebrow}>{weekEyebrow}</Text>
+                <Text style={styles.pageTitle}>Train</Text>
+              </View>
+              <Pressable
+                style={[styles.newButton, createSessionMutation.isPending ? styles.buttonDisabled : null]}
+                onPress={() => void handleCreateSession()}
+                disabled={createSessionMutation.isPending}
+              >
+                <PlusGlyph />
+                <Text style={styles.newButtonText}>
+                  {createSessionMutation.isPending ? "Creating…" : "New session"}
                 </Text>
+              </Pressable>
+            </View>
+
+            <View style={styles.statsRow}>
+              <View style={styles.statPill}>
+                <Text style={styles.statStatLabel}>Sessions</Text>
+                <Text style={styles.statValue}>{stats.sessions}</Text>
+                <Text style={styles.statSubLabel}>this week</Text>
               </View>
-            ))}
-          </View>
-        </View>
-
-        <Text style={styles.sectionTitle}>Sessions</Text>
-
-        {sessionsQuery.isLoading && !isWebPreview ? (
-          <View style={styles.loadingWrap}>
-            <ActivityIndicator />
-          </View>
-        ) : null}
-
-        {sessionCards.length ? (
-          sessionCards.map((session) => (
-            <Pressable
-              key={session.id}
-              style={[
-                styles.sessionCard,
-                session.status === "active" ? styles.sessionCardActive : null,
-              ]}
-              onPress={() => handleOpenSession(session)}
-              disabled={!session.navigable}
-            >
-              <View style={styles.sessionTop}>
-                <View style={styles.sessionTopText}>
-                  <Text style={styles.sessionTitle}>{session.title}</Text>
-                  <Text style={styles.sessionDate}>{session.subtitle}</Text>
-                </View>
-                {session.status === "active" ? (
-                  <View style={styles.liveBadge}>
-                    <View style={styles.liveDot} />
-                    <Text style={styles.liveText}>LIVE</Text>
-                  </View>
-                ) : (
-                  <View style={styles.doneBadge}>
-                    <Text style={styles.doneText}>Done</Text>
-                  </View>
-                )}
+              <View style={styles.statPill}>
+                <Text style={styles.statStatLabel}>Volume</Text>
+                <Text style={styles.statValue}>{stats.volume}</Text>
+                <Text style={styles.statSubLabel}>kg</Text>
               </View>
+              <View style={[styles.statPill, styles.statPillAccent]}>
+                <Text style={[styles.statStatLabel, styles.statStatLabelAccent]}>PRs</Text>
+                <Text style={[styles.statValue, styles.statValueAccent]}>{stats.prs}</Text>
+                <Text style={styles.statSubLabel}>new</Text>
+              </View>
+            </View>
 
-              <View style={styles.sessionMetrics}>
-                <View style={styles.sessionMetric}>
-                  <Text style={styles.sessionMetricLabel}>Sets</Text>
-                  <Text style={styles.sessionMetricValue}>{session.setsLabel}</Text>
-                </View>
-                {session.prCount > 0 ? (
-                  <View style={styles.sessionMetric}>
-                    <Text style={[styles.sessionMetricLabel, styles.sessionMetricLabelAccent]}>PRs</Text>
-                    <Text style={[styles.sessionMetricValue, styles.sessionMetricValueAccent]}>
-                      {session.prCount}
+            <View style={styles.weekCard}>
+              <View style={styles.weekCardHeader}>
+                <Text style={styles.weekCardLabel}>Week at a glance</Text>
+                <Text style={styles.weekCardHint}>Sets per day</Text>
+              </View>
+              <View style={styles.weekBars}>
+                {weekBars.map((bar, i) => (
+                  <View key={i} style={styles.weekBarColumn}>
+                    <View style={styles.weekBarTrack}>
+                      <View
+                        style={[
+                          styles.weekBar,
+                          {
+                            height: Math.max(bar.v * 4, bar.v ? 12 : 3),
+                            backgroundColor: bar.live ? token.accent : bar.v ? token.textSoft : token.line,
+                          },
+                        ]}
+                      />
+                    </View>
+                    <Text
+                      style={[
+                        styles.weekBarLabel,
+                        bar.live ? styles.weekBarLabelLive : null,
+                      ]}
+                    >
+                      {bar.d}
                     </Text>
                   </View>
-                ) : null}
-                <View style={styles.sessionChevron}>
-                  <ChevronGlyph />
-                </View>
+                ))}
               </View>
-            </Pressable>
-          ))
-        ) : !sessionsQuery.isLoading ? (
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyTitle}>No workout sessions yet</Text>
-            <Text style={styles.emptyBody}>
-              Create a session to start logging sets, or use the Command Center to add a workout by voice.
-            </Text>
-          </View>
-        ) : null}
+            </View>
 
-        {sessionsQuery.isFetchingNextPage ? (
-          <View style={styles.loadingMoreWrap}>
-            <ActivityIndicator color={COLORS.textPrimary} size="small" />
+            <Text style={styles.sectionTitle}>Sessions</Text>
           </View>
-        ) : null}
-      </ScrollView>
+        }
+        ListEmptyComponent={
+          sessionsQuery.isLoading && !isWebPreview ? (
+            <View style={styles.loadingWrap}>
+              <ActivityIndicator />
+            </View>
+          ) : sessionsQuery.isError && !isWebPreview && !sessionsQuery.data ? (
+            <View style={styles.errorCard}>
+              <Text style={styles.errorTitle}>Couldn’t load workouts</Text>
+              <Text style={styles.errorBody}>
+                {sessionsQuery.error instanceof Error
+                  ? sessionsQuery.error.message
+                  : "Please try again."}
+              </Text>
+              <Pressable style={styles.retryButton} onPress={() => void sessionsQuery.refetch()}>
+                <Text style={styles.retryButtonText}>Retry</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <View style={styles.emptyCard}>
+              <Text style={styles.emptyTitle}>No workout sessions yet</Text>
+              <Text style={styles.emptyBody}>
+                Create a session to start logging sets, or use the Command Center to add a workout by voice.
+              </Text>
+            </View>
+          )
+        }
+        renderItem={({ item: session }) => (
+          <Pressable
+            style={[
+              styles.sessionCard,
+              session.status === "active" ? styles.sessionCardActive : null,
+            ]}
+            onPress={() => handleOpenSession(session)}
+            disabled={!session.navigable}
+            accessibilityRole="button"
+            accessibilityLabel={`Open ${session.title} session`}
+          >
+            <View style={styles.sessionTop}>
+              <View style={styles.sessionTopText}>
+                <Text style={styles.sessionTitle}>{session.title}</Text>
+                <Text style={styles.sessionDate}>{session.subtitle}</Text>
+              </View>
+              {session.status === "active" ? (
+                <View style={styles.liveBadge}>
+                  <View style={styles.liveDot} />
+                  <Text style={styles.liveText}>LIVE</Text>
+                </View>
+              ) : (
+                <View style={styles.doneBadge}>
+                  <Text style={styles.doneText}>Done</Text>
+                </View>
+              )}
+            </View>
+
+            <View style={styles.sessionMetrics}>
+              <View style={styles.sessionMetric}>
+                <Text style={styles.sessionMetricLabel}>Sets</Text>
+                <Text style={styles.sessionMetricValue}>{session.setsLabel}</Text>
+              </View>
+              {session.prCount > 0 ? (
+                <View style={styles.sessionMetric}>
+                  <Text style={[styles.sessionMetricLabel, styles.sessionMetricLabelAccent]}>PRs</Text>
+                  <Text style={[styles.sessionMetricValue, styles.sessionMetricValueAccent]}>
+                    {session.prCount}
+                  </Text>
+                </View>
+              ) : null}
+              <View style={styles.sessionChevron}>
+                <ChevronGlyph />
+              </View>
+            </View>
+          </Pressable>
+        )}
+        ListFooterComponent={
+          sessionsQuery.isFetchingNextPage ? (
+            <View style={styles.loadingMoreWrap}>
+              <ActivityIndicator color={COLORS.textPrimary} size="small" />
+            </View>
+          ) : null
+        }
+      />
 
       {createFeedback ? (
         <View style={styles.toast}>
@@ -481,9 +491,6 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: COLORS.bg,
-  },
-  scroll: {
-    flex: 1,
   },
   scrollContent: {
     paddingHorizontal: 20,
@@ -773,6 +780,43 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 21,
     color: token.textSoft,
+  },
+  errorCard: {
+    borderRadius: r.md,
+    backgroundColor: token.surface,
+    borderWidth: 1,
+    borderColor: token.line,
+    padding: 18,
+    gap: 8,
+    alignItems: "center",
+  },
+  errorTitle: {
+    fontFamily: font.sans[600],
+    fontSize: 18,
+    fontWeight: "600",
+    letterSpacing: -0.27,
+    color: token.text,
+  },
+  errorBody: {
+    fontFamily: font.sans[400],
+    fontSize: 14,
+    lineHeight: 21,
+    color: token.textSoft,
+    textAlign: "center",
+  },
+  retryButton: {
+    marginTop: 4,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: r.pill,
+    backgroundColor: token.accent,
+  },
+  retryButtonText: {
+    fontFamily: font.sans[700],
+    fontSize: 13,
+    fontWeight: "700",
+    letterSpacing: 0.48,
+    color: token.accentInk,
   },
   loadingMoreWrap: {
     alignItems: "center",

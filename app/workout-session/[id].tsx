@@ -5,12 +5,15 @@ import {
   Keyboard,
   Modal,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
+import {
+  KeyboardAvoidingView,
+  KeyboardAwareScrollView,
+} from "react-native-keyboard-controller";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useAuth } from "@clerk/clerk-expo";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -1095,16 +1098,19 @@ export default function WorkoutSessionScreen() {
 
   return (
     <SafeAreaView style={styles.root} edges={["top"]}>
-      <ScrollView
+      <KeyboardAwareScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
+        bottomOffset={16}
       >
         <View style={styles.header}>
           <View style={styles.headerLeft}>
             <Pressable
               style={styles.iconButton}
               onPress={() => router.replace("/(tabs)/workouts")}
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
             >
               <BackGlyph />
             </Pressable>
@@ -1120,6 +1126,8 @@ export default function WorkoutSessionScreen() {
                 style={styles.iconButton}
                 onPress={handleSessionMenu}
                 hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Session options"
               >
                 <DotsGlyph />
               </Pressable>
@@ -1214,6 +1222,8 @@ export default function WorkoutSessionScreen() {
                       hitSlop={10}
                       style={styles.exerciseDotsButton}
                       testID={`exercise-menu-${card.name}`}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Options for ${card.name}`}
                     >
                       <DotsGlyph />
                     </Pressable>
@@ -1343,6 +1353,8 @@ export default function WorkoutSessionScreen() {
                           style={[styles.checkCell, row.checked ? styles.checkCellFilled : null]}
                           onPress={() => void handleSaveLiveSet(row.live!)}
                           disabled={session.finished}
+                          accessibilityRole="button"
+                          accessibilityLabel={row.checked ? "Set saved" : "Save set"}
                         >
                           {row.checked ? <CheckGlyph /> : null}
                         </Pressable>
@@ -1385,13 +1397,14 @@ export default function WorkoutSessionScreen() {
             </Text>
           </View>
         ) : null}
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       {!session?.finished && (
         <FloatingCommandBar
           hint={session?.empty ? "Did 3 sets of squats at 100kg…" : "80 kilos for 10 reps…"}
           {...cc.launcherProps}
           bottomOffset={91}
+          safeAreaBottom
         />
       )}
       <UndoToast
@@ -1408,10 +1421,11 @@ export default function WorkoutSessionScreen() {
         animationType="fade"
         onRequestClose={() => setRenameModalVisible(false)}
       >
-        <Pressable
-          style={styles.modalOverlay}
-          onPress={() => setRenameModalVisible(false)}
-        >
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior="padding">
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => setRenameModalVisible(false)}
+          />
           <Pressable style={styles.modalCard} onPress={() => {}}>
             <Text style={styles.modalTitle}>Rename Session</Text>
             <TextInput
@@ -1446,7 +1460,7 @@ export default function WorkoutSessionScreen() {
               </Pressable>
             </View>
           </Pressable>
-        </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
 
       <Modal
@@ -1455,7 +1469,11 @@ export default function WorkoutSessionScreen() {
         animationType="fade"
         onRequestClose={handleExerciseNoteCancel}
       >
-        <Pressable style={styles.modalOverlay} onPress={handleExerciseNoteCancel}>
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior="padding">
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={handleExerciseNoteCancel}
+          />
           <Pressable style={styles.modalCard} onPress={() => {}}>
             <Text style={styles.modalTitle}>
               {exerciseNoteEditing ? `Note · ${exerciseNoteEditing}` : "Note"}
@@ -1486,7 +1504,7 @@ export default function WorkoutSessionScreen() {
               </Pressable>
             </View>
           </Pressable>
-        </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );

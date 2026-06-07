@@ -1,20 +1,24 @@
 import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { MealIngredient } from "@voicefit/contracts/types";
 import {
   Alert,
   Image,
-  Keyboard,
-  KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
-  TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
+import {
+  BottomSheetBackdrop,
+  type BottomSheetBackdropProps,
+  BottomSheetModal,
+  BottomSheetScrollView,
+  BottomSheetTextInput,
+  BottomSheetView,
+} from "@gorhom/bottom-sheet";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Path, Rect } from "react-native-svg";
 import {
@@ -143,80 +147,50 @@ const LISTENING_BAR_HEIGHTS = [6, 14, 22, 10, 28, 36, 20, 40, 32, 26, 38, 24, 14
 // Sheet shell
 // ---------------------------------------------------------------------------
 
+// `Sheet` is now just the INNER shell rendered inside the gorhom
+// `BottomSheetModal` (see `CommandCenterOverlay`). It no longer owns
+// presentation, the backdrop, or keyboard avoidance — gorhom does all of that.
+// It renders the optional title row (with close button) plus the per-state
+// content, padded for the bottom safe area. Sizing is dynamic: the content
+// wraps in a `BottomSheetView` so short states stay short and tall states are
+// capped + scrolled by gorhom (review states use BottomSheetScrollView inside).
 function Sheet({
   title,
   onClose,
   children,
   showCloseButton = true,
-  canCloseViaBackdrop,
   closeButtonTestID = "cc-close",
 }: {
   title?: string | null;
   onClose: () => void;
   children: ReactNode;
   showCloseButton?: boolean;
-  canCloseViaBackdrop: boolean;
   closeButtonTestID?: string;
 }) {
   const insets = useSafeAreaInsets();
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
-  const isKeyboardVisible = keyboardHeight > 0;
-  const androidKeyboardLift = Platform.OS === "android" ? keyboardHeight : 0;
-  const sheetBottomPadding = isKeyboardVisible ? 14 : insets.bottom + 22;
-
-  useEffect(() => {
-    const showSub = Keyboard.addListener("keyboardDidShow", (event) => {
-      setKeyboardHeight(event.endCoordinates.height);
-    });
-    const hideSub = Keyboard.addListener("keyboardDidHide", () => {
-      setKeyboardHeight(0);
-    });
-
-    return () => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, []);
 
   return (
-    <KeyboardAvoidingView
-      style={styles.sheetRoot}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-      keyboardVerticalOffset={0}
-    >
-      <Pressable
-        style={styles.sheetBackdrop}
-        onPress={() => {
-          if (canCloseViaBackdrop) onClose();
-        }}
-      />
-      <View
-        style={[
-          styles.sheetContainer,
-          {
-            paddingBottom: sheetBottomPadding,
-            marginBottom: androidKeyboardLift,
-          },
-        ]}
-      >
-        <View style={styles.sheetHandleRow}>
-          <View style={styles.sheetHandle} />
+    <BottomSheetView style={[styles.sheetContent, { paddingBottom: insets.bottom + 22 }]}>
+      {title ? (
+        <View style={styles.sheetTitleRow}>
+          <Text style={styles.sheetTitleText}>{title}</Text>
+          {showCloseButton ? (
+            <Pressable
+              style={styles.sheetCloseCircle}
+              onPress={onClose}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
+              testID={closeButtonTestID}
+            >
+              <CloseGlyph />
+            </Pressable>
+          ) : (
+            <View style={styles.sheetCloseCircle} />
+          )}
         </View>
-        {title ? (
-          <View style={styles.sheetTitleRow}>
-            <Text style={styles.sheetTitleText}>{title}</Text>
-            {showCloseButton ? (
-              <Pressable style={styles.sheetCloseCircle} onPress={onClose} testID={closeButtonTestID}>
-                <CloseGlyph />
-              </Pressable>
-            ) : (
-              <View style={styles.sheetCloseCircle} />
-            )}
-          </View>
-        ) : null}
-        {children}
-      </View>
-    </KeyboardAvoidingView>
+      ) : null}
+      {children}
+    </BottomSheetView>
   );
 }
 
@@ -288,7 +262,6 @@ function InterpretingScreen() {
     <Sheet
       title={null}
       onClose={() => dispatch({ type: "close" })}
-      canCloseViaBackdrop={false}
       showCloseButton={false}
     >
       <View style={styles.statePadding}>
@@ -302,6 +275,8 @@ function InterpretingScreen() {
               <Pressable
                 style={styles.interpretingHeaderClose}
                 onPress={() => dispatch({ type: "close" })}
+                accessibilityRole="button"
+                accessibilityLabel="Close"
                 testID={headerCloseTestID}
               >
                 <CloseGlyph />
@@ -312,7 +287,7 @@ function InterpretingScreen() {
 
         {isEditingTranscript && !isTyped ? (
           <View>
-            <TextInput
+            <BottomSheetTextInput
               style={styles.interpretingTranscriptInput}
               value={transcript}
               onChangeText={setTranscript}
@@ -404,7 +379,7 @@ function IdleSheet() {
   return (
     <View style={styles.idleBody}>
       <View style={styles.idleInputCard}>
-        <TextInput
+        <BottomSheetTextInput
           style={styles.idleInput}
           placeholder={placeholder}
           placeholderTextColor={t.textSoft}
@@ -419,6 +394,8 @@ function IdleSheet() {
         <Pressable
           style={styles.idleSquareBtn}
           onPress={() => void dispatch({ type: "photo.menu.open" })}
+          accessibilityRole="button"
+          accessibilityLabel="Add meal photo"
           testID="cc-camera"
         >
           <CameraGlyph />
@@ -427,6 +404,8 @@ function IdleSheet() {
         <Pressable
           style={styles.idleMicWrap}
           onPress={() => void dispatch({ type: "voice.start" })}
+          accessibilityRole="button"
+          accessibilityLabel="Start voice input"
           testID="cc-big-mic"
         >
           <View pointerEvents="none" style={styles.idleMicHaloOuter} />
@@ -440,6 +419,8 @@ function IdleSheet() {
           style={[styles.idleSquareBtn, sendDisabled && styles.idleSquareBtnDisabled]}
           disabled={sendDisabled}
           onPress={() => void dispatch({ type: "text.submit" })}
+          accessibilityRole="button"
+          accessibilityLabel="Submit entry"
           testID="cc-send"
         >
           <SparkSendGlyph />
@@ -504,7 +485,7 @@ function PhotoContextSheet({ onClose }: { onClose: () => void }) {
   const photo = snapshot.input.selectedMealPhoto;
 
   return (
-    <Sheet title="Log meal photo" onClose={onClose} canCloseViaBackdrop={false}>
+    <Sheet title="Log meal photo" onClose={onClose}>
       <View style={styles.photoBody}>
         {photo ? (
           <Image
@@ -520,7 +501,7 @@ function PhotoContextSheet({ onClose }: { onClose: () => void }) {
         )}
 
         <View style={styles.photoContextCard}>
-          <TextInput
+          <BottomSheetTextInput
             style={styles.photoContextInput}
             placeholder="Add context, e.g. chicken, rice, and sauce"
             placeholderTextColor={t.textSoft}
@@ -558,7 +539,7 @@ function RecordingSheet({ onClose }: { onClose: () => void }) {
   const liveText = snapshot.input.voiceTranscript.trim();
 
   return (
-    <Sheet title={null} onClose={onClose} canCloseViaBackdrop={false} showCloseButton={false}>
+    <Sheet title={null} onClose={onClose} showCloseButton={false}>
       <View style={styles.listeningBody}>
         <View style={styles.listeningHeader}>
           <View style={styles.listeningHeaderSide}>
@@ -571,7 +552,13 @@ function RecordingSheet({ onClose }: { onClose: () => void }) {
             <Text style={styles.listeningTitle}>Listening</Text>
           </View>
           <View style={[styles.listeningHeaderSide, styles.listeningHeaderSideRight]}>
-            <Pressable style={styles.sheetCloseCircle} onPress={onClose} testID="cc-recording-discard">
+            <Pressable
+              style={styles.sheetCloseCircle}
+              onPress={onClose}
+              accessibilityRole="button"
+              accessibilityLabel="Discard recording"
+              testID="cc-recording-discard"
+            >
               <CloseGlyph />
             </Pressable>
           </View>
@@ -604,7 +591,13 @@ function RecordingSheet({ onClose }: { onClose: () => void }) {
         <View style={styles.listeningStopWrap}>
           <View pointerEvents="none" style={styles.listeningStopHaloOuter} />
           <View pointerEvents="none" style={styles.listeningStopHaloMid} />
-          <Pressable style={styles.listeningStopCore} onPress={() => void dispatch({ type: "voice.stop" })} testID="cc-recording-stop">
+          <Pressable
+            style={styles.listeningStopCore}
+            onPress={() => void dispatch({ type: "voice.stop" })}
+            accessibilityRole="button"
+            accessibilityLabel="Stop recording"
+            testID="cc-recording-stop"
+          >
             <View style={styles.listeningStopSquare} />
           </Pressable>
         </View>
@@ -627,6 +620,7 @@ function MealReviewSheet({
   onLongPressIngredient: (ingredient: MealReviewIngredient) => void;
 }) {
   const { snapshot, dispatch } = useCommandCenterOverlay();
+  const insets = useSafeAreaInsets();
   const reviewDraft = snapshot.review?.kind === "meal" ? snapshot.review : null;
   if (!reviewDraft) return null;
 
@@ -637,19 +631,11 @@ function MealReviewSheet({
   const eyebrow = eyebrowParts.join(" · ");
 
   return (
-    <Sheet
-      title={null}
-      onClose={onClose}
-      canCloseViaBackdrop={false}
-      showCloseButton={false}
-      closeButtonTestID="cc-review-close"
+    <BottomSheetScrollView
+      contentContainerStyle={[styles.mealReviewContent, { paddingBottom: insets.bottom + 22 }]}
+      showsVerticalScrollIndicator={false}
+      keyboardDismissMode="on-drag"
     >
-      <ScrollView
-        style={styles.reviewScroll}
-        contentContainerStyle={styles.mealReviewContent}
-        showsVerticalScrollIndicator={false}
-        keyboardDismissMode="on-drag"
-      >
         <View style={styles.mealReviewYouSaidRow}>
           <Text style={styles.mealReviewYouSaidLabel}>YOU SAID</Text>
           <Pressable onPress={() => dispatch({ type: "review.transcript.edit" })} testID="cc-review-edit-transcript">
@@ -750,13 +736,13 @@ function MealReviewSheet({
             <CheckGlyph color={t.accentInk} />
           </Pressable>
         </View>
-      </ScrollView>
-    </Sheet>
+    </BottomSheetScrollView>
   );
 }
 
 function WorkoutReviewSheet({ onClose }: { onClose: () => void }) {
   const { snapshot, dispatch } = useCommandCenterOverlay();
+  const insets = useSafeAreaInsets();
   const reviewDraft = snapshot.review?.kind === "workout" ? snapshot.review : null;
   if (!reviewDraft) return null;
 
@@ -767,19 +753,11 @@ function WorkoutReviewSheet({ onClose }: { onClose: () => void }) {
   const sessionLabel = snapshot.screenContext.sessionId ? "Current session" : reviewDraft.sessionLabel;
 
   return (
-    <Sheet
-      title={null}
-      onClose={onClose}
-      canCloseViaBackdrop={false}
-      showCloseButton={false}
-      closeButtonTestID="cc-review-close"
+    <BottomSheetScrollView
+      contentContainerStyle={[styles.mealReviewContent, { paddingBottom: insets.bottom + 22 }]}
+      showsVerticalScrollIndicator={false}
+      keyboardDismissMode="on-drag"
     >
-      <ScrollView
-        style={styles.reviewScroll}
-        contentContainerStyle={styles.mealReviewContent}
-        showsVerticalScrollIndicator={false}
-        keyboardDismissMode="on-drag"
-      >
         <View style={styles.mealReviewYouSaidRow}>
           <Text style={styles.mealReviewYouSaidLabel}>YOU SAID</Text>
           <Pressable onPress={() => dispatch({ type: "review.transcript.edit" })} testID="cc-review-edit-transcript">
@@ -820,7 +798,7 @@ function WorkoutReviewSheet({ onClose }: { onClose: () => void }) {
               <Text style={[styles.workoutSetCellNumber, styles.workoutSetColSet]}>
                 {set.setNumber}
               </Text>
-              <TextInput
+              <BottomSheetTextInput
                 style={[styles.workoutSetCellInput, styles.workoutSetColKg]}
                 value={set.weightKg}
                 onChangeText={(v) =>
@@ -831,7 +809,7 @@ function WorkoutReviewSheet({ onClose }: { onClose: () => void }) {
                 placeholderTextColor={t.textMute}
                 testID={`cc-review-workout-kg-${index}`}
               />
-              <TextInput
+              <BottomSheetTextInput
                 style={[styles.workoutSetCellInput, styles.workoutSetColReps]}
                 value={set.reps}
                 onChangeText={(v) =>
@@ -842,7 +820,7 @@ function WorkoutReviewSheet({ onClose }: { onClose: () => void }) {
                 placeholderTextColor={t.textMute}
                 testID={`cc-review-workout-reps-${index}`}
               />
-              <TextInput
+              <BottomSheetTextInput
                 style={[styles.workoutSetCellNotesInput, styles.workoutSetColNotes]}
                 value={set.notes}
                 onChangeText={(v) => dispatch({ type: "workout-set.update", index, patch: { notes: v } })}
@@ -899,14 +877,13 @@ function WorkoutReviewSheet({ onClose }: { onClose: () => void }) {
             <CheckGlyph color={t.accentInk} />
           </Pressable>
         </View>
-      </ScrollView>
-    </Sheet>
+    </BottomSheetScrollView>
   );
 }
 
 function SavingSheet({ onClose }: { onClose: () => void }) {
   return (
-    <Sheet title={null} onClose={onClose} canCloseViaBackdrop={false} showCloseButton={false}>
+    <Sheet title={null} onClose={onClose} showCloseButton={false}>
       <View style={styles.sheetContentCentered}>
         <VoiceRing state="interpreting" size={180} />
         <Text style={styles.savingCaption}>Saving…</Text>
@@ -931,7 +908,6 @@ function ErrorSheet({ onClose }: { onClose: () => void }) {
     <Sheet
       title={null}
       onClose={onClose}
-      canCloseViaBackdrop={false}
       showCloseButton={false}
     >
       <View style={styles.errorBody}>
@@ -1033,13 +1009,69 @@ function ErrorSheet({ onClose }: { onClose: () => void }) {
 
 export function CommandCenterOverlay() {
   const { snapshot, dispatch } = useCommandCenterOverlay();
+  const { height: windowHeight } = useWindowDimensions();
 
   const { state: commandState, review: reviewDraft, error, toast } = snapshot;
   const isVisible = commandState !== "cc_collapsed";
   const canCloseViaBackdrop =
     commandState === "cc_expanded_empty" || commandState === "cc_expanded_typing";
-  const modalAnimationType = Platform.OS === "web" ? "none" : "slide";
-  const closeCommandCenter = () => dispatch({ type: "close" });
+  const closeCommandCenter = useCallback(() => dispatch({ type: "close" }), [dispatch]);
+
+  // gorhom owns presentation now. We drive it imperatively from the command
+  // state machine: present the sheet for every "open" state except cc_saved
+  // (which renders its own RN-Modal toast), dismiss it otherwise. The
+  // `programmaticDismissRef` flag lets `onDismiss` distinguish OUR dismiss()
+  // calls (state transitions) from a user swipe/backdrop dismiss — only the
+  // latter should reset the command state back to collapsed.
+  const sheetRef = useRef<BottomSheetModal>(null);
+  const programmaticDismissRef = useRef(false);
+  // Tracks whether we've actually presented the sheet so we never dismiss()
+  // before the first present(). Without this, the effect's else-branch runs on
+  // the initial collapsed mount and sets programmaticDismissRef = true; the
+  // first real swipe/backdrop dismiss then gets treated as programmatic and
+  // never syncs state back to collapsed, leaving the app "open" while the sheet
+  // is closed (so later taps can't re-open it).
+  const hasPresentedRef = useRef(false);
+  const shouldPresentSheet = isVisible && commandState !== "cc_saved";
+
+  useEffect(() => {
+    if (shouldPresentSheet) {
+      hasPresentedRef.current = true;
+      sheetRef.current?.present();
+    } else if (hasPresentedRef.current) {
+      hasPresentedRef.current = false;
+      programmaticDismissRef.current = true;
+      sheetRef.current?.dismiss();
+    }
+  }, [shouldPresentSheet]);
+
+  const handleSheetDismiss = useCallback(() => {
+    // Programmatic dismiss (state transition) — already handled by the reducer.
+    if (programmaticDismissRef.current) {
+      programmaticDismissRef.current = false;
+      return;
+    }
+    // User-initiated swipe/backdrop dismiss — keep app state in sync.
+    closeCommandCenter();
+  }, [closeCommandCenter]);
+
+  // Dynamic sizing capped near the old `maxHeight: "92%"` so short states
+  // (idle/listening/interpreting/saving/error) hug their content while tall
+  // review states scroll inside the cap.
+  const maxDynamicContentSize = windowHeight * 0.92;
+
+  const renderBackdrop = useCallback(
+    (props: BottomSheetBackdropProps) => (
+      <BottomSheetBackdrop
+        {...props}
+        appearsOnIndex={0}
+        disappearsOnIndex={-1}
+        opacity={0.55}
+        pressBehavior={canCloseViaBackdrop ? "close" : "none"}
+      />
+    ),
+    [canCloseViaBackdrop],
+  );
 
   // Ingredient editor sheet state — local to the overlay because nothing else
   // needs to read it. The editor mounts on top of the meal review sheet so
@@ -1077,7 +1109,7 @@ export function CommandCenterOverlay() {
   const renderContent = () => {
     if (commandState === "cc_expanded_empty" || commandState === "cc_expanded_typing") {
       return (
-        <Sheet title="Log anything" onClose={closeCommandCenter} canCloseViaBackdrop={canCloseViaBackdrop}>
+        <Sheet title="Log anything" onClose={closeCommandCenter}>
           <IdleSheet />
         </Sheet>
       );
@@ -1127,7 +1159,14 @@ export function CommandCenterOverlay() {
       return <ErrorSheet onClose={closeCommandCenter} />;
     }
 
-    return null;
+    // No active content (collapsed / cc_saved while the sheet animates closed).
+    // Render a minimal BottomSheetView so dynamic sizing always has a measurable
+    // child instead of a bare `null`.
+    return (
+      <BottomSheetView style={styles.sheetEmpty}>
+        <View />
+      </BottomSheetView>
+    );
   };
 
   const toastNode = toast.message ? (
@@ -1136,32 +1175,36 @@ export function CommandCenterOverlay() {
     </View>
   ) : null;
 
-  if (!isVisible) return toastNode;
+  return (
+    <>
+      <BottomSheetModal
+        ref={sheetRef}
+        onDismiss={handleSheetDismiss}
+        enableDynamicSizing
+        maxDynamicContentSize={maxDynamicContentSize}
+        enablePanDownToClose={canCloseViaBackdrop}
+        backdropComponent={renderBackdrop}
+        backgroundStyle={styles.sheetBackground}
+        handleStyle={styles.sheetHandleRow}
+        handleIndicatorStyle={styles.sheetHandle}
+        keyboardBehavior="interactive"
+        keyboardBlurBehavior="restore"
+        android_keyboardInputMode="adjustResize"
+      >
+        {renderContent()}
+      </BottomSheetModal>
 
-  if (commandState === "cc_saved") {
-    return (
-      <>
+      {/* The SavedToast keeps its own RN Modal — it shows AFTER the bottom
+          sheet dismisses, so there's no z-order conflict, and converting it
+          is out of scope. */}
+      {commandState === "cc_saved" ? (
         <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={closeCommandCenter}>
           <SavedToast />
         </Modal>
-        {toastNode}
-      </>
-    );
-  }
+      ) : null}
 
-  return (
-    <>
-      <Modal
-        visible
-        transparent
-        animationType={modalAnimationType}
-        statusBarTranslucent
-        onRequestClose={() => {
-          if (canCloseViaBackdrop) closeCommandCenter();
-        }}
-      >
-        {renderContent()}
-      </Modal>
+      {/* IngredientEditor remains an RN Modal (already keyboard-fixed
+          separately). It mounts above the gorhom sheet during meal review. */}
       {ingredientEditor && commandState === "cc_review_meal" ? (
         <Modal
           visible
@@ -1246,9 +1289,6 @@ function SavedToast() {
         {titleNode}
         <View style={styles.savedToastFooter}>
           <Text style={styles.savedToastFooterLabel}>{footerLabel}</Text>
-          <Pressable onPress={() => undefined} testID="cc-saved-undo">
-            <Text style={styles.savedToastUndo}>Undo</Text>
-          </Pressable>
         </View>
       </View>
     </View>
@@ -1260,9 +1300,9 @@ function SavedToast() {
 // ---------------------------------------------------------------------------
 
 const styles = StyleSheet.create({
-  sheetRoot: { flex: 1, justifyContent: "flex-end" },
-  sheetBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.55)" },
-  sheetContainer: {
+  // gorhom-owned sheet chrome. The rounded top + border live on the
+  // backgroundStyle; the handle row/indicator match the old hand-rolled look.
+  sheetBackground: {
     backgroundColor: t.bg,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
@@ -1270,9 +1310,9 @@ const styles = StyleSheet.create({
     borderLeftWidth: 1,
     borderRightWidth: 1,
     borderColor: t.line,
-    paddingTop: 0,
-    maxHeight: "92%",
   },
+  sheetContent: { paddingTop: 0 },
+  sheetEmpty: { height: 1 },
   sheetHandleRow: { alignItems: "center", paddingTop: 10, paddingBottom: 14 },
   sheetHandle: { width: 40, height: 4, borderRadius: 999, backgroundColor: t.line2 },
   sheetTitleRow: {
@@ -1496,9 +1536,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: t.accentInk,
   },
-
-  // Review states
-  reviewScroll: { maxHeight: 700 },
 
   // Meal review (Phase 4 — Pulse design)
   mealReviewContent: { paddingHorizontal: 22, paddingBottom: 8 },
@@ -2017,12 +2054,6 @@ const styles = StyleSheet.create({
     letterSpacing: 1.05,
     textTransform: "uppercase",
     color: t.textMute,
-  },
-  savedToastUndo: {
-    fontFamily: font.sans[600],
-    fontSize: 13,
-    fontWeight: "600",
-    color: t.accent,
   },
 
   // Listening state

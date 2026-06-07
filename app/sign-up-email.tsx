@@ -1,7 +1,10 @@
 import { useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -132,12 +135,28 @@ export default function SignUpEmailScreen() {
   return (
     <SafeAreaView style={styles.root} edges={["top"]}>
       <View style={styles.navHeader}>
-        <Pressable style={styles.backButton} onPress={() => router.back()}>
+        <Pressable
+          style={styles.backButton}
+          onPress={() => router.back()}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+        >
           <BackGlyph />
         </Pressable>
       </View>
 
-      <View style={styles.content}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={0}
+      >
+        <ScrollView
+          contentContainerStyle={{ flexGrow: 1 }}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.content}>
         <Text style={styles.pageTitle}>{content.title}</Text>
         <Text style={styles.pageSubtitle}>{content.subtitle}</Text>
 
@@ -202,7 +221,12 @@ export default function SignUpEmailScreen() {
               secureTextEntry={secure}
               autoCapitalize="none"
             />
-            <Pressable style={styles.toggleButton} onPress={() => setSecure((prev) => !prev)}>
+            <Pressable
+              style={styles.toggleButton}
+              onPress={() => setSecure((prev) => !prev)}
+              accessibilityRole="button"
+              accessibilityLabel={secure ? "Show password" : "Hide password"}
+            >
               <EyeGlyph secure={secure} />
             </Pressable>
           </View>
@@ -226,17 +250,19 @@ export default function SignUpEmailScreen() {
         </Pressable>
       </View>
 
-      <View style={styles.bottomArea}>
-        <Text style={styles.switchText}>
-          {content.switchText}{" "}
-          <Text
-            style={styles.switchLink}
-            onPress={() => setMode((prev) => (prev === "signin" ? "signup" : "signin"))}
-          >
-            {content.switchLink}
-          </Text>
-        </Text>
-      </View>
+          <View style={styles.bottomArea}>
+            <Text style={styles.switchText}>
+              {content.switchText}{" "}
+              <Text
+                style={styles.switchLink}
+                onPress={() => setMode((prev) => (prev === "signin" ? "signup" : "signin"))}
+              >
+                {content.switchLink}
+              </Text>
+            </Text>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

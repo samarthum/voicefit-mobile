@@ -4,6 +4,9 @@ import { focusManager, QueryClient, QueryClientProvider } from "@tanstack/react-
 import * as SecureStore from "expo-secure-store";
 import { Slot } from "expo-router";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { KeyboardProvider } from "react-native-keyboard-controller";
+import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { useEffect } from "react";
 import { ActivityIndicator, AppState, Platform, Pressable, StatusBar, StyleSheet, Text, View } from "react-native";
 import { useFonts } from "expo-font";
@@ -107,16 +110,22 @@ export default function RootLayout() {
   }
 
   return (
-    <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
-      <QueryClientProvider client={queryClient}>
-        <SafeAreaProvider>
-          <StatusBar barStyle="dark-content" backgroundColor={color.bg} />
-          <CommandCenterProvider>
-            <Slot />
-            <CommandCenterOverlay />
-          </CommandCenterProvider>
-        </SafeAreaProvider>
-      </QueryClientProvider>
-    </ClerkProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <KeyboardProvider>
+        <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
+          <QueryClientProvider client={queryClient}>
+            <SafeAreaProvider>
+              <BottomSheetModalProvider>
+                <StatusBar barStyle="dark-content" backgroundColor={color.bg} />
+                <CommandCenterProvider>
+                  <Slot />
+                  <CommandCenterOverlay />
+                </CommandCenterProvider>
+              </BottomSheetModalProvider>
+            </SafeAreaProvider>
+          </QueryClientProvider>
+        </ClerkProvider>
+      </KeyboardProvider>
+    </GestureHandlerRootView>
   );
 }
