@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -22,6 +22,15 @@ import { FloatingCommandBar } from "@/components/FloatingCommandBar";
 import { Icon } from "@/components/Icon";
 import { UndoToast } from "@/components/pulse";
 import { useCommandCenter } from "@/components/command-center";
+import {
+  SessionStatsStrip,
+  WorkoutExerciseCard,
+  type ExerciseCardData,
+  type ExerciseType,
+  type RenderRow,
+  type SetDraft,
+  type WorkoutSet,
+} from "@/components/workout";
 import { getExerciseCatalogItem } from "@/lib/exercise-catalog";
 import { apiRequest } from "@/lib/api-client";
 import { haptic } from "@/lib/haptics";
@@ -43,23 +52,6 @@ const COLORS = {
   positive: token.positive,
 };
 
-type ExerciseType = "resistance" | "cardio";
-
-interface WorkoutSet {
-  id: string;
-  sessionId: string;
-  performedAt: string;
-  exerciseName: string;
-  exerciseType: ExerciseType;
-  reps: number | null;
-  weightKg: number | null;
-  durationMinutes: number | null;
-  notes: string | null;
-  transcriptRaw: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
 interface WorkoutSessionDetail {
   id: string;
   userId: string;
@@ -73,30 +65,6 @@ interface WorkoutSessionDetail {
   previousSets?: Record<string, Array<{ weightKg: number | null; reps: number | null; durationMinutes: number | null }>>;
 }
 
-type SetDraft = {
-  reps: string;
-  weightKg: string;
-  durationMinutes: string;
-};
-
-type RenderRow = {
-  id: string;
-  setLabel: string;
-  previous: string;
-  isWarmup: boolean;
-  checked: boolean;
-  live?: WorkoutSet;
-  displayWeight?: string;
-  displayReps?: string;
-};
-
-type ExerciseCard = {
-  name: string;
-  meta: string;
-  exerciseType: ExerciseType;
-  rows: RenderRow[];
-};
-
 type SessionViewModel = {
   id: string;
   title: string;
@@ -106,7 +74,7 @@ type SessionViewModel = {
   sets: string;
   finished: boolean;
   empty: boolean;
-  exerciseCards: ExerciseCard[];
+  exerciseCards: ExerciseCardData[];
 };
 
 const PREVIEW_ACTIVE: SessionViewModel = {
@@ -216,7 +184,7 @@ function getPreviewSession(sessionId: string | undefined): SessionViewModel | nu
   return null;
 }
 
-function makePreviewExerciseCard(exerciseName: string, exerciseType: ExerciseType): ExerciseCard {
+function makePreviewExerciseCard(exerciseName: string, exerciseType: ExerciseType): ExerciseCardData {
   const catalog = getExerciseCatalogItem(exerciseName);
   const meta = catalog
     ? `${catalog.equipment} · ${catalog.group}`
@@ -975,7 +943,7 @@ export default function WorkoutSessionScreen() {
     await finishMutation.mutateAsync();
   };
 
-  const handleAddSet = async (card: ExerciseCard) => {
+  const handleAddSet = async (card: ExerciseCardData) => {
     if (isPreviewId || isWebPreview) {
       setPreviewSession((current) => {
         if (!current) return current;
@@ -1103,20 +1071,11 @@ export default function WorkoutSessionScreen() {
         bottomOffset={16}
       >
 
-        <View style={styles.statsStrip}>
-          <View style={styles.statCell}>
-            <Text selectable style={styles.statValue}>{session?.duration ?? "0:00"}</Text>
-            <Text style={styles.statLabel}>Duration</Text>
-          </View>
-          <View style={styles.statCell}>
-            <Text selectable style={styles.statValue}>{session?.volume ?? "0 kg"}</Text>
-            <Text style={styles.statLabel}>Volume</Text>
-          </View>
-          <View style={styles.statCell}>
-            <Text selectable style={styles.statValue}>{session?.sets ?? "0"}</Text>
-            <Text style={styles.statLabel}>Sets</Text>
-          </View>
-        </View>
+        <SessionStatsStrip
+          duration={session?.duration ?? "0:00"}
+          volume={session?.volume ?? "0 kg"}
+          sets={session?.sets ?? "0"}
+        />
 
         {liveError ? <Text selectable style={styles.errorBanner}>{liveError}</Text> : null}
 
@@ -1162,174 +1121,31 @@ export default function WorkoutSessionScreen() {
           </View>
         ) : session ? (
           <View style={styles.cardsWrap}>
-            {session.exerciseCards.map((card) => {
-              const noteText = sessionQuery.data?.exerciseNotes?.[card.name] ?? "";
-              const hasNote = noteText.trim().length > 0;
-              return (
-              <View key={card.name} style={styles.exerciseCard}>
-                <View style={styles.exerciseHeader}>
-                  <View>
-                    <Text style={styles.exerciseTitle}>{card.name}</Text>
-                    <View style={styles.exerciseMetaRow}>
-                      <View style={styles.exerciseMetaDot} />
-                      <Text style={styles.exerciseMeta}>{card.meta}</Text>
-                    </View>
-                  </View>
-                  {!isPreviewId && !isWebPreview ? (
-                    <Pressable
-                      onPress={() => handleExerciseMenu(card.name)}
-                      hitSlop={10}
-                      style={styles.exerciseDotsButton}
-                      testID={`exercise-menu-${card.name}`}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Options for ${card.name}`}
-                    >
-                      <Icon name="ellipsisVertical" size={16} color={token.textMute} />
-                    </Pressable>
-                  ) : null}
-                </View>
-
-                {!isPreviewId && !isWebPreview ? (
-                  hasNote ? (
-                    <Pressable
-                      onPress={() => openExerciseNoteEditor(card.name)}
-                      style={styles.exerciseNoteRow}
-                      disabled={session.finished}
-                    >
-                      <Text style={styles.exerciseNoteText}>{noteText}</Text>
-                    </Pressable>
-                  ) : !session.finished ? (
-                    <Pressable
-                      onPress={() => openExerciseNoteEditor(card.name)}
-                      style={styles.exerciseNoteRow}
-                    >
-                      <Text style={styles.exerciseNoteAdd}>＋ Add note</Text>
-                    </Pressable>
-                  ) : null
-                ) : null}
-
-                <View style={styles.tableHeader}>
-                  <Text style={[styles.tableHeaderLabel, styles.colSet]}>Set</Text>
-                  <Text style={[styles.tableHeaderLabel, styles.colPrevious]}>Previous</Text>
-                  {card.exerciseType === "cardio" ? (
-                    <>
-                      <Text style={[styles.tableHeaderLabel, styles.colValue]}>Min</Text>
-                      <Text style={[styles.tableHeaderLabel, styles.colValue]}>—</Text>
-                    </>
-                  ) : (
-                    <>
-                      <Text style={[styles.tableHeaderLabel, styles.colValue]}>KG</Text>
-                      <Text style={[styles.tableHeaderLabel, styles.colValue]}>Reps</Text>
-                    </>
-                  )}
-                  <View style={styles.colCheck} />
-                </View>
-
-                {card.rows.map((row) => {
-                  if (!row.live) {
-                    return (
-                      <View key={row.id} style={[styles.setRow, row.checked ? styles.setRowChecked : null]}>
-                        <View style={[styles.setChip, row.isWarmup ? styles.warmupChip : null]}>
-                          <Text style={[styles.setChipText, row.isWarmup ? styles.warmupChipText : null]}>
-                            {row.setLabel}
-                          </Text>
-                        </View>
-                        <Text style={[styles.rowText, styles.colPrevious]}>{row.previous}</Text>
-                        {row.checked ? (
-                          <>
-                            <Text style={[styles.rowText, styles.colValue]}>{row.displayWeight ?? "—"}</Text>
-                            <Text style={[styles.rowText, styles.colValue]}>{row.displayReps ?? "—"}</Text>
-                          </>
-                        ) : (
-                          <>
-                            <View style={[styles.previewInputPill, styles.colValue]}>
-                              <Text style={styles.previewInputText}>{row.displayWeight ?? ""}</Text>
-                            </View>
-                            <View style={[styles.previewInputPill, styles.colValue]}>
-                              <Text style={styles.previewInputText}>{row.displayReps ?? ""}</Text>
-                            </View>
-                          </>
-                        )}
-                        <View style={[styles.checkCell, row.checked ? styles.checkCellFilled : null]}>
-                          {row.checked ? <Icon name="check" size={12} color={token.accentInk} /> : null}
-                        </View>
-                      </View>
-                    );
-                  }
-
-                  const draft = drafts[row.live.id] ?? {
-                    reps: row.live.reps == null ? "" : String(row.live.reps),
-                    weightKg: row.live.weightKg == null ? "" : String(row.live.weightKg),
-                    durationMinutes: row.live.durationMinutes == null ? "" : String(row.live.durationMinutes),
-                  };
-
-                  return (
-                    <View key={row.id}>
-                      <View style={[styles.setRow, row.checked ? styles.setRowChecked : null]}>
-                        <Pressable
-                          onLongPress={() => handleDeleteSet(row.live!)}
-                          delayLongPress={400}
-                          style={[styles.setChip, row.isWarmup ? styles.warmupChip : null]}
-                          hitSlop={6}
-                        >
-                          <Text style={[styles.setChipText, row.isWarmup ? styles.warmupChipText : null]}>
-                            {row.setLabel}
-                          </Text>
-                        </Pressable>
-                        <Text style={[styles.rowText, styles.colPrevious]}>{row.previous}</Text>
-                        <TextInput
-                          style={[styles.rowInput, styles.colValue]}
-                          value={draft.weightKg}
-                          onChangeText={(value) =>
-                            setDrafts((prev) => ({
-                              ...prev,
-                              [row.live!.id]: { ...draft, weightKg: value.replace(/[^\d.]/g, "") },
-                            }))
-                          }
-                          keyboardType="decimal-pad"
-                          placeholder="-"
-                          placeholderTextColor={COLORS.textTertiary}
-                          editable={!session.finished}
-                        />
-                        <TextInput
-                          style={[styles.rowInput, styles.colValue]}
-                          value={row.live.exerciseType === "cardio" ? draft.durationMinutes : draft.reps}
-                          onChangeText={(value) =>
-                            setDrafts((prev) => ({
-                              ...prev,
-                              [row.live!.id]:
-                                row.live!.exerciseType === "cardio"
-                                  ? { ...draft, durationMinutes: value.replace(/[^\d]/g, "") }
-                                  : { ...draft, reps: value.replace(/[^\d]/g, "") },
-                            }))
-                          }
-                          keyboardType="number-pad"
-                          placeholder="-"
-                          placeholderTextColor={COLORS.textTertiary}
-                          editable={!session.finished}
-                        />
-                        <Pressable
-                          style={[styles.checkCell, row.checked ? styles.checkCellFilled : null]}
-                          onPress={() => { haptic.success(); void handleSaveLiveSet(row.live!); }}
-                          disabled={session.finished}
-                          accessibilityRole="button"
-                          accessibilityLabel={row.checked ? "Set saved" : "Save set"}
-                        >
-                          {row.checked ? <Icon name="check" size={12} color={token.accentInk} /> : null}
-                        </Pressable>
-                      </View>
-                    </View>
-                  );
-                })}
-
-                {!session.finished && (
-                  <Pressable style={styles.addSetRow} onPress={() => void handleAddSet(card)} hitSlop={8}>
-                    <Text style={styles.addSetText}>＋ Add Set</Text>
-                  </Pressable>
-                )}
-              </View>
-              );
-            })}
+            {session.exerciseCards.map((card) => (
+              <WorkoutExerciseCard
+                key={card.name}
+                card={card}
+                sessionFinished={session.finished}
+                isPreview={isPreviewId || isWebPreview}
+                drafts={drafts}
+                noteText={sessionQuery.data?.exerciseNotes?.[card.name] ?? ""}
+                onExerciseMenu={handleExerciseMenu}
+                onOpenNoteEditor={openExerciseNoteEditor}
+                onChangeDraft={(setId, patch) =>
+                  setDrafts((prev) => ({
+                    ...prev,
+                    [setId]: { ...(prev[setId] ?? { reps: "", weightKg: "", durationMinutes: "" }), ...patch },
+                  }))
+                }
+                onToggleComplete={(row) => {
+                  if (row.live) { haptic.success(); void handleSaveLiveSet(row.live); }
+                }}
+                onLongPressChip={(row) => {
+                  if (row.live) handleDeleteSet(row.live);
+                }}
+                onAddSet={handleAddSet}
+              />
+            ))}
 
             {!session.finished && (
               <Pressable
@@ -1500,39 +1316,6 @@ const styles = StyleSheet.create({
     color: token.accentInk,
   },
   finishButtonTextDisabled: { color: token.textMute },
-  statsStrip: {
-    flexDirection: "row",
-    gap: 10,
-    paddingHorizontal: 20,
-    paddingBottom: 16,
-  },
-  statCell: {
-    flex: 1,
-    backgroundColor: token.surface,
-    borderWidth: 1,
-    borderColor: token.line,
-    borderRadius: rad.sm,
-    borderCurve: "continuous",
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    alignItems: "flex-start",
-  },
-  statValue: {
-    fontFamily: font.mono[500],
-    fontSize: 20,
-    fontWeight: "500",
-    letterSpacing: -0.6,
-    color: token.text,
-  },
-  statLabel: {
-    marginBottom: 4,
-    fontFamily: font.sans[600],
-    fontSize: 9.5,
-    fontWeight: "600",
-    letterSpacing: 1.52,
-    textTransform: "uppercase",
-    color: token.textMute,
-  },
   errorBanner: {
     marginHorizontal: 16,
     marginTop: 12,
@@ -1543,184 +1326,6 @@ const styles = StyleSheet.create({
   },
   loadingWrap: { paddingVertical: 48, alignItems: "center" },
   cardsWrap: { paddingHorizontal: 20, paddingTop: 4, gap: 24 },
-  exerciseCard: {
-    backgroundColor: "transparent",
-  },
-  exerciseHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingBottom: 10,
-  },
-  exerciseDotsButton: {
-    width: 32,
-    height: 32,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  exerciseTitle: {
-    fontFamily: font.sans[600],
-    fontSize: 18,
-    fontWeight: "600",
-    letterSpacing: -0.27,
-    color: token.text,
-  },
-  exerciseMetaRow: {
-    marginTop: 3,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  exerciseMetaDot: { width: 4, height: 4, borderRadius: rad.pill, backgroundColor: token.textMute },
-  exerciseMeta: {
-    fontFamily: font.sans[600],
-    fontSize: 10.5,
-    fontWeight: "600",
-    letterSpacing: 1.47,
-    textTransform: "uppercase",
-    color: token.textMute,
-  },
-  tableHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 14,
-    paddingTop: 6,
-    paddingBottom: 4,
-  },
-  tableHeaderLabel: {
-    fontFamily: font.sans[600],
-    fontSize: 9.5,
-    fontWeight: "600",
-    letterSpacing: 1.52,
-    textTransform: "uppercase",
-    color: token.textMute,
-  },
-  colSet: { width: 32 },
-  colPrevious: { flex: 1.1 },
-  colValue: { flex: 0.75, textAlign: "center" },
-  colCheck: { width: 38, alignItems: "flex-end" },
-  setRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 12,
-    borderCurve: "continuous",
-    backgroundColor: token.surface,
-    borderWidth: 1,
-    borderColor: token.line,
-    marginBottom: 6,
-  },
-  setRowChecked: {
-    backgroundColor: token.accentTintBg,
-    borderColor: token.accentTintBorder,
-  },
-  setChip: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    borderCurve: "continuous",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 4,
-  },
-  warmupChip: {},
-  setChipText: {
-    fontFamily: font.mono[500],
-    fontSize: 14,
-    fontWeight: "500",
-    color: token.text,
-  },
-  warmupChipText: { color: token.accent },
-  rowText: {
-    fontFamily: font.mono[400],
-    fontSize: 12,
-    fontWeight: "400",
-    color: token.textMute,
-  },
-  rowInput: {
-    minHeight: 30,
-    borderRadius: 8,
-    borderCurve: "continuous",
-    backgroundColor: "transparent",
-    fontFamily: font.mono[500],
-    fontSize: 16,
-    fontWeight: "500",
-    color: token.text,
-    textAlign: "center",
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-  },
-  previewInputPill: {
-    minHeight: 30,
-    borderRadius: 8,
-    borderCurve: "continuous",
-    backgroundColor: "transparent",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-  },
-  previewInputText: {
-    fontFamily: font.mono[500],
-    fontSize: 16,
-    fontWeight: "500",
-    color: token.text,
-  },
-  checkCell: {
-    width: 26,
-    height: 26,
-    borderRadius: 8,
-    borderCurve: "continuous",
-    borderWidth: 1,
-    borderColor: token.line2,
-    alignItems: "center",
-    justifyContent: "center",
-    marginLeft: 8,
-  },
-  checkCellFilled: {
-    backgroundColor: token.accent,
-    borderColor: token.accent,
-  },
-  exerciseNoteRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 10,
-    marginBottom: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    backgroundColor: token.surface,
-    borderWidth: 1,
-    borderColor: token.line,
-    borderRadius: 12,
-    borderCurve: "continuous",
-  },
-  exerciseNoteText: {
-    flex: 1,
-    fontFamily: font.sans[400],
-    fontSize: 12.5,
-    color: token.text,
-    lineHeight: 19,
-    letterSpacing: -0.06,
-  },
-  exerciseNoteAdd: {
-    flex: 1,
-    fontFamily: font.sans[400],
-    fontSize: 12.5,
-    color: token.textMute,
-    lineHeight: 19,
-  },
-  addSetRow: {
-    paddingTop: 10,
-    paddingHorizontal: 14,
-  },
-  addSetText: {
-    fontFamily: font.sans[600],
-    fontSize: 12,
-    fontWeight: "600",
-    letterSpacing: 0.48,
-    color: token.accent,
-  },
   emptyWrap: {
     alignItems: "center",
     paddingHorizontal: 24,

@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -13,13 +12,6 @@ import { useAuth } from "@clerk/clerk-expo";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import type { DashboardData } from "@voicefit/contracts/types";
-import Svg, {
-  Circle as SvgCircle,
-  Defs,
-  LinearGradient,
-  Path,
-  Stop,
-} from "react-native-svg";
 import { apiRequest } from "@/lib/api-client";
 import { FloatingCommandBar } from "@/components/FloatingCommandBar";
 import { useCommandCenter, COLORS, toLocalDateString } from "@/components/command-center";
@@ -35,7 +27,6 @@ import {
 } from "@/lib/meal-status";
 import {
   type TrendMetric,
-  TREND_TABS,
   safeNumber,
   buildLinePaths,
   metricValueFromPoint,
@@ -43,6 +34,15 @@ import {
 import { haptic } from "@/lib/haptics";
 import { Icon } from "@/components/Icon";
 import { formatCompact } from "@/lib/format";
+import {
+  CalorieRing,
+  WeightSparkline,
+  StepsTrendIcon,
+  CoachBadge,
+  MacroBar,
+  MealStatusBadge,
+  DayPicker,
+} from "@/components/dashboard";
 
 type RecentMeal = Omit<DashboardData["recentMeals"][number], "calories"> & {
   calories: number | null;
@@ -89,134 +89,6 @@ function progressPercent(current: number, goal: number) {
   if (!goal || goal <= 0) return 0;
   return Math.max(0, Math.min(1, current / goal));
 }
-
-function CoachBadge() {
-  return (
-    <View style={styles.coachBadge}>
-      <Svg width={40} height={40} viewBox="0 0 40 40" fill="none">
-        <SvgCircle cx={20} cy={20} r={20} fill={token.accent} />
-        <Path
-          d="M20 9L23.5 17L31 19L23.5 21L20 30L16.5 21L9 19L16.5 17L20 9Z"
-          fill={token.accentInk}
-        />
-      </Svg>
-    </View>
-  );
-}
-
-function StepsTrendIcon() {
-  return <Icon name="trendUp" size={14} color={token.accent} />;
-}
-
-function CalorieRing({ consumed, goal }: { consumed: number; goal: number }) {
-  const size = 150;
-  const stroke = 12;
-  const radius = (size - stroke) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const progress = progressPercent(consumed, goal);
-
-  return (
-    <View style={[styles.heroRingWrap, { width: size, height: size }]}>
-      <Svg width={size} height={size}>
-        <Defs>
-          <LinearGradient id="limeRing" x1="0" y1="0" x2="1" y2="1">
-            <Stop offset="0" stopColor={token.accent} />
-            <Stop offset="1" stopColor={token.accentDim} />
-          </LinearGradient>
-        </Defs>
-        <SvgCircle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          stroke={token.accentRingTrack}
-          strokeWidth={stroke}
-          fill="none"
-        />
-        <SvgCircle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          stroke="url(#limeRing)"
-          strokeWidth={stroke}
-          strokeDasharray={`${circumference * progress} ${circumference}`}
-          strokeLinecap="round"
-          fill="none"
-          transform={`rotate(-90 ${size / 2} ${size / 2})`}
-        />
-      </Svg>
-      <View style={styles.heroRingCenter}>
-        <Text style={styles.heroRingNumber} selectable>{consumed.toLocaleString()}</Text>
-        <Text style={styles.heroRingLabel}>kcal in</Text>
-      </View>
-    </View>
-  );
-}
-
-type MacroBarProps = { label: string; current: number | null; goal: number | null; tone?: "accent" | "soft" };
-function MacroBar({ label, current, goal, tone = "soft" }: MacroBarProps) {
-  const hasGoal = goal != null && goal > 0;
-  const percent = hasGoal && current != null ? Math.max(0, Math.min(1, current / goal)) : 0;
-  const fillColor = tone === "accent" ? token.accent : token.textSoft;
-  return (
-    <View style={styles.macroRow}>
-      <View style={styles.macroHeader}>
-        <Text style={styles.macroLabel}>{label}</Text>
-        <Text style={styles.macroValue}>
-          {current != null ? Math.round(current) : "—"}
-          {hasGoal ? <Text style={styles.macroValueGoal}>/{goal}g</Text> : <Text style={styles.macroValueGoal}>g</Text>}
-        </Text>
-      </View>
-      {hasGoal ? (
-        <View style={styles.macroTrack}>
-          <View style={[styles.macroFill, { width: `${percent * 100}%`, backgroundColor: fillColor }]} />
-        </View>
-      ) : null}
-    </View>
-  );
-}
-
-function MiniStepsRing({ current, goal }: { current: number; goal: number }) {
-  const size = 40;
-  const stroke = 4;
-  const radius = (size - stroke) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const progress = progressPercent(current, goal);
-
-  return (
-    <Svg width={size} height={size}>
-      <SvgCircle cx={size / 2} cy={size / 2} r={radius} stroke={COLORS.ringTrack} strokeWidth={stroke} fill="none" />
-      <SvgCircle
-        cx={size / 2}
-        cy={size / 2}
-        r={radius}
-        stroke={COLORS.steps}
-        strokeWidth={stroke}
-        strokeDasharray={`${circumference} ${circumference}`}
-        strokeDashoffset={circumference * (1 - progress)}
-        strokeLinecap="round"
-        fill="none"
-        transform={`rotate(-90 ${size / 2} ${size / 2})`}
-      />
-    </Svg>
-  );
-}
-
-function WeightSparkline() {
-  return (
-    <Svg width="100%" height={18} viewBox="0 0 120 18" preserveAspectRatio="none">
-      <Path
-        d="M0 8 L20 10 L40 6 L60 9 L80 7 L100 11 L120 14"
-        stroke={token.accent}
-        strokeWidth={1.5}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        fill="none"
-      />
-    </Svg>
-  );
-}
-
-// LoadingBlock is now imported from components/pulse — see top of file.
 
 function mockDashboardData(selectedDate: string): DashboardHomeData {
   const base = parseDateKey(selectedDate);
@@ -277,37 +149,6 @@ function mockDashboardData(selectedDate: string): DashboardHomeData {
     ],
     recentExercises: ["Bench Press", "Deadlift", "Squat"],
   };
-}
-
-function MealStatusBadge({ status }: { status: AsyncMealStatus }) {
-  if (status === "reviewed") return null;
-  const label =
-    status === "interpreting"
-      ? "Estimating"
-      : status === "needs_review"
-      ? "Review estimate"
-      : "Failed";
-  return (
-    <View
-      style={[
-        styles.mealStatusBadge,
-        status === "failed" ? styles.mealStatusBadgeFailed : null,
-      ]}
-    >
-      {status === "interpreting" ? (
-        <ActivityIndicator size="small" color={token.textMute} style={styles.mealStatusSpinner} />
-      ) : null}
-      <Text
-        style={[
-          styles.mealStatusText,
-          status === "failed" ? styles.mealStatusTextFailed : null,
-        ]}
-        numberOfLines={1}
-      >
-        {label}
-      </Text>
-    </View>
-  );
 }
 
 export default function DashboardScreen() {
@@ -530,39 +371,12 @@ export default function DashboardScreen() {
           </View>
         ) : null}
 
-        <View style={styles.dayPickerRow}>
-          {dayOptions.map((day) => {
-            const active = day.date === selectedDate;
-            const hasData = loggedDates.has(day.date);
-            const faded = !active && !hasData;
-
-            return (
-              <Pressable
-                key={day.date}
-                style={[styles.dayItem, active && styles.dayItemActive]}
-                testID={`home-day-${day.date}`}
-                onPress={() => {
-                  haptic.selection();
-                  setSelectedDate(day.date);
-                }}
-              >
-                <Text style={[styles.dayLabel, active && styles.dayLabelActive, faded && styles.dayLabelFaded]}>
-                  {day.dayLabel}
-                </Text>
-                <Text style={[styles.dayNum, active && styles.dayNumActive, faded && styles.dayNumFaded]}>
-                  {day.dayNum}
-                </Text>
-                <View
-                  style={[
-                    styles.dayDot,
-                    active && styles.dayDotActive,
-                    !active && !hasData && styles.dayDotEmpty,
-                  ]}
-                />
-              </Pressable>
-            );
-          })}
-        </View>
+        <DayPicker
+          dayOptions={dayOptions}
+          selectedDate={selectedDate}
+          loggedDates={loggedDates}
+          onSelectDate={setSelectedDate}
+        />
 
         {homeBlockingError ? (
           <View style={styles.blockingErrorCard}>
@@ -787,13 +601,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingVertical: 8,
   },
-  appName: {
-    fontFamily: font.sans[700],
-    fontSize: 22,
-    fontWeight: "700",
-    letterSpacing: -0.66,
-    color: token.text,
-  },
   addButton: {
     width: 36,
     height: 36,
@@ -807,72 +614,6 @@ const styles = StyleSheet.create({
   offlineBannerWrap: {
     marginTop: 6,
     marginBottom: 4,
-  },
-  dayPickerRow: {
-    flexDirection: "row",
-    gap: 6,
-    marginTop: 6,
-    marginBottom: 20,
-  },
-  dayItem: {
-    flex: 1,
-    borderRadius: 12,
-    borderCurve: "continuous",
-    paddingVertical: 10,
-    paddingHorizontal: 0,
-    alignItems: "center",
-    gap: 4,
-    borderWidth: 1,
-    borderColor: token.line,
-    backgroundColor: "transparent",
-  },
-  dayItemActive: {
-    backgroundColor: token.accent,
-    borderColor: "transparent",
-  },
-  dayLabel: {
-    fontFamily: font.sans[600],
-    fontSize: 10,
-    fontWeight: "600",
-    letterSpacing: 1,
-    color: token.text,
-    opacity: 0.75,
-  },
-  dayLabelActive: {
-    color: token.accentInk,
-    opacity: 0.75,
-  },
-  dayLabelFaded: {
-    color: token.textMute,
-  },
-  dayNum: {
-    fontFamily: font.mono[500],
-    fontSize: 18,
-    fontWeight: "500",
-    color: token.text,
-    lineHeight: 18,
-    marginTop: 3,
-  },
-  dayNumActive: {
-    color: token.accentInk,
-  },
-  dayNumFaded: {
-    color: token.textMute,
-    fontWeight: "500",
-  },
-  dayDot: {
-    width: 3,
-    height: 3,
-    borderRadius: 3,
-    borderCurve: "continuous",
-    marginTop: 5,
-    backgroundColor: token.accent,
-  },
-  dayDotActive: {
-    backgroundColor: token.accentInk,
-  },
-  dayDotEmpty: {
-    backgroundColor: "transparent",
   },
   heroCard: {
     backgroundColor: token.surface,
@@ -926,69 +667,11 @@ const styles = StyleSheet.create({
     color: token.accent,
     fontWeight: "600",
   },
-  heroRingWrap: {
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-  },
-  heroRingCenter: {
-    position: "absolute",
-    alignItems: "center",
-  },
-  heroRingNumber: {
-    fontFamily: font.mono[500],
-    fontSize: 38,
-    fontWeight: "500",
-    color: token.text,
-    letterSpacing: -1.52,
-    lineHeight: 38,
-  },
-  heroRingLabel: {
-    marginTop: 4,
-    fontFamily: font.sans[600],
-    fontSize: 10.5,
-    fontWeight: "600",
-    letterSpacing: 0.84,
-    textTransform: "uppercase",
-    color: token.textMute,
-  },
   macroStack: {
     gap: 10,
   },
   macroLoadingStack: {
     gap: 10,
-  },
-  macroRow: {},
-  macroHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 4,
-  },
-  macroLabel: {
-    fontFamily: font.sans[400],
-    fontSize: 11,
-    color: token.textSoft,
-    letterSpacing: 0.44,
-  },
-  macroValue: {
-    fontFamily: font.mono[500],
-    fontSize: 11,
-    color: token.text,
-  },
-  macroValueGoal: {
-    color: token.textMute,
-  },
-  macroTrack: {
-    height: 4,
-    backgroundColor: token.line,
-    borderRadius: 2,
-    borderCurve: "continuous",
-    overflow: "hidden",
-  },
-  macroFill: {
-    height: "100%",
-    borderRadius: 2,
-    borderCurve: "continuous",
   },
   metricsRow: {
     flexDirection: "row",
@@ -1092,12 +775,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-  },
-  coachBadge: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
   },
   coachTextWrap: {
     flex: 1,
@@ -1310,52 +987,11 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     color: token.textMute,
   },
-  mealStatusBadge: {
-    maxWidth: 104,
-    minHeight: 20,
-    borderRadius: r.pill,
-    borderWidth: 1,
-    borderColor: token.line,
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    flexShrink: 1,
-  },
-  mealStatusBadgeFailed: {
-    borderColor: token.negative,
-  },
-  mealStatusSpinner: {
-    transform: [{ scale: 0.65 }],
-    marginHorizontal: -3,
-  },
-  mealStatusText: {
-    fontFamily: font.sans[600],
-    fontSize: 9,
-    fontWeight: "600",
-    letterSpacing: 0.35,
-    color: token.textMute,
-    textTransform: "uppercase",
-    flexShrink: 1,
-  },
-  mealStatusTextFailed: {
-    color: token.negative,
-  },
-  mealCalories: {
-    fontFamily: font.mono[500],
-    fontSize: 15,
-    fontWeight: "500",
-    color: token.text,
-  },
   emptyText: {
     fontFamily: font.sans[400],
     fontSize: 14,
     color: token.textSoft,
     padding: 16,
-  },
-  loadingBlock: {
-    backgroundColor: token.surface2,
   },
   blockingErrorCard: {
     marginTop: 24,

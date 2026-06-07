@@ -28,9 +28,9 @@ import { IngredientEditor, type IngredientEditorMode } from "@/components/comman
 import {
   generateIngredientId,
   recalculateMealTotals,
-  scaleIngredientByGrams,
 } from "@/components/command-center/helpers";
 import type { MealReviewIngredient, MealReviewDraft } from "@/components/command-center/types";
+import { StatusNotice, MealSummaryCard, IngredientList, MealActionsBar } from "@/components/meal-edit";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -71,15 +71,6 @@ interface MealDetail {
 // ---------------------------------------------------------------------------
 // Helpers (local to this screen)
 // ---------------------------------------------------------------------------
-
-
-function formatMealTime(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  const hh = String(date.getHours()).padStart(2, "0");
-  const mm = String(date.getMinutes()).padStart(2, "0");
-  return `${hh}:${mm}`;
-}
 
 function nutritionNumber(value: number | null | undefined) {
   return isFiniteNumber(value) ? value : 0;
@@ -154,45 +145,6 @@ function scalarTotals(meal: MealDetail) {
       fat: roundNullable(meal.fatG),
     },
   };
-}
-
-function StatusNotice({ status, message }: { status: AsyncMealStatus; message?: string | null }) {
-  if (status === "reviewed") return null;
-  const title =
-    status === "interpreting"
-      ? "Estimating nutrition"
-      : status === "needs_review"
-      ? "Review estimate"
-      : "Estimate failed";
-  const body =
-    status === "interpreting"
-      ? "This meal is still being interpreted. Nutrition will appear when it finishes."
-      : status === "needs_review"
-      ? "Check the estimate, adjust anything that looks off, then confirm it."
-      : message || "The estimate could not be completed. You can delete this meal or try logging it again.";
-  return (
-    <View
-      style={[
-        styles.statusNotice,
-        status === "failed" ? styles.statusNoticeFailed : null,
-      ]}
-    >
-      <View style={styles.statusNoticeTitleRow}>
-        {status === "interpreting" ? (
-          <ActivityIndicator size="small" color={t.textMute} />
-        ) : null}
-        <Text
-          style={[
-            styles.statusNoticeTitle,
-            status === "failed" ? styles.statusNoticeTitleFailed : null,
-          ]}
-        >
-          {title}
-        </Text>
-      </View>
-      <Text style={styles.statusNoticeBody}>{body}</Text>
-    </View>
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -490,7 +442,7 @@ export default function MealEditScreen() {
 
       {mealQuery.isError ? (
         <View style={styles.errorWrap}>
-          <Text style={styles.errorTitle}>Couldn’t load meal</Text>
+          <Text style={styles.errorTitle}>Couldn't load meal</Text>
           <Text style={styles.errorBody} selectable>
             {mealQuery.error instanceof Error ? mealQuery.error.message : "Please try again."}
           </Text>
@@ -511,133 +463,26 @@ export default function MealEditScreen() {
           <StatusNotice status={mealStatus} message={meal.errorMessage} />
 
           <View style={styles.summaryCard}>
-            <View style={styles.summaryRow}>
-              <View style={styles.summaryLeft}>
-                <Text style={styles.eyebrow}>
-                  {(editedMealType ?? meal.mealType).toUpperCase()}
-                </Text>
-                <Text style={styles.mealName} numberOfLines={2}>{meal.description}</Text>
-                <Text style={styles.mealTime}>{formatMealTime(meal.eatenAt)}</Text>
-              </View>
-              <View style={styles.summaryRight}>
-                {isPendingEstimate || displayCalories == null ? (
-                  <>
-                    <Text style={styles.kcalPending} selectable>--</Text>
-                    <Text style={styles.kcalUnit}>KCAL</Text>
-                  </>
-                ) : (
-                  <>
-                    <Text style={styles.kcalNum} selectable>{displayCalories}</Text>
-                    <Text style={styles.kcalUnit}>KCAL</Text>
-                  </>
-                )}
-              </View>
-            </View>
+            <MealSummaryCard
+              description={meal.description}
+              eatenAt={meal.eatenAt}
+              mealType={editedMealType ?? meal.mealType}
+              displayCalories={displayCalories}
+              isPendingEstimate={isPendingEstimate}
+              macros={displayTotals.macros}
+              onSelectMealType={(type) => {
+                setEditedMealType(type);
+                if (type !== meal.mealType) setIsDirty(true);
+              }}
+            />
 
-            <View style={styles.mealTypeRow}>
-              {(["breakfast", "lunch", "dinner", "snack"] as const).map((type) => {
-                const selected = (editedMealType ?? meal.mealType) === type;
-                return (
-                  <Pressable
-                    key={type}
-                    onPress={() => {
-                      setEditedMealType(type);
-                      if (type !== meal.mealType) setIsDirty(true);
-                    }}
-                    style={[styles.mealTypePill, selected && styles.mealTypePillSelected]}
-                  >
-                    <Text
-                      style={[
-                        styles.mealTypePillText,
-                        selected && styles.mealTypePillTextSelected,
-                      ]}
-                    >
-                      {type.charAt(0).toUpperCase() + type.slice(1)}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-
-            <View style={styles.macrosGrid}>
-              <View style={styles.macroCell}>
-                <Text style={styles.macroLabel}>PROTEIN</Text>
-                <View style={styles.macroValueRow}>
-                  <Text style={[styles.macroValue, styles.macroValueAccent]} selectable>
-                    {displayTotals.macros.protein ?? "--"}
-                  </Text>
-                  <Text style={styles.macroUnit}>g</Text>
-                </View>
-              </View>
-              <View style={styles.macroCell}>
-                <Text style={styles.macroLabel}>CARBS</Text>
-                <View style={styles.macroValueRow}>
-                  <Text style={[styles.macroValue, styles.macroValueSoft]} selectable>
-                    {displayTotals.macros.carbs ?? "--"}
-                  </Text>
-                  <Text style={styles.macroUnit}>g</Text>
-                </View>
-              </View>
-              <View style={styles.macroCell}>
-                <Text style={styles.macroLabel}>FAT</Text>
-                <View style={styles.macroValueRow}>
-                  <Text style={[styles.macroValue, styles.macroValueSoft]} selectable>
-                    {displayTotals.macros.fat ?? "--"}
-                  </Text>
-                  <Text style={styles.macroUnit}>g</Text>
-                </View>
-              </View>
-            </View>
-
-            <View style={styles.divider} />
-
-            <View style={styles.ingredientsHeader}>
-              <Text style={styles.ingredientsTitle}>INGREDIENTS</Text>
-              <Pressable
-                onPress={() => setEditorMode({ kind: "add" })}
-                disabled={isPendingEstimate}
-                testID="meal-edit-add-ingredient"
-              >
-                <Text style={[styles.addLink, isPendingEstimate ? styles.addLinkDisabled : null]}>+ ADD</Text>
-              </Pressable>
-            </View>
-
-            {isPendingEstimate ? (
-              <Text style={styles.emptyHint}>
-                Nutrition details are still being estimated.
-              </Text>
-            ) : ingredients.length === 0 ? (
-              <Text style={styles.emptyHint}>
-                No ingredients on this meal yet. Tap + ADD to start.
-              </Text>
-            ) : (
-              ingredients.map((ingredient, index) => (
-                <Pressable
-                  key={ingredient.id}
-                  onPress={() => {
-                    if (!isPendingEstimate) setEditorMode({ kind: "edit", ingredient });
-                  }}
-                  onLongPress={() => {
-                    if (!isPendingEstimate) handleLongPressIngredient(ingredient);
-                  }}
-                  delayLongPress={400}
-                  style={[
-                    styles.ingredientRow,
-                    index === 0 ? null : styles.ingredientRowDivider,
-                  ]}
-                  testID={`meal-edit-ingredient-${index}`}
-                >
-                  <View style={styles.ingredientCopy}>
-                    <Text style={styles.ingredientName}>{ingredient.name}</Text>
-                    <Text style={styles.ingredientMacros}>
-                      {`P ${Math.round(ingredient.proteinG)}g · C ${Math.round(ingredient.carbsG)}g · F ${Math.round(ingredient.fatG)}g`}
-                    </Text>
-                  </View>
-                  <Text style={styles.ingredientQty} selectable>{`${Math.round(ingredient.grams)} g`}</Text>
-                  <Text style={styles.ingredientCal} selectable>{ingredient.calories}</Text>
-                </Pressable>
-              ))
-            )}
+            <IngredientList
+              ingredients={ingredients}
+              isPendingEstimate={isPendingEstimate}
+              onAdd={() => setEditorMode({ kind: "add" })}
+              onEdit={(ingredient) => setEditorMode({ kind: "edit", ingredient })}
+              onLongPress={handleLongPressIngredient}
+            />
           </View>
 
           <Text style={styles.hint}>
@@ -646,33 +491,14 @@ export default function MealEditScreen() {
 
           {errorMessage ? <Text style={styles.errorText} selectable>{errorMessage}</Text> : null}
 
-          <View style={styles.actions}>
-            <Pressable
-              style={styles.deleteButton}
-              onPress={handleDelete}
-              disabled={deleteMutation.isPending}
-              testID="meal-edit-delete"
-            >
-              <Text style={styles.deleteButtonText}>
-                {deleteMutation.isPending ? "Deleting…" : "Delete meal"}
-              </Text>
-            </Pressable>
-            <Pressable
-              style={[
-                styles.saveButton,
-                primaryActionDisabled ? styles.saveButtonDisabled : null,
-              ]}
-              onPress={handlePrimaryAction}
-              disabled={primaryActionDisabled}
-              testID="meal-edit-save"
-            >
-              {primaryActionPending ? (
-                <ActivityIndicator color={t.accentInk} />
-              ) : (
-                <Text style={styles.saveButtonText}>{primaryActionLabel}</Text>
-              )}
-            </Pressable>
-          </View>
+          <MealActionsBar
+            primaryLabel={primaryActionLabel}
+            primaryDisabled={primaryActionDisabled}
+            primaryPending={primaryActionPending}
+            deletePending={deleteMutation.isPending}
+            onPrimaryAction={handlePrimaryAction}
+            onDelete={handleDelete}
+          />
         </ScrollView>
       ) : null}
 
@@ -698,7 +524,7 @@ export default function MealEditScreen() {
 }
 
 // ---------------------------------------------------------------------------
-// Styles
+// Styles (only what remains in this file)
 // ---------------------------------------------------------------------------
 
 const styles = StyleSheet.create({
@@ -759,38 +585,6 @@ const styles = StyleSheet.create({
     paddingBottom: 64,
     gap: 12,
   },
-  statusNotice: {
-    borderRadius: r.md,
-    borderCurve: "continuous",
-    borderWidth: 1,
-    borderColor: t.line,
-    backgroundColor: t.surface,
-    padding: 14,
-    gap: 6,
-  },
-  statusNoticeFailed: {
-    borderColor: t.negative,
-  },
-  statusNoticeTitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  statusNoticeTitle: {
-    fontFamily: font.sans[600],
-    fontSize: 13,
-    fontWeight: "600",
-    color: t.text,
-  },
-  statusNoticeTitleFailed: {
-    color: t.negative,
-  },
-  statusNoticeBody: {
-    fontFamily: font.sans[400],
-    fontSize: 12.5,
-    lineHeight: 18,
-    color: t.textSoft,
-  },
   summaryCard: {
     backgroundColor: t.surface,
     borderRadius: r.md,
@@ -798,195 +592,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: t.line,
     padding: 16,
-  },
-  summaryRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-  },
-  summaryLeft: {
-    flex: 1,
-    minWidth: 0,
-    gap: 4,
-  },
-  summaryRight: {
-    alignItems: "flex-end",
-    width: 96,
-  },
-  eyebrow: {
-    fontFamily: font.sans[600],
-    fontSize: 10.5,
-    fontWeight: "600",
-    letterSpacing: 1.68,
-    color: t.textMute,
-  },
-  mealName: {
-    fontFamily: font.sans[600],
-    fontSize: 18,
-    fontWeight: "600",
-    color: t.text,
-    letterSpacing: -0.36,
-  },
-  mealTime: {
-    fontFamily: font.mono[400],
-    fontSize: 11,
-    color: t.textMute,
-    marginTop: 2,
-  },
-  kcalNum: {
-    fontFamily: font.mono[500],
-    fontSize: 28,
-    fontWeight: "500",
-    letterSpacing: -0.84,
-    color: t.text,
-  },
-  kcalPending: {
-    fontFamily: font.mono[500],
-    fontSize: 28,
-    fontWeight: "500",
-    letterSpacing: -0.84,
-    color: t.textMute,
-  },
-  kcalUnit: {
-    fontFamily: font.sans[600],
-    fontSize: 9.5,
-    fontWeight: "600",
-    letterSpacing: 1.52,
-    color: t.textMute,
-    marginTop: 2,
-  },
-  mealTypeRow: {
-    flexDirection: "row",
-    gap: 8,
-    marginTop: 14,
-  },
-  mealTypePill: {
-    flex: 1,
-    paddingVertical: 8,
-    borderRadius: r.pill,
-    borderWidth: 1,
-    borderColor: t.line,
-    alignItems: "center",
-  },
-  mealTypePillSelected: {
-    backgroundColor: t.accent,
-    borderColor: t.accent,
-  },
-  mealTypePillText: {
-    fontFamily: font.sans[600],
-    fontSize: 12,
-    fontWeight: "600",
-    color: t.textSoft,
-    letterSpacing: 0.4,
-  },
-  mealTypePillTextSelected: {
-    color: t.accentInk,
-  },
-  macrosGrid: {
-    flexDirection: "row",
-    gap: 16,
-    marginTop: 16,
-  },
-  macroCell: {
-    flex: 1,
-  },
-  macroLabel: {
-    fontFamily: font.sans[600],
-    fontSize: 9.5,
-    fontWeight: "600",
-    letterSpacing: 1.52,
-    color: t.textMute,
-  },
-  macroValueRow: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    marginTop: 4,
-  },
-  macroValue: {
-    fontFamily: font.mono[500],
-    fontSize: 18,
-    letterSpacing: -0.36,
-  },
-  macroValueAccent: { color: t.accent },
-  macroValueSoft: { color: t.textSoft },
-  macroUnit: {
-    fontFamily: font.sans[400],
-    fontSize: 10,
-    color: t.textMute,
-    marginLeft: 2,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: t.line,
-    marginTop: 18,
-    marginBottom: 12,
-  },
-  ingredientsHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 6,
-  },
-  ingredientsTitle: {
-    fontFamily: font.sans[600],
-    fontSize: 10.5,
-    fontWeight: "600",
-    letterSpacing: 1.68,
-    color: t.textMute,
-  },
-  addLink: {
-    fontFamily: font.sans[600],
-    fontSize: 11,
-    fontWeight: "600",
-    color: t.accent,
-  },
-  addLinkDisabled: {
-    color: t.textMute,
-  },
-  emptyHint: {
-    paddingVertical: 14,
-    fontFamily: font.sans[400],
-    fontSize: 13,
-    color: t.textMute,
-    textAlign: "center",
-  },
-  ingredientRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 10,
-  },
-  ingredientRowDivider: {
-    borderTopWidth: 1,
-    borderTopColor: t.line,
-  },
-  ingredientCopy: {
-    flex: 1,
-    paddingRight: 8,
-  },
-  ingredientName: {
-    fontFamily: font.sans[400],
-    fontSize: 14,
-    color: t.text,
-  },
-  ingredientMacros: {
-    marginTop: 3,
-    fontFamily: font.mono[400],
-    fontSize: 10.5,
-    color: t.textMute,
-    letterSpacing: 0.2,
-  },
-  ingredientQty: {
-    fontFamily: font.mono[400],
-    fontSize: 11,
-    color: t.textMute,
-    width: 56,
-    textAlign: "right",
-  },
-  ingredientCal: {
-    fontFamily: font.mono[400],
-    fontSize: 14,
-    color: t.text,
-    width: 42,
-    textAlign: "right",
   },
   hint: {
     marginTop: 10,
@@ -1003,46 +608,5 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: t.negative,
     textAlign: "center",
-  },
-  actions: {
-    flexDirection: "row",
-    gap: 12,
-    marginTop: 18,
-  },
-  deleteButton: {
-    width: 130,
-    height: 52,
-    backgroundColor: t.surface,
-    borderWidth: 1,
-    borderColor: t.line,
-    borderRadius: 14,
-    borderCurve: "continuous",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  deleteButtonText: {
-    fontFamily: font.sans[600],
-    fontSize: 13,
-    fontWeight: "600",
-    color: t.negative,
-  },
-  saveButton: {
-    flex: 1,
-    height: 52,
-    backgroundColor: t.accent,
-    borderRadius: 14,
-    borderCurve: "continuous",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  saveButtonDisabled: {
-    opacity: 0.5,
-  },
-  saveButtonText: {
-    fontFamily: font.sans[700],
-    fontSize: 14,
-    fontWeight: "700",
-    color: t.accentInk,
-    letterSpacing: 0.28,
   },
 });
