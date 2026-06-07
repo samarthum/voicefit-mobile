@@ -582,7 +582,7 @@ export default function DashboardScreen() {
           <>
             <Pressable
               style={styles.heroCard}
-              onPress={() => router.push("/(tabs)/trends")}
+              onPress={() => router.push("/trends")}
               testID="home-hero-trends"
             >
               <View style={styles.heroCardHeader}>
@@ -633,7 +633,7 @@ export default function DashboardScreen() {
             <View style={styles.metricsRow}>
               <Pressable
                 style={styles.metricCard}
-                onPress={() => router.push({ pathname: "/(tabs)/trends", params: { metric: "steps" } })}
+                onPress={() => router.push({ pathname: "/trends", params: { metric: "steps" } })}
                 testID="home-steps-card"
               >
                 <View style={styles.metricTopRow}>
@@ -660,7 +660,7 @@ export default function DashboardScreen() {
 
               <Pressable
                 style={styles.metricCard}
-                onPress={() => router.push({ pathname: "/(tabs)/trends", params: { metric: "weight" } })}
+                onPress={() => router.push({ pathname: "/trends", params: { metric: "weight" } })}
                 testID="home-weight-card"
               >
                 <View style={styles.metricTopRow}>
@@ -693,7 +693,7 @@ export default function DashboardScreen() {
               </Pressable>
             </View>
 
-            <Pressable style={styles.coachCard} onPress={() => router.push("/(tabs)/coach")} testID="home-ask-coach">
+            <Pressable style={styles.coachCard} onPress={() => router.push("/coach")} testID="home-ask-coach">
               <CoachBadge />
               <View style={styles.coachTextWrap}>
                 <Text style={styles.coachTitle}>Ask coach</Text>
@@ -710,7 +710,7 @@ export default function DashboardScreen() {
 
             <View style={styles.sectionHeaderRow}>
               <Text style={styles.sectionTitle}>Today's log</Text>
-              <Pressable onPress={() => router.push("/(tabs)/meals")} testID="home-recent-meals-see-all">
+              <Pressable onPress={() => router.push("/meals")} testID="home-recent-meals-see-all">
                 <Text style={styles.sectionLink}>See all</Text>
               </Pressable>
             </View>

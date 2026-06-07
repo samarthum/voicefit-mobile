@@ -2,7 +2,7 @@ import "@/polyfills";
 import { ClerkProvider } from "@clerk/clerk-expo";
 import { focusManager, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import * as SecureStore from "expo-secure-store";
-import { Slot } from "expo-router";
+import { Stack } from "expo-router";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
@@ -124,7 +124,25 @@ export default function RootLayout() {
               <CommandCenterProvider>
                 <BottomSheetModalProvider>
                   <StatusBar barStyle="dark-content" backgroundColor={color.bg} />
-                  <Slot />
+                  <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: color.bg } }}>
+                    <Stack.Screen name="index" />
+                    <Stack.Screen name="(tabs)" />
+                    <Stack.Screen
+                      name="meal-edit/[id]"
+                      options={{ presentation: "formSheet", sheetGrabberVisible: true, sheetAllowedDetents: [0.7, 1] }}
+                    />
+                    <Stack.Screen name="exercise-picker" options={{ presentation: "modal" }} />
+                    <Stack.Screen name="workout-session/[id]" />
+                    <Stack.Screen name="meals" />
+                    <Stack.Screen name="trends" />
+                    <Stack.Screen name="coach" />
+                    <Stack.Screen name="feed" />
+                    <Stack.Screen name="log" />
+                    <Stack.Screen name="sign-in" />
+                    <Stack.Screen name="sign-up-email" options={{ presentation: "modal" }} />
+                    <Stack.Screen name="oauth-native-callback" />
+                    <Stack.Screen name="+not-found" />
+                  </Stack>
                   <CommandCenterOverlay />
                 </BottomSheetModalProvider>
               </CommandCenterProvider>
