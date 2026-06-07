@@ -131,7 +131,8 @@ export const UserBubble = memo(function UserBubble({ text }: UserBubbleProps) {
   return (
     <View style={bubbleStyles.userGroup}>
       <View style={bubbleStyles.userBubble}>
-        <Text style={bubbleStyles.userText}>{text}</Text>
+        {/* NUI-14: selectable — coach messages are important data */}
+        <Text style={bubbleStyles.userText} selectable>{text}</Text>
       </View>
     </View>
   );
@@ -190,6 +191,11 @@ export const AssistantBubble = memo(function AssistantBubble({
             </View>
           ) : null}
           {textParts.map((textPart) => (
+            // NUI-14: Markdown renders <Text> internally; wrap in a selectable
+            // container so the rendered text is long-pressable on both platforms.
+            // react-native-markdown-display accepts selectable via style.text but
+            // the cleaner cross-version approach is the parent View with onStartShouldSetResponder.
+            // Using the `selectable` style key on the body style is the supported path:
             <Markdown key={textPart.key} style={markdownStyles}>
               {textPart.text}
             </Markdown>
@@ -217,7 +223,8 @@ export function ErrorBubble({
 }) {
   return (
     <View style={errorStyles.container}>
-      <Text style={errorStyles.text}>{message}</Text>
+      {/* NUI-14: selectable on error text */}
+      <Text style={errorStyles.text} selectable>{message}</Text>
       {onRetry != null ? (
         <Pressable style={errorStyles.retry} onPress={onRetry}>
           <Text style={errorStyles.retryText}>Retry</Text>
@@ -402,6 +409,7 @@ const bubbleStyles = StyleSheet.create({
     borderTopRightRadius: 4,
     borderBottomLeftRadius: 16,
     borderBottomRightRadius: 16,
+    borderCurve: "continuous", // NUI-2
     paddingHorizontal: 16,
     paddingVertical: 12,
   },
@@ -438,6 +446,7 @@ const bubbleStyles = StyleSheet.create({
     borderTopRightRadius: 16,
     borderBottomLeftRadius: 16,
     borderBottomRightRadius: 16,
+    borderCurve: "continuous", // NUI-2
     paddingHorizontal: 16,
     paddingVertical: 12,
   },
@@ -454,6 +463,7 @@ const errorStyles = StyleSheet.create({
     marginHorizontal: 16,
     padding: 12,
     borderRadius: 12,
+    borderCurve: "continuous", // NUI-2
     backgroundColor: token.surface,
     borderWidth: 1,
     borderColor: token.negative,

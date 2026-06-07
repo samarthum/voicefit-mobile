@@ -262,6 +262,9 @@ export default function CoachScreen() {
   const canSend = draft.trim().length > 0 && !isStreaming;
 
   return (
+    // Coach keeps its rich custom header (CoachHeader: sparkle orb + menu dropdown),
+    // which the native Stack header can't replicate — so the native header stays off
+    // (global default) and SafeAreaView covers the top inset. (NUI-5 / NUI-10)
     <SafeAreaView style={styles.root} edges={["top"]}>
       <KeyboardAvoidingView style={styles.flex} behavior="padding">
         <CoachHeader

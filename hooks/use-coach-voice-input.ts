@@ -1,9 +1,15 @@
 import { useAuth } from "@clerk/clerk-expo";
-import { Audio } from "expo-av";
+import {
+  useAudioRecorder,
+  RecordingPresets,
+  requestRecordingPermissionsAsync,
+  setAudioModeAsync,
+} from "expo-audio";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert } from "react-native";
 
 import { apiFormRequest } from "@/lib/api-client";
+import { haptic } from "@/lib/haptics";
 
 type UseCoachVoiceInputOptions = {
   onTranscript: (transcript: string) => void;
@@ -20,27 +26,33 @@ export type UseCoachVoiceInputResult = {
   handleMicPress: () => Promise<void>;
 };
 
+// NUI-8: useAudioRecorder is a hook — must be called at the top level of this
+// custom hook, never inside a nested function.
 export function useCoachVoiceInput({
   onTranscript,
   onTranscriptFocus,
   minDurationMillis = 500,
 }: UseCoachVoiceInputOptions): UseCoachVoiceInputResult {
   const { getToken } = useAuth();
+
+  // NUI-8: hook-based recorder (expo-audio)
+  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
-  const recordingRef = useRef<Audio.Recording | null>(null);
   const mountedRef = useRef(true);
+  // Track recording start time for minDurationMillis check
+  const recordingStartMsRef = useRef<number | null>(null);
 
   useEffect(() => {
     return () => {
       mountedRef.current = false;
-      const activeRecording = recordingRef.current;
-      recordingRef.current = null;
-      if (activeRecording) {
-        activeRecording.setOnRecordingStatusUpdate(null);
-        void activeRecording.stopAndUnloadAsync().catch(() => undefined);
+      // If recording is active on unmount, stop it (fire-and-forget)
+      if (isRecording) {
+        void recorder.stop().catch(() => undefined);
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const safeSetIsRecording = useCallback((next: boolean) => {
@@ -56,13 +68,11 @@ export function useCoachVoiceInput({
   }, []);
 
   const startRecording = useCallback(async () => {
-    if (isTranscribing || recordingRef.current) return;
-
-    let nextRecording: Audio.Recording | null = null;
+    if (isTranscribing || isRecording) return;
 
     try {
-      const permission = await Audio.requestPermissionsAsync();
-      if (!permission.granted) {
+      const { granted } = await requestRecordingPermissionsAsync();
+      if (!granted) {
         Alert.alert(
           "Microphone",
           "Microphone permission is required to use voice input."
@@ -70,18 +80,13 @@ export function useCoachVoiceInput({
         return;
       }
 
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-      });
+      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
 
-      nextRecording = new Audio.Recording();
-      await nextRecording.prepareToRecordAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY
-      );
-      await nextRecording.startAsync();
+      await recorder.prepareToRecordAsync();
+      recorder.record();
+      recordingStartMsRef.current = Date.now();
 
-      recordingRef.current = nextRecording;
+      haptic.press(); // NUI-6: medium haptic on record start
       safeSetIsRecording(true);
     } catch (err) {
       console.error("Recording error:", err);
@@ -92,28 +97,26 @@ export function useCoachVoiceInput({
         );
       }
       safeSetIsRecording(false);
-
-      if (nextRecording) {
-        await nextRecording.stopAndUnloadAsync().catch(() => undefined);
-      }
     }
-  }, [isTranscribing, safeSetIsRecording]);
+  }, [isTranscribing, isRecording, recorder, safeSetIsRecording]);
 
   const stopAndTranscribe = useCallback(async () => {
-    const activeRecording = recordingRef.current;
-    if (!activeRecording || isTranscribing) return;
+    if (!isRecording || isTranscribing) return;
 
-    recordingRef.current = null;
     safeSetIsRecording(false);
     safeSetIsTranscribing(true);
+    haptic.tap(); // NUI-6: light haptic on stop
 
     try {
-      activeRecording.setOnRecordingStatusUpdate(null);
-      await activeRecording.stopAndUnloadAsync();
-      const status = await activeRecording.getStatusAsync();
-      const uri = activeRecording.getURI();
+      await recorder.stop();
+      const uri = recorder.uri;
 
-      if (!uri || (status.durationMillis ?? 0) < minDurationMillis) {
+      const durationMs = recordingStartMsRef.current != null
+        ? Date.now() - recordingStartMsRef.current
+        : 0;
+      recordingStartMsRef.current = null;
+
+      if (!uri || durationMs < minDurationMillis) {
         return;
       }
 
@@ -151,10 +154,12 @@ export function useCoachVoiceInput({
     }
   }, [
     getToken,
+    isRecording,
     isTranscribing,
     minDurationMillis,
     onTranscript,
     onTranscriptFocus,
+    recorder,
     safeSetIsRecording,
     safeSetIsTranscribing,
   ]);
@@ -162,7 +167,7 @@ export function useCoachVoiceInput({
   const handleMicPress = useCallback(async () => {
     if (isTranscribing) return;
 
-    if (recordingRef.current || isRecording) {
+    if (isRecording) {
       await stopAndTranscribe();
       return;
     }

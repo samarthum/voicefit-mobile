@@ -1,7 +1,8 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { Alert, Keyboard, Linking, Platform } from "react-native";
-import { Audio } from "expo-av";
+import { createContext, use, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { Alert, Keyboard, Linking } from "react-native";
+import { useAudioRecorder, RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync } from "expo-audio";
 import * as ImagePicker from "expo-image-picker";
+import { haptic } from "@/lib/haptics";
 import { useAuth } from "@clerk/clerk-expo";
 import { useQueryClient } from "@tanstack/react-query";
 import type { DashboardData, InterpretEntryResponse, MealIngredient } from "@voicefit/contracts/types";
@@ -54,7 +55,7 @@ type CommandCenterPublicValue = CommandCenterHandle & CommandCenterLegacyHandle;
 const CommandCenterPublicContext = createContext<CommandCenterPublicValue | null>(null);
 
 export function useCommandCenter(context?: CommandCenterContext): CommandCenterPublicValue {
-  const ctx = useContext(CommandCenterPublicContext);
+  const ctx = use(CommandCenterPublicContext);
   const setScreenContext = ctx?.setScreenContext;
   const clearScreenContext = ctx?.clearScreenContext;
   const hasContext = context !== undefined;
@@ -88,7 +89,7 @@ interface CommandCenterOverlayValue {
 const CommandCenterOverlayContext = createContext<CommandCenterOverlayValue | null>(null);
 
 export function useCommandCenterOverlay() {
-  const ctx = useContext(CommandCenterOverlayContext);
+  const ctx = use(CommandCenterOverlayContext);
   if (!ctx) throw new Error("useCommandCenterOverlay must be used within CommandCenterProvider");
   return ctx;
 }
@@ -98,6 +99,10 @@ export function useCommandCenterOverlay() {
 // ---------------------------------------------------------------------------
 
 export function CommandCenterProvider({ children }: { children: React.ReactNode }) {
+  // Hoisted at top level — expo-audio recorder hook cannot be called inside
+  // nested/async functions (rules of hooks).
+  const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+
   const { getToken } = useAuth();
   const queryClient = useQueryClient();
   const isWebPreview = isWebPreviewMode();
@@ -489,27 +494,30 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
     },
     media: {
       requestMicrophonePermission: async () => {
-        const permission = await Audio.requestPermissionsAsync();
-        return permission.granted;
+        const { granted } = await requestRecordingPermissionsAsync();
+        return granted;
       },
       startVoiceRecording: async (onDurationSeconds) => {
-        await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-        const nextRecording = new Audio.Recording();
-        await nextRecording.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
-        nextRecording.setOnRecordingStatusUpdate((status) => {
-          onDurationSeconds(Math.floor((status.durationMillis ?? 0) / 1000));
-        });
-        await nextRecording.startAsync();
+        await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+        await audioRecorder.prepareToRecordAsync();
+        // Drive elapsed-seconds display via a setInterval; the old
+        // setOnRecordingStatusUpdate callback is not available in expo-audio.
+        let elapsed = 0;
+        const durationInterval = setInterval(() => {
+          elapsed += 1;
+          onDurationSeconds(elapsed);
+        }, 1000);
+        audioRecorder.record();
+        haptic.press(); // NUI-6: haptic feedback when recording starts
         return {
-          clearDurationUpdates: () => nextRecording.setOnRecordingStatusUpdate(null),
+          clearDurationUpdates: () => clearInterval(durationInterval),
           stopAndUnload: async () => {
-            await nextRecording.stopAndUnloadAsync();
+            clearInterval(durationInterval);
+            haptic.tap(); // NUI-6: haptic feedback when recording stops
+            await audioRecorder.stop();
           },
-          getDurationMillis: async () => {
-            const status = await nextRecording.getStatusAsync();
-            return status.durationMillis ?? 0;
-          },
-          getUri: () => nextRecording.getURI(),
+          getDurationMillis: async () => elapsed * 1000,
+          getUri: () => audioRecorder.uri,
         };
       },
       requestPhotoPermission: async (mode) => {
@@ -537,7 +545,7 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
       },
     },
     platform: {
-      isWeb: () => Platform.OS === "web",
+      isWeb: () => process.env.EXPO_OS === "web",
       openSettings: () => Linking.openSettings(),
       selectPhotoSource: () => new Promise<PhotoPickerMode | null>((resolve) => {
         Alert.alert("Log meal photo", "Add optional context after selecting a photo.", [
@@ -573,6 +581,7 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
     computeKcalLeftAfterMeal,
     isWebPreview,
     finishWithSaved,
+    audioRecorder,
   ]);
 
   const overlaySnapshot = useSyncExternalStore(

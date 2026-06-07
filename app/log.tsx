@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import {
   ActivityIndicator,
   Keyboard,
@@ -9,11 +9,18 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { Audio } from "expo-av";
+import {
+  useAudioRecorder,
+  RecordingPresets,
+  requestRecordingPermissionsAsync,
+  setAudioModeAsync,
+} from "expo-audio";
+import { Stack } from "expo-router";
 import { useAuth } from "@clerk/clerk-expo";
 import { useQueryClient } from "@tanstack/react-query";
 import type { MealInterpretation, RecordingState } from "@voicefit/contracts/types";
 import { apiFormRequest, apiRequest } from "@/lib/api-client";
+import { haptic } from "@/lib/haptics";
 import { color } from "@/lib/tokens";
 
 type MealType = MealInterpretation["mealType"];
@@ -59,8 +66,10 @@ export default function LogScreen() {
   const { getToken } = useAuth();
   const queryClient = useQueryClient();
 
+  // NUI-8: useAudioRecorder must be called at top level (hook rule)
+  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+
   const [state, setState] = useState<RecordingState>("idle");
-  const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [transcript, setTranscript] = useState("");
   const [transcriptDraft, setTranscriptDraft] = useState("");
@@ -75,19 +84,13 @@ export default function LogScreen() {
 
   const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const metricsSuccessTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Duration timer for recording seconds display
+  const durationTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const isBusy = useMemo(
     () => ["uploading", "transcribing", "interpreting", "saving"].includes(state),
     [state]
   );
-
-  useEffect(() => {
-    return () => {
-      if (recording) {
-        recording.stopAndUnloadAsync().catch(() => undefined);
-      }
-    };
-  }, [recording]);
 
   // Auto-dismiss meal success message
   useEffect(() => {
@@ -103,6 +106,13 @@ export default function LogScreen() {
     return () => { if (metricsSuccessTimerRef.current) clearTimeout(metricsSuccessTimerRef.current); };
   }, [metricsSuccessMessage]);
 
+  // Cleanup duration timer on unmount
+  useEffect(() => {
+    return () => {
+      if (durationTimerRef.current) clearInterval(durationTimerRef.current);
+    };
+  }, []);
+
   const resetFlow = () => {
     setState("idle");
     setRecordingSeconds(0);
@@ -111,6 +121,10 @@ export default function LogScreen() {
     setInterpretation(null);
     setMealDraft(defaultMealDraft);
     setErrorMessage(null);
+    if (durationTimerRef.current) {
+      clearInterval(durationTimerRef.current);
+      durationTimerRef.current = null;
+    }
   };
 
   const startRecording = async () => {
@@ -122,23 +136,26 @@ export default function LogScreen() {
     setMealDraft(defaultMealDraft);
 
     try {
-      const permission = await Audio.requestPermissionsAsync();
-      if (!permission.granted) {
+      const { granted } = await requestRecordingPermissionsAsync();
+      if (!granted) {
         throw new Error("Microphone permission is required.");
       }
 
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-      });
+      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
 
-      const nextRecording = new Audio.Recording();
-      await nextRecording.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
-      nextRecording.setOnRecordingStatusUpdate((status) => {
-        setRecordingSeconds(Math.floor((status.durationMillis ?? 0) / 1000));
-      });
-      await nextRecording.startAsync();
-      setRecording(nextRecording);
+      await recorder.prepareToRecordAsync();
+      recorder.record();
+
+      // Duration timer — expo-audio recorder doesn't fire status updates the
+      // same way; use a plain setInterval to count elapsed seconds.
+      setRecordingSeconds(0);
+      if (durationTimerRef.current) clearInterval(durationTimerRef.current);
+      const startMs = Date.now();
+      durationTimerRef.current = setInterval(() => {
+        setRecordingSeconds(Math.floor((Date.now() - startMs) / 1000));
+      }, 500);
+
+      haptic.press(); // NUI-6: haptic on record start
       setState("recording");
     } catch (error) {
       setState("error");
@@ -147,21 +164,21 @@ export default function LogScreen() {
   };
 
   const stopRecording = async () => {
-    if (!recording) return;
-
     setErrorMessage(null);
+
+    if (durationTimerRef.current) {
+      clearInterval(durationTimerRef.current);
+      durationTimerRef.current = null;
+    }
+    haptic.tap(); // NUI-6: haptic on stop
+
     setState("uploading");
-    const activeRecording = recording;
-    setRecording(null);
 
     try {
-      activeRecording.setOnRecordingStatusUpdate(null);
-      await activeRecording.stopAndUnloadAsync();
-      const status = await activeRecording.getStatusAsync();
-      const durationMillis = status.durationMillis ?? 0;
-      const uri = activeRecording.getURI();
+      await recorder.stop();
+      const uri = recorder.uri;
 
-      if (!uri || durationMillis < MIN_RECORDING_DURATION_MS) {
+      if (!uri || recordingSeconds * 1000 < MIN_RECORDING_DURATION_MS) {
         throw new Error("Recording is too short. Please record at least 1 second.");
       }
 
@@ -346,250 +363,260 @@ export default function LogScreen() {
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.container} keyboardDismissMode="on-drag" keyboardShouldPersistTaps="handled">
-      <Text style={styles.title}>Log Meal by Voice</Text>
-      <Text style={styles.body}>
-        Record, transcribe, edit, and save a meal in one flow.
-      </Text>
+    <>
+      {/* NUI-5: native header; remove SafeAreaView top edge */}
+      <Stack.Screen options={{ headerShown: true, title: "Log" }} />
+      <ScrollView
+        contentContainerStyle={styles.container}
+        keyboardDismissMode="on-drag"
+        keyboardShouldPersistTaps="handled"
+        contentInsetAdjustmentBehavior="automatic"
+      >
+        <Text style={styles.body}>
+          Record, transcribe, edit, and save a meal in one flow.
+        </Text>
 
-      {errorMessage ? (
-        <View style={styles.errorBox}>
-          <Text style={styles.errorText}>{errorMessage}</Text>
-        </View>
-      ) : null}
-
-      {successMessage ? (
-        <View style={styles.successBox}>
-          <Text style={styles.successText}>{successMessage}</Text>
-        </View>
-      ) : null}
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>1. Record</Text>
-        {state === "recording" ? (
-          <>
-            <Text style={styles.timerLabel}>Recording {recordingSeconds}s</Text>
-            <Pressable style={styles.stopButton} onPress={stopRecording}>
-              <Text style={styles.stopButtonText}>Stop Recording</Text>
-            </Pressable>
-          </>
-        ) : (
-          <Pressable
-            style={[styles.primaryButton, isBusy ? styles.disabledButton : null]}
-            onPress={startRecording}
-            disabled={isBusy}
-          >
-            <Text style={styles.primaryButtonText}>Start Recording</Text>
-          </Pressable>
-        )}
-
-        {state === "uploading" || state === "transcribing" ? (
-          <View style={styles.loadingRow}>
-            <ActivityIndicator />
-            <Text style={styles.loadingText}>
-              {state === "uploading" ? "Uploading audio..." : "Transcribing..."}
-            </Text>
+        {errorMessage ? (
+          <View style={styles.errorBox}>
+            {/* NUI-14: selectable on error text */}
+            <Text style={styles.errorText} selectable>{errorMessage}</Text>
           </View>
         ) : null}
 
-        <Text style={styles.helperText}>Minimum recording length: 1 second.</Text>
-      </View>
+        {successMessage ? (
+          <View style={styles.successBox}>
+            <Text style={styles.successText}>{successMessage}</Text>
+          </View>
+        ) : null}
 
-      {transcript ? (
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>2. Edit Transcript</Text>
-          <TextInput
-            style={styles.multilineInput}
-            multiline
-            value={transcriptDraft}
-            onChangeText={setTranscriptDraft}
-            editable={!isBusy}
-            placeholder="Transcript will appear here..."
-          />
-          <View style={styles.buttonRow}>
+          <Text style={styles.cardTitle}>1. Record</Text>
+          {state === "recording" ? (
+            <>
+              <Text style={styles.timerLabel}>Recording {recordingSeconds}s</Text>
+              <Pressable style={styles.stopButton} onPress={stopRecording}>
+                <Text style={styles.stopButtonText}>Stop Recording</Text>
+              </Pressable>
+            </>
+          ) : (
             <Pressable
               style={[styles.primaryButton, isBusy ? styles.disabledButton : null]}
-              onPress={interpretMeal}
+              onPress={startRecording}
               disabled={isBusy}
             >
-              <Text style={styles.primaryButtonText}>Interpret Meal</Text>
+              <Text style={styles.primaryButtonText}>Start Recording</Text>
             </Pressable>
-            <Pressable style={styles.secondaryButton} onPress={resetFlow} disabled={isBusy}>
-              <Text style={styles.secondaryButtonText}>Start Over</Text>
-            </Pressable>
-          </View>
+          )}
+
+          {state === "uploading" || state === "transcribing" ? (
+            <View style={styles.loadingRow}>
+              <ActivityIndicator />
+              <Text style={styles.loadingText}>
+                {state === "uploading" ? "Uploading audio..." : "Transcribing..."}
+              </Text>
+            </View>
+          ) : null}
+
+          <Text style={styles.helperText}>Minimum recording length: 1 second.</Text>
         </View>
-      ) : null}
 
-      {interpretation ? (
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>3. Review and Save</Text>
-
-          <Text style={styles.fieldLabel}>Meal Type</Text>
-          <View style={styles.mealTypeRow}>
-            {mealTypes.map((mealType) => (
+        {transcript ? (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>2. Edit Transcript</Text>
+            <TextInput
+              style={styles.multilineInput}
+              multiline
+              value={transcriptDraft}
+              onChangeText={setTranscriptDraft}
+              editable={!isBusy}
+              placeholder="Transcript will appear here..."
+            />
+            <View style={styles.buttonRow}>
               <Pressable
-                key={mealType}
-                style={[
-                  styles.mealTypeChip,
-                  mealDraft.mealType === mealType ? styles.mealTypeChipActive : null,
-                ]}
-                onPress={() =>
-                  setMealDraft((prev) => ({
-                    ...prev,
-                    mealType,
-                  }))
-                }
+                style={[styles.primaryButton, isBusy ? styles.disabledButton : null]}
+                onPress={interpretMeal}
+                disabled={isBusy}
+              >
+                <Text style={styles.primaryButtonText}>Interpret Meal</Text>
+              </Pressable>
+              <Pressable style={styles.secondaryButton} onPress={resetFlow} disabled={isBusy}>
+                <Text style={styles.secondaryButtonText}>Start Over</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
+
+        {interpretation ? (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>3. Review and Save</Text>
+
+            <Text style={styles.fieldLabel}>Meal Type</Text>
+            <View style={styles.mealTypeRow}>
+              {mealTypes.map((mealType) => (
+                <Pressable
+                  key={mealType}
+                  style={[
+                    styles.mealTypeChip,
+                    mealDraft.mealType === mealType ? styles.mealTypeChipActive : null,
+                  ]}
+                  onPress={() =>
+                    setMealDraft((prev) => ({
+                      ...prev,
+                      mealType,
+                    }))
+                  }
+                  disabled={state === "saving"}
+                >
+                  <Text
+                    style={[
+                      styles.mealTypeChipText,
+                      mealDraft.mealType === mealType ? styles.mealTypeChipTextActive : null,
+                    ]}
+                  >
+                    {mealType}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
+            <Text style={styles.fieldLabel}>Description</Text>
+            <TextInput
+              style={styles.textInput}
+              value={mealDraft.description}
+              onChangeText={(description) =>
+                setMealDraft((prev) => ({
+                  ...prev,
+                  description,
+                }))
+              }
+              editable={state !== "saving"}
+              placeholder="Meal description"
+            />
+
+            <Text style={styles.fieldLabel}>Calories</Text>
+            <TextInput
+              style={styles.textInput}
+              value={mealDraft.calories}
+              onChangeText={(calories) =>
+                setMealDraft((prev) => ({
+                  ...prev,
+                  calories,
+                }))
+              }
+              keyboardType="number-pad"
+              editable={state !== "saving"}
+              placeholder="0"
+            />
+
+            <View style={styles.buttonRow}>
+              <Pressable
+                style={[styles.primaryButton, state === "saving" ? styles.disabledButton : null]}
+                onPress={saveMeal}
                 disabled={state === "saving"}
               >
-                <Text
-                  style={[
-                    styles.mealTypeChipText,
-                    mealDraft.mealType === mealType ? styles.mealTypeChipTextActive : null,
-                  ]}
-                >
-                  {mealType}
+                <Text style={styles.primaryButtonText}>
+                  {state === "saving" ? "Saving..." : "Save Meal"}
                 </Text>
               </Pressable>
-            ))}
+              <Pressable
+                style={styles.secondaryButton}
+                onPress={resetFlow}
+                disabled={state === "saving"}
+              >
+                <Text style={styles.secondaryButtonText}>Cancel</Text>
+              </Pressable>
+            </View>
           </View>
+        ) : null}
 
-          <Text style={styles.fieldLabel}>Description</Text>
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>4. Manual Metrics</Text>
+          <Text style={styles.helperText}>Save steps and weight for a specific date.</Text>
+
+          {metricsErrorMessage ? (
+            <View style={styles.errorBox}>
+              {/* NUI-14: selectable on error text */}
+              <Text style={styles.errorText} selectable>{metricsErrorMessage}</Text>
+            </View>
+          ) : null}
+
+          {metricsSuccessMessage ? (
+            <View style={styles.successBox}>
+              <Text style={styles.successText}>{metricsSuccessMessage}</Text>
+            </View>
+          ) : null}
+
+          <Text style={styles.fieldLabel}>Date (YYYY-MM-DD)</Text>
           <TextInput
             style={styles.textInput}
-            value={mealDraft.description}
-            onChangeText={(description) =>
-              setMealDraft((prev) => ({
+            value={metricsDraft.date}
+            onChangeText={(date) =>
+              setMetricsDraft((prev) => ({
                 ...prev,
-                description,
+                date,
               }))
             }
-            editable={state !== "saving"}
-            placeholder="Meal description"
+            editable={!isSavingMetrics}
+            autoCapitalize="none"
+            autoCorrect={false}
+            placeholder="YYYY-MM-DD"
           />
 
-          <Text style={styles.fieldLabel}>Calories</Text>
+          <Text style={styles.fieldLabel}>Steps (optional)</Text>
           <TextInput
             style={styles.textInput}
-            value={mealDraft.calories}
-            onChangeText={(calories) =>
-              setMealDraft((prev) => ({
+            value={metricsDraft.steps}
+            onChangeText={(steps) =>
+              setMetricsDraft((prev) => ({
                 ...prev,
-                calories,
+                steps,
               }))
             }
             keyboardType="number-pad"
-            editable={state !== "saving"}
-            placeholder="0"
+            editable={!isSavingMetrics}
+            placeholder="e.g. 8500"
+          />
+
+          <Text style={styles.fieldLabel}>Weight kg (optional)</Text>
+          <TextInput
+            style={styles.textInput}
+            value={metricsDraft.weightKg}
+            onChangeText={(weightKg) =>
+              setMetricsDraft((prev) => ({
+                ...prev,
+                weightKg,
+              }))
+            }
+            keyboardType="decimal-pad"
+            editable={!isSavingMetrics}
+            placeholder="e.g. 72.4"
           />
 
           <View style={styles.buttonRow}>
             <Pressable
-              style={[styles.primaryButton, state === "saving" ? styles.disabledButton : null]}
-              onPress={saveMeal}
-              disabled={state === "saving"}
+              style={[styles.primaryButton, isSavingMetrics ? styles.disabledButton : null]}
+              onPress={saveMetrics}
+              disabled={isSavingMetrics}
             >
               <Text style={styles.primaryButtonText}>
-                {state === "saving" ? "Saving..." : "Save Meal"}
+                {isSavingMetrics ? "Saving..." : "Save Metrics"}
               </Text>
             </Pressable>
             <Pressable
               style={styles.secondaryButton}
-              onPress={resetFlow}
-              disabled={state === "saving"}
+              onPress={() => {
+                setMetricsDraft(defaultMetricsDraft());
+                setMetricsErrorMessage(null);
+                setMetricsSuccessMessage(null);
+              }}
+              disabled={isSavingMetrics}
             >
-              <Text style={styles.secondaryButtonText}>Cancel</Text>
+              <Text style={styles.secondaryButtonText}>Reset</Text>
             </Pressable>
           </View>
         </View>
-      ) : null}
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>4. Manual Metrics</Text>
-        <Text style={styles.helperText}>Save steps and weight for a specific date.</Text>
-
-        {metricsErrorMessage ? (
-          <View style={styles.errorBox}>
-            <Text style={styles.errorText}>{metricsErrorMessage}</Text>
-          </View>
-        ) : null}
-
-        {metricsSuccessMessage ? (
-          <View style={styles.successBox}>
-            <Text style={styles.successText}>{metricsSuccessMessage}</Text>
-          </View>
-        ) : null}
-
-        <Text style={styles.fieldLabel}>Date (YYYY-MM-DD)</Text>
-        <TextInput
-          style={styles.textInput}
-          value={metricsDraft.date}
-          onChangeText={(date) =>
-            setMetricsDraft((prev) => ({
-              ...prev,
-              date,
-            }))
-          }
-          editable={!isSavingMetrics}
-          autoCapitalize="none"
-          autoCorrect={false}
-          placeholder="YYYY-MM-DD"
-        />
-
-        <Text style={styles.fieldLabel}>Steps (optional)</Text>
-        <TextInput
-          style={styles.textInput}
-          value={metricsDraft.steps}
-          onChangeText={(steps) =>
-            setMetricsDraft((prev) => ({
-              ...prev,
-              steps,
-            }))
-          }
-          keyboardType="number-pad"
-          editable={!isSavingMetrics}
-          placeholder="e.g. 8500"
-        />
-
-        <Text style={styles.fieldLabel}>Weight kg (optional)</Text>
-        <TextInput
-          style={styles.textInput}
-          value={metricsDraft.weightKg}
-          onChangeText={(weightKg) =>
-            setMetricsDraft((prev) => ({
-              ...prev,
-              weightKg,
-            }))
-          }
-          keyboardType="decimal-pad"
-          editable={!isSavingMetrics}
-          placeholder="e.g. 72.4"
-        />
-
-        <View style={styles.buttonRow}>
-          <Pressable
-            style={[styles.primaryButton, isSavingMetrics ? styles.disabledButton : null]}
-            onPress={saveMetrics}
-            disabled={isSavingMetrics}
-          >
-            <Text style={styles.primaryButtonText}>
-              {isSavingMetrics ? "Saving..." : "Save Metrics"}
-            </Text>
-          </Pressable>
-          <Pressable
-            style={styles.secondaryButton}
-            onPress={() => {
-              setMetricsDraft(defaultMetricsDraft());
-              setMetricsErrorMessage(null);
-              setMetricsSuccessMessage(null);
-            }}
-            disabled={isSavingMetrics}
-          >
-            <Text style={styles.secondaryButtonText}>Reset</Text>
-          </Pressable>
-        </View>
-      </View>
-    </ScrollView>
+      </ScrollView>
+    </>
   );
 }
 
@@ -599,11 +626,6 @@ const styles = StyleSheet.create({
     gap: 16,
     backgroundColor: color.bg,
   },
-  title: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: color.text,
-  },
   body: {
     fontSize: 14,
     color: color.textSoft,
@@ -611,6 +633,7 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: color.surface,
     borderRadius: 14,
+    borderCurve: "continuous", // NUI-2
     padding: 16,
     gap: 10,
   },
@@ -633,6 +656,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 14,
     borderRadius: 10,
+    borderCurve: "continuous", // NUI-2
     alignItems: "center",
     justifyContent: "center",
   },
@@ -641,6 +665,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 14,
     borderRadius: 10,
+    borderCurve: "continuous", // NUI-2
     alignItems: "center",
     justifyContent: "center",
   },
@@ -659,6 +684,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 14,
     borderRadius: 10,
+    borderCurve: "continuous", // NUI-2
     alignItems: "center",
     justifyContent: "center",
   },
@@ -684,6 +710,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: color.line,
     borderRadius: 10,
+    borderCurve: "continuous", // NUI-2
     padding: 12,
     fontSize: 14,
     color: color.text,
@@ -699,6 +726,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: color.line,
     borderRadius: 10,
+    borderCurve: "continuous", // NUI-2
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 14,
@@ -719,6 +747,7 @@ const styles = StyleSheet.create({
     borderColor: color.line,
     backgroundColor: color.bg,
     borderRadius: 999,
+    // NUI-2: pill shape — skip borderCurve per ticket spec
     paddingVertical: 8,
     paddingHorizontal: 12,
   },
@@ -737,6 +766,7 @@ const styles = StyleSheet.create({
   errorBox: {
     backgroundColor: color.surface2,
     borderRadius: 10,
+    borderCurve: "continuous", // NUI-2
     padding: 10,
     borderWidth: 1,
     borderColor: color.line2,
@@ -749,6 +779,7 @@ const styles = StyleSheet.create({
   successBox: {
     backgroundColor: color.surface2,
     borderRadius: 10,
+    borderCurve: "continuous", // NUI-2
     padding: 10,
     borderWidth: 1,
     borderColor: color.accentTintBorder,

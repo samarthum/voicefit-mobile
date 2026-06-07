@@ -9,11 +9,9 @@ import {
   Text,
   View,
 } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useAuth } from "@clerk/clerk-expo";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { SafeAreaView } from "react-native-safe-area-context";
-import Svg, { Path } from "react-native-svg";
 import type { MealIngredient } from "@voicefit/contracts/types";
 import { apiRequest } from "@/lib/api-client";
 import { fetchInterpretedIngredient } from "@/lib/api/ingredient";
@@ -25,6 +23,7 @@ import {
   roundNullable,
 } from "@/lib/meal-status";
 import { color as t, font, radius as r } from "@/lib/tokens";
+import { haptic } from "@/lib/haptics";
 import { IngredientEditor, type IngredientEditorMode } from "@/components/command-center/IngredientEditor";
 import {
   generateIngredientId,
@@ -73,18 +72,6 @@ interface MealDetail {
 // Helpers (local to this screen)
 // ---------------------------------------------------------------------------
 
-function CloseGlyph() {
-  return (
-    <Svg width={18} height={18} viewBox="0 0 18 18" fill="none">
-      <Path
-        d="M3 3L15 15M15 3L3 15"
-        stroke={t.text}
-        strokeWidth={2}
-        strokeLinecap="round"
-      />
-    </Svg>
-  );
-}
 
 function formatMealTime(value: string) {
   const date = new Date(value);
@@ -314,6 +301,7 @@ export default function MealEditScreen() {
       await Promise.all(requests);
     },
     onSuccess: async () => {
+      haptic.success();
       setErrorMessage(null);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["meals"] }),
@@ -334,6 +322,7 @@ export default function MealEditScreen() {
       return updateMealMetadata(token, { interpretationStatus: "reviewed" });
     },
     onSuccess: async () => {
+      haptic.success();
       setErrorMessage(null);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["meals"] }),
@@ -384,6 +373,7 @@ export default function MealEditScreen() {
   };
 
   const handleDelete = () => {
+    haptic.warning();
     Alert.alert("Delete meal", "This will permanently delete the meal.", [
       { text: "Cancel", style: "cancel" },
       { text: "Delete", style: "destructive", onPress: () => void deleteMutation.mutateAsync() },
@@ -471,22 +461,26 @@ export default function MealEditScreen() {
     }
   };
 
+  const HeaderDone = () => (
+    <Pressable
+      onPress={handleClose}
+      hitSlop={12}
+      accessibilityRole="button"
+      accessibilityLabel="Done"
+    >
+      <Text style={styles.headerDoneText}>Done</Text>
+    </Pressable>
+  );
+
   return (
-    <SafeAreaView style={styles.root} edges={["top"]}>
-      <View style={styles.headerRow}>
-        <Pressable
-          onPress={handleClose}
-          hitSlop={12}
-          style={styles.closeButton}
-          testID="meal-edit-close"
-          accessibilityRole="button"
-          accessibilityLabel="Close"
-        >
-          <CloseGlyph />
-        </Pressable>
-        <Text style={styles.headerTitle}>Edit meal</Text>
-        <View style={styles.headerSpacer} />
-      </View>
+    <View style={styles.root}>
+      <Stack.Screen
+        options={{
+          headerShown: true,
+          title: "Edit meal",
+          headerRight: () => <HeaderDone />,
+        }}
+      />
 
       {mealQuery.isLoading ? (
         <View style={styles.loadingWrap}>
@@ -497,7 +491,7 @@ export default function MealEditScreen() {
       {mealQuery.isError ? (
         <View style={styles.errorWrap}>
           <Text style={styles.errorTitle}>Couldn’t load meal</Text>
-          <Text style={styles.errorBody}>
+          <Text style={styles.errorBody} selectable>
             {mealQuery.error instanceof Error ? mealQuery.error.message : "Please try again."}
           </Text>
           <Pressable style={styles.retryButton} onPress={() => void mealQuery.refetch()}>
@@ -510,6 +504,7 @@ export default function MealEditScreen() {
         <ScrollView
           style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
+          contentInsetAdjustmentBehavior="automatic"
           keyboardDismissMode="on-drag"
           keyboardShouldPersistTaps="handled"
         >
@@ -527,12 +522,12 @@ export default function MealEditScreen() {
               <View style={styles.summaryRight}>
                 {isPendingEstimate || displayCalories == null ? (
                   <>
-                    <Text style={styles.kcalPending}>--</Text>
+                    <Text style={styles.kcalPending} selectable>--</Text>
                     <Text style={styles.kcalUnit}>KCAL</Text>
                   </>
                 ) : (
                   <>
-                    <Text style={styles.kcalNum}>{displayCalories}</Text>
+                    <Text style={styles.kcalNum} selectable>{displayCalories}</Text>
                     <Text style={styles.kcalUnit}>KCAL</Text>
                   </>
                 )}
@@ -568,7 +563,7 @@ export default function MealEditScreen() {
               <View style={styles.macroCell}>
                 <Text style={styles.macroLabel}>PROTEIN</Text>
                 <View style={styles.macroValueRow}>
-                  <Text style={[styles.macroValue, styles.macroValueAccent]}>
+                  <Text style={[styles.macroValue, styles.macroValueAccent]} selectable>
                     {displayTotals.macros.protein ?? "--"}
                   </Text>
                   <Text style={styles.macroUnit}>g</Text>
@@ -577,7 +572,7 @@ export default function MealEditScreen() {
               <View style={styles.macroCell}>
                 <Text style={styles.macroLabel}>CARBS</Text>
                 <View style={styles.macroValueRow}>
-                  <Text style={[styles.macroValue, styles.macroValueSoft]}>
+                  <Text style={[styles.macroValue, styles.macroValueSoft]} selectable>
                     {displayTotals.macros.carbs ?? "--"}
                   </Text>
                   <Text style={styles.macroUnit}>g</Text>
@@ -586,7 +581,7 @@ export default function MealEditScreen() {
               <View style={styles.macroCell}>
                 <Text style={styles.macroLabel}>FAT</Text>
                 <View style={styles.macroValueRow}>
-                  <Text style={[styles.macroValue, styles.macroValueSoft]}>
+                  <Text style={[styles.macroValue, styles.macroValueSoft]} selectable>
                     {displayTotals.macros.fat ?? "--"}
                   </Text>
                   <Text style={styles.macroUnit}>g</Text>
@@ -638,8 +633,8 @@ export default function MealEditScreen() {
                       {`P ${Math.round(ingredient.proteinG)}g · C ${Math.round(ingredient.carbsG)}g · F ${Math.round(ingredient.fatG)}g`}
                     </Text>
                   </View>
-                  <Text style={styles.ingredientQty}>{`${Math.round(ingredient.grams)} g`}</Text>
-                  <Text style={styles.ingredientCal}>{ingredient.calories}</Text>
+                  <Text style={styles.ingredientQty} selectable>{`${Math.round(ingredient.grams)} g`}</Text>
+                  <Text style={styles.ingredientCal} selectable>{ingredient.calories}</Text>
                 </Pressable>
               ))
             )}
@@ -649,7 +644,7 @@ export default function MealEditScreen() {
             Tap a row to edit · Long-press to delete
           </Text>
 
-          {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
+          {errorMessage ? <Text style={styles.errorText} selectable>{errorMessage}</Text> : null}
 
           <View style={styles.actions}>
             <Pressable
@@ -698,7 +693,7 @@ export default function MealEditScreen() {
           />
         </Modal>
       ) : null}
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -711,31 +706,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: t.bg,
   },
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: t.line,
-  },
-  closeButton: {
-    width: 36,
-    height: 36,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  headerTitle: {
-    flex: 1,
-    textAlign: "center",
-    fontFamily: font.sans[600],
-    fontSize: 16,
-    fontWeight: "600",
-    color: t.text,
-    letterSpacing: -0.16,
-  },
-  headerSpacer: {
-    width: 36,
+  headerDoneText: {
+    fontFamily: font.sans[500],
+    fontSize: 14.5,
+    fontWeight: "500",
+    color: t.accent,
+    letterSpacing: -0.07,
   },
   loadingWrap: {
     paddingVertical: 48,
@@ -763,6 +739,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingVertical: 10,
     borderRadius: 12,
+    borderCurve: "continuous",
     backgroundColor: t.surface,
     borderWidth: 1,
     borderColor: t.line,
@@ -784,6 +761,7 @@ const styles = StyleSheet.create({
   },
   statusNotice: {
     borderRadius: r.md,
+    borderCurve: "continuous",
     borderWidth: 1,
     borderColor: t.line,
     backgroundColor: t.surface,
@@ -816,6 +794,7 @@ const styles = StyleSheet.create({
   summaryCard: {
     backgroundColor: t.surface,
     borderRadius: r.md,
+    borderCurve: "continuous",
     borderWidth: 1,
     borderColor: t.line,
     padding: 16,
@@ -1037,6 +1016,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: t.line,
     borderRadius: 14,
+    borderCurve: "continuous",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1051,6 +1031,7 @@ const styles = StyleSheet.create({
     height: 52,
     backgroundColor: t.accent,
     borderRadius: 14,
+    borderCurve: "continuous",
     alignItems: "center",
     justifyContent: "center",
   },

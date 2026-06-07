@@ -10,11 +10,12 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { Stack } from "expo-router";
 import { useAuth } from "@clerk/clerk-expo";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ConversationEvent, ConversationEventKind, InterpretEntryResponse } from "@voicefit/contracts/types";
 import { apiRequest } from "@/lib/api-client";
+import { Icon } from "@/components/Icon";
 import { color } from "@/lib/tokens";
 
 interface ConversationResponse {
@@ -306,12 +307,15 @@ export default function FeedScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.root} edges={["top"]}>
+    <>
+      {/* NUI-5: native header; remove SafeAreaView top edge */}
+      <Stack.Screen options={{ headerShown: true, title: "Activity" }} />
       <FlatList
         data={events}
         keyExtractor={(item) => item.id}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
+        contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={styles.listContent}
         refreshControl={
           <RefreshControl
@@ -321,7 +325,6 @@ export default function FeedScreen() {
         }
         ListHeaderComponent={
           <View style={styles.container}>
-            <Text style={styles.title}>Conversation Feed</Text>
             <Text style={styles.subtitle}>Quick text logging + timeline of saved events.</Text>
 
             <View style={styles.card}>
@@ -333,7 +336,8 @@ export default function FeedScreen() {
                 placeholder="e.g. Lunch was chicken salad and avocado"
                 multiline
               />
-              {entryError ? <Text style={styles.error}>{entryError}</Text> : null}
+              {/* NUI-14: selectable on error + data text */}
+              {entryError ? <Text style={styles.error} selectable>{entryError}</Text> : null}
               {entryMessage ? <Text style={styles.success}>{entryMessage}</Text> : null}
               <Pressable
                 style={[styles.buttonPrimary, entryMutation.isPending ? styles.disabledButton : null]}
@@ -356,7 +360,8 @@ export default function FeedScreen() {
                 autoCorrect={false}
                 placeholder="Date YYYY-MM-DD (optional)"
               />
-              {filterError ? <Text style={styles.error}>{filterError}</Text> : null}
+              {/* NUI-14: selectable on filter error */}
+              {filterError ? <Text style={styles.error} selectable>{filterError}</Text> : null}
               <View style={styles.kindRow}>
                 {kinds.map((kind) => (
                   <Pressable
@@ -380,10 +385,18 @@ export default function FeedScreen() {
               </View>
               <View style={styles.row}>
                 <Pressable style={styles.buttonPrimary} onPress={applyDateFilter}>
-                  <Text style={styles.buttonPrimaryText}>Apply</Text>
+                  {/* NUI-11: Icon glyph for apply (checkmark) */}
+                  <View style={styles.buttonInnerRow}>
+                    <Icon name="check" size={14} color={color.bg} />
+                    <Text style={styles.buttonPrimaryText}>Apply</Text>
+                  </View>
                 </Pressable>
                 <Pressable style={styles.buttonSecondary} onPress={clearFilters}>
-                  <Text style={styles.buttonSecondaryText}>Clear</Text>
+                  {/* NUI-11: Icon glyph for clear (close) */}
+                  <View style={styles.buttonInnerRow}>
+                    <Icon name="close" size={14} color={color.text} />
+                    <Text style={styles.buttonSecondaryText}>Clear</Text>
+                  </View>
                 </Pressable>
               </View>
               <Text style={styles.helperText}>
@@ -396,7 +409,10 @@ export default function FeedScreen() {
           conversationQuery.isLoading ? (
             <ActivityIndicator />
           ) : conversationQuery.error ? (
-            <Text style={styles.error}>{getErrorMessage(conversationQuery.error)}</Text>
+            // NUI-14: selectable on error text
+            <Text style={[styles.error, styles.emptyPadding]} selectable>
+              {getErrorMessage(conversationQuery.error)}
+            </Text>
           ) : (
             <Text style={styles.emptyText}>No conversation events yet.</Text>
           )
@@ -407,8 +423,11 @@ export default function FeedScreen() {
               <Text style={styles.badge}>{kindLabel(item.kind)}</Text>
               <Text style={styles.timestamp}>{formatTimestamp(item.createdAt)}</Text>
             </View>
-            <Text style={styles.userText}>{item.userText}</Text>
-            {item.systemText ? <Text style={styles.systemText}>{item.systemText}</Text> : null}
+            {/* NUI-14: selectable on feed item data text */}
+            <Text style={styles.userText} selectable>{item.userText}</Text>
+            {item.systemText ? (
+              <Text style={styles.systemText} selectable>{item.systemText}</Text>
+            ) : null}
             <Text style={styles.metaText}>Source: {item.source}</Text>
           </View>
         )}
@@ -433,15 +452,11 @@ export default function FeedScreen() {
           </View>
         }
       />
-    </SafeAreaView>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: color.bg,
-  },
   listContent: {
     paddingBottom: 24,
   },
@@ -450,11 +465,6 @@ const styles = StyleSheet.create({
     gap: 12,
     backgroundColor: color.bg,
   },
-  title: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: color.text,
-  },
   subtitle: {
     fontSize: 14,
     color: color.textSoft,
@@ -462,6 +472,7 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: color.surface,
     borderRadius: 12,
+    borderCurve: "continuous", // NUI-2
     padding: 14,
     gap: 8,
   },
@@ -474,6 +485,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: color.line,
     borderRadius: 10,
+    borderCurve: "continuous", // NUI-2
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 14,
@@ -493,6 +505,7 @@ const styles = StyleSheet.create({
   kindChip: {
     backgroundColor: color.line,
     borderRadius: 999,
+    // NUI-2: pill shape — skip borderCurve per ticket spec
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
@@ -510,6 +523,7 @@ const styles = StyleSheet.create({
   buttonPrimary: {
     backgroundColor: color.text,
     borderRadius: 10,
+    borderCurve: "continuous", // NUI-2
     paddingVertical: 11,
     paddingHorizontal: 14,
     alignItems: "center",
@@ -523,6 +537,7 @@ const styles = StyleSheet.create({
   buttonSecondary: {
     backgroundColor: color.line,
     borderRadius: 10,
+    borderCurve: "continuous", // NUI-2
     paddingVertical: 11,
     paddingHorizontal: 14,
     alignItems: "center",
@@ -532,6 +547,11 @@ const styles = StyleSheet.create({
     color: color.text,
     fontSize: 14,
     fontWeight: "600",
+  },
+  buttonInnerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
   },
   disabledButton: {
     opacity: 0.6,
@@ -544,6 +564,10 @@ const styles = StyleSheet.create({
     color: color.negative,
     fontSize: 13,
     fontWeight: "600",
+  },
+  emptyPadding: {
+    paddingHorizontal: 20,
+    paddingVertical: 14,
   },
   success: {
     color: color.positive,
@@ -563,6 +587,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: color.line,
     borderRadius: 12,
+    borderCurve: "continuous", // NUI-2
     padding: 14,
     gap: 6,
   },

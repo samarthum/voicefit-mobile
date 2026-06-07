@@ -10,9 +10,7 @@ import {
 } from "react-native";
 import { useAuth } from "@clerk/clerk-expo";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRouter } from "expo-router";
-import Svg, { Path } from "react-native-svg";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { Stack, useRouter } from "expo-router";
 import { FloatingCommandBar } from "@/components/FloatingCommandBar";
 import { useCommandCenter, toLocalDateString } from "@/components/command-center";
 import { apiRequest } from "@/lib/api-client";
@@ -24,6 +22,8 @@ import {
   normalizeMealStatus,
 } from "@/lib/meal-status";
 import { color as token, font, radius as r } from "@/lib/tokens";
+import { haptic } from "@/lib/haptics";
+import { Icon } from "@/components/Icon";
 
 type MealType = "breakfast" | "lunch" | "dinner" | "snack";
 
@@ -105,19 +105,6 @@ function getLastSevenDaysEndingToday() {
   return items;
 }
 
-function ChevronGlyph() {
-  return (
-    <Svg width={8} height={14} viewBox="0 0 8 14" fill="none">
-      <Path
-        d="M1 1L7 7L1 13"
-        stroke={token.textMute}
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </Svg>
-  );
-}
 
 function MealStatusBadge({ status }: { status: AsyncMealStatus }) {
   if (status === "reviewed") return null;
@@ -264,11 +251,13 @@ export default function MealsScreen() {
 
   const handleOpenMeal = (mealId: string) => {
     if (isWebPreview) return;
+    haptic.tap();
     router.push({ pathname: "/meal-edit/[id]", params: { id: mealId } });
   };
 
   const handleDeleteMeal = (mealId: string) => {
     if (isWebPreview || deleteMutation.isPending) return;
+    haptic.warning();
     Alert.alert("Delete meal", "This will permanently delete the meal.", [
       { text: "Cancel", style: "cancel" },
       { text: "Delete", style: "destructive", onPress: () => deleteMutation.mutate(mealId) },
@@ -276,27 +265,25 @@ export default function MealsScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.root} edges={["top"]}>
+    <View style={styles.root}>
+      <Stack.Screen options={{ headerShown: true, title: "Meals" }} />
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
+        contentInsetAdjustmentBehavior="automatic"
         keyboardDismissMode="on-drag"
         keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.header}>
-          <Text style={styles.eyebrow}>Meals</Text>
-          <Text style={styles.title}>Log</Text>
-        </View>
 
         <View style={styles.statsRow}>
           <View style={styles.statPill}>
             <Text style={styles.statLabel}>Calories</Text>
-            <Text style={styles.statValue}>{totalCalories.toLocaleString()}</Text>
+            <Text style={styles.statValue} selectable>{totalCalories.toLocaleString()}</Text>
             <Text style={styles.statSub}>kcal</Text>
           </View>
           <View style={styles.statPill}>
             <Text style={styles.statLabel}>Entries</Text>
-            <Text style={styles.statValue}>{meals.length}</Text>
+            <Text style={styles.statValue} selectable>{meals.length}</Text>
             <Text style={styles.statSub}>this day</Text>
           </View>
         </View>
@@ -326,7 +313,7 @@ export default function MealsScreen() {
         {mealsQuery.isError && !isWebPreview ? (
           <View style={styles.errorCard}>
             <Text style={styles.errorTitle}>Couldn’t load meals</Text>
-            <Text style={styles.errorBody}>
+            <Text style={styles.errorBody} selectable>
               {mealsQuery.error instanceof Error ? mealsQuery.error.message : "Please try again."}
             </Text>
             <Pressable style={styles.retryButton} onPress={() => void mealsQuery.refetch()}>
@@ -386,17 +373,17 @@ export default function MealsScreen() {
                       ) : (
                         <View style={styles.mealKcalRow}>
                           {status === "interpreting" || calories == null ? (
-                            <Text style={styles.mealKcalPending}>--</Text>
+                            <Text style={styles.mealKcalPending} selectable>--</Text>
                           ) : (
                             <>
-                              <Text style={styles.mealKcalNum}>{calories}</Text>
+                              <Text style={styles.mealKcalNum} selectable>{calories}</Text>
                               <Text style={styles.mealKcalUnit}>kcal</Text>
                             </>
                           )}
                         </View>
                       )}
                       <View style={styles.mealChevron}>
-                        <ChevronGlyph />
+                        <Icon name="chevronRight" size={14} color={token.textMute} />
                       </View>
                     </View>
                   </Pressable>
@@ -412,7 +399,7 @@ export default function MealsScreen() {
         onPress={() => cc.open()}
         onMicPress={() => cc.startRecording()}
       />
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -429,25 +416,6 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     paddingBottom: 96,
   },
-  header: {
-    paddingBottom: 20,
-  },
-  eyebrow: {
-    fontFamily: font.sans[600],
-    fontSize: 11,
-    fontWeight: "600",
-    letterSpacing: 1.76,
-    textTransform: "uppercase",
-    color: token.textMute,
-  },
-  title: {
-    marginTop: 2,
-    fontFamily: font.sans[600],
-    fontSize: 26,
-    fontWeight: "600",
-    letterSpacing: -0.65,
-    color: token.text,
-  },
   statsRow: {
     flexDirection: "row",
     gap: 10,
@@ -456,6 +424,7 @@ const styles = StyleSheet.create({
   statPill: {
     flex: 1,
     borderRadius: r.sm,
+    borderCurve: "continuous",
     backgroundColor: token.surface,
     borderWidth: 1,
     borderColor: token.line,
@@ -493,6 +462,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 6,
     borderRadius: 12,
+    borderCurve: "continuous",
     borderWidth: 1,
     borderColor: token.line,
     alignItems: "center",
@@ -540,6 +510,7 @@ const styles = StyleSheet.create({
   mealsCard: {
     backgroundColor: token.surface,
     borderRadius: r.md,
+    borderCurve: "continuous",
     borderWidth: 1,
     borderColor: token.line,
     overflow: "hidden",
@@ -673,6 +644,7 @@ const styles = StyleSheet.create({
   },
   emptyCard: {
     borderRadius: r.md,
+    borderCurve: "continuous",
     backgroundColor: token.surface,
     borderWidth: 1,
     borderColor: token.line,
@@ -695,6 +667,7 @@ const styles = StyleSheet.create({
   },
   errorCard: {
     borderRadius: r.md,
+    borderCurve: "continuous",
     backgroundColor: token.surface,
     borderWidth: 1,
     borderColor: token.line,
@@ -722,6 +695,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingVertical: 10,
     borderRadius: 12,
+    borderCurve: "continuous",
     backgroundColor: token.accent,
   },
   retryButtonText: {

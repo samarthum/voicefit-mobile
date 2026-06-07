@@ -8,7 +8,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { useEffect } from "react";
-import { ActivityIndicator, AppState, Platform, Pressable, StatusBar, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, AppState, Pressable, StatusBar, StyleSheet, Text, View } from "react-native";
 import { useFonts } from "expo-font";
 import {
   InterTight_300Light,
@@ -94,7 +94,7 @@ export default function RootLayout() {
   });
 
   useEffect(() => {
-    if (Platform.OS === "web") return undefined;
+    if (process.env.EXPO_OS === "web") return undefined;
     const subscription = AppState.addEventListener("change", (status) => {
       focusManager.setFocused(status === "active");
     });

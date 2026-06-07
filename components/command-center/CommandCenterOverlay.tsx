@@ -3,7 +3,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { MealIngredient } from "@voicefit/contracts/types";
 import {
   Alert,
-  Image,
   Modal,
   Pressable,
   StyleSheet,
@@ -11,6 +10,9 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
+import { Image } from "expo-image";
+import { Icon } from "@/components/Icon";
+import { haptic } from "@/lib/haptics";
 import {
   BottomSheetBackdrop,
   type BottomSheetBackdropProps,
@@ -20,9 +22,8 @@ import {
   BottomSheetView,
 } from "@gorhom/bottom-sheet";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Svg, { Path, Rect } from "react-native-svg";
+import Svg, { Path } from "react-native-svg";
 import {
-  COLORS,
   confidenceLabel,
   formatMealTypeLabel,
   formatRecordingDuration,
@@ -34,82 +35,6 @@ import { EXERCISE_CATALOG } from "@/lib/exercise-catalog";
 import { color as t, font, radius } from "@/lib/tokens";
 import { LoadingBlock } from "@/components/pulse/LoadingSkeleton";
 import { VoiceRing } from "@/components/pulse/VoiceRing";
-
-// ---------------------------------------------------------------------------
-// SVG Glyphs
-// ---------------------------------------------------------------------------
-
-function SparkleGlyph({ color = COLORS.textTertiary }: { color?: string }) {
-  return (
-    <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
-      <Path d="M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z" fill={color} />
-    </Svg>
-  );
-}
-
-function MicGlyph({ color = t.accentInk }: { color?: string }) {
-  return (
-    <Svg width={22} height={28} viewBox="0 0 22 28" fill="none">
-      <Rect x={7} y={1} width={8} height={14} rx={4} fill={color} />
-      <Path d="M3 13C3 17.5 6.5 21 11 21C15.5 21 19 17.5 19 13" stroke={color} strokeWidth={1.8} strokeLinecap="round" fill="none" />
-      <Path d="M11 21V26M7 26H15" stroke={color} strokeWidth={1.8} strokeLinecap="round" />
-    </Svg>
-  );
-}
-
-function CloseGlyph({ color = t.textSoft }: { color?: string }) {
-  return (
-    <Svg width={14} height={14} viewBox="0 0 14 14" fill="none">
-      <Path d="M2 2L12 12" stroke={color} strokeWidth={2.2} strokeLinecap="round" />
-      <Path d="M12 2L2 12" stroke={color} strokeWidth={2.2} strokeLinecap="round" />
-    </Svg>
-  );
-}
-
-function CameraGlyph({ color = t.textSoft }: { color?: string }) {
-  return (
-    <Svg width={20} height={18} viewBox="0 0 20 18" fill="none">
-      <Path
-        d="M6.2 3L7.5 1.2H12.5L13.8 3H17C18.1 3 19 3.9 19 5V15C19 16.1 18.1 17 17 17H3C1.9 17 1 16.1 1 15V5C1 3.9 1.9 3 3 3H6.2Z"
-        stroke={color}
-        strokeWidth={1.6}
-        strokeLinejoin="round"
-        fill="none"
-      />
-      <Path
-        d="M10 13.2C11.77 13.2 13.2 11.77 13.2 10C13.2 8.23 11.77 6.8 10 6.8C8.23 6.8 6.8 8.23 6.8 10C6.8 11.77 8.23 13.2 10 13.2Z"
-        stroke={color}
-        strokeWidth={1.6}
-        fill="none"
-      />
-    </Svg>
-  );
-}
-
-function SparkSendGlyph({ color = t.text }: { color?: string }) {
-  return (
-    <Svg width={16} height={16} viewBox="0 0 14 14" fill="none">
-      <Path d="M3 7L11 3L7 11L6 8L3 7Z" stroke={color} strokeWidth={1.6} strokeLinejoin="round" fill="none" />
-    </Svg>
-  );
-}
-
-function PlusGlyph({ color = t.accent }: { color?: string }) {
-  return (
-    <Svg width={12} height={12} viewBox="0 0 12 12" fill="none">
-      <Path d="M6 1V11" stroke={color} strokeWidth={2} strokeLinecap="round" />
-      <Path d="M1 6H11" stroke={color} strokeWidth={2} strokeLinecap="round" />
-    </Svg>
-  );
-}
-
-function CheckGlyph({ color = t.accentInk }: { color?: string }) {
-  return (
-    <Svg width={16} height={16} viewBox="0 0 16 16" fill="none">
-      <Path d="M13.2 3.8L6.2 12.2L2.8 8.8" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-    </Svg>
-  );
-}
 
 function BlinkingCursor() {
   const [visible, setVisible] = useState(true);
@@ -182,7 +107,7 @@ function Sheet({
               accessibilityLabel="Close"
               testID={closeButtonTestID}
             >
-              <CloseGlyph />
+              <Icon name="close" size={14} color={t.textSoft} />
             </Pressable>
           ) : (
             <View style={styles.sheetCloseCircle} />
@@ -279,7 +204,7 @@ function InterpretingScreen() {
                 accessibilityLabel="Close"
                 testID={headerCloseTestID}
               >
-                <CloseGlyph />
+                <Icon name="close" size={14} color={t.textSoft} />
               </Pressable>
             ) : null}
           </View>
@@ -306,14 +231,14 @@ function InterpretingScreen() {
           </View>
         ) : (
           <Pressable onPress={onEditPress}>
-            <Text style={styles.interpretingTranscript}>{displayText}</Text>
+            <Text style={styles.interpretingTranscript} selectable>{displayText}</Text>
           </Pressable>
         )}
 
         <View style={styles.interpretingStatusPill}>
           <InterpretingDots />
-          <Text style={styles.interpretingStatusLabel}>{copy.label}</Text>
-          <Text style={styles.interpretingStatusElapsed}>{copy.elapsed}</Text>
+          <Text style={styles.interpretingStatusLabel} selectable>{copy.label}</Text>
+          <Text style={styles.interpretingStatusElapsed} selectable>{copy.elapsed}</Text>
         </View>
 
         <View style={styles.interpretingSkeletonCard}>
@@ -341,7 +266,7 @@ function InterpretingScreen() {
           {!isTyped && !isPhoto ? (
             <Pressable
               style={styles.interpretingButton}
-              onPress={() => void dispatch({ type: "voice.start" })}
+              onPress={() => { haptic.tap(); void dispatch({ type: "voice.start" }); }}
               testID="cc-interpreting-retry-voice"
             >
               <Text style={styles.interpretingButtonText}>Retry</Text>
@@ -398,7 +323,7 @@ function IdleSheet() {
           accessibilityLabel="Add meal photo"
           testID="cc-camera"
         >
-          <CameraGlyph />
+          <Icon name="camera" size={20} color={t.textSoft} />
         </Pressable>
 
         <Pressable
@@ -411,7 +336,7 @@ function IdleSheet() {
           <View pointerEvents="none" style={styles.idleMicHaloOuter} />
           <View pointerEvents="none" style={styles.idleMicHaloMid} />
           <View style={styles.idleMicCore}>
-            <MicGlyph />
+            <Icon name="mic" size={22} color={t.accentInk} />
           </View>
         </Pressable>
 
@@ -423,7 +348,7 @@ function IdleSheet() {
           accessibilityLabel="Submit entry"
           testID="cc-send"
         >
-          <SparkSendGlyph />
+          <Icon name="sparkSend" size={16} color={t.text} />
         </Pressable>
       </View>
 
@@ -448,7 +373,7 @@ function IdleSheet() {
                 </Text>
               </View>
               <View style={styles.frequentPlus}>
-                <PlusGlyph />
+                <Icon name="plus" size={12} color={t.accent} />
               </View>
             </Pressable>
           ))}
@@ -470,7 +395,7 @@ function IdleSheet() {
                 <Text style={styles.frequentSub}>{item.calories} kcal</Text>
               </View>
               <View style={styles.frequentPlus}>
-                <PlusGlyph />
+                <Icon name="plus" size={12} color={t.accent} />
               </View>
             </Pressable>
           ))}
@@ -491,12 +416,13 @@ function PhotoContextSheet({ onClose }: { onClose: () => void }) {
           <Image
             source={{ uri: photo.uri }}
             style={styles.photoPreview}
-            resizeMode="cover"
+            contentFit="cover"
+            transition={150}
             testID="cc-photo-preview"
           />
         ) : (
           <View style={styles.photoPreviewFallback}>
-            <CameraGlyph color={t.textMute} />
+            <Icon name="camera" size={20} color={t.textMute} />
           </View>
         )}
 
@@ -526,7 +452,7 @@ function PhotoContextSheet({ onClose }: { onClose: () => void }) {
             testID="cc-photo-submit"
           >
             <Text style={styles.photoPrimaryText}>Submit photo</Text>
-            <SparkSendGlyph color={t.accentInk} />
+            <Icon name="sparkSend" size={16} color={t.accentInk} />
           </Pressable>
         </View>
       </View>
@@ -559,7 +485,7 @@ function RecordingSheet({ onClose }: { onClose: () => void }) {
               accessibilityLabel="Discard recording"
               testID="cc-recording-discard"
             >
-              <CloseGlyph />
+              <Icon name="close" size={14} color={t.textSoft} />
             </Pressable>
           </View>
         </View>
@@ -642,16 +568,16 @@ function MealReviewSheet({
             <Text style={styles.mealReviewEditLink}>EDIT</Text>
           </Pressable>
         </View>
-        <Text style={styles.mealReviewTranscript}>{`"${reviewDraft.transcript}"`}</Text>
+        <Text style={styles.mealReviewTranscript} selectable>{`"${reviewDraft.transcript}"`}</Text>
 
         <View style={styles.mealReviewBigCard}>
           <View style={styles.mealReviewHeroRow}>
             <View style={styles.mealReviewHeroLeft}>
               <Text style={styles.mealReviewEyebrow}>{eyebrow}</Text>
-              <Text style={styles.mealReviewName}>{meal.description}</Text>
+              <Text style={styles.mealReviewName} selectable>{meal.description}</Text>
             </View>
             <View style={styles.mealReviewHeroRight}>
-              <Text style={styles.mealReviewKcal}>{meal.calories}</Text>
+              <Text style={styles.mealReviewKcal} selectable>{meal.calories}</Text>
               <Text style={styles.mealReviewKcalCaption}>KCAL · EST.</Text>
             </View>
           </View>
@@ -660,7 +586,7 @@ function MealReviewSheet({
             <View style={styles.mealReviewMacroCell}>
               <Text style={styles.mealReviewMacroLabel}>PROTEIN</Text>
               <View style={styles.mealReviewMacroValueRow}>
-                <Text style={[styles.mealReviewMacroValue, styles.mealReviewMacroValueAccent]}>
+                <Text style={[styles.mealReviewMacroValue, styles.mealReviewMacroValueAccent]} selectable>
                   {reviewDraft.macros.protein}
                 </Text>
                 <Text style={styles.mealReviewMacroUnit}>g</Text>
@@ -669,7 +595,7 @@ function MealReviewSheet({
             <View style={styles.mealReviewMacroCell}>
               <Text style={styles.mealReviewMacroLabel}>CARBS</Text>
               <View style={styles.mealReviewMacroValueRow}>
-                <Text style={[styles.mealReviewMacroValue, styles.mealReviewMacroValueSoft]}>
+                <Text style={[styles.mealReviewMacroValue, styles.mealReviewMacroValueSoft]} selectable>
                   {reviewDraft.macros.carbs}
                 </Text>
                 <Text style={styles.mealReviewMacroUnit}>g</Text>
@@ -678,7 +604,7 @@ function MealReviewSheet({
             <View style={styles.mealReviewMacroCell}>
               <Text style={styles.mealReviewMacroLabel}>FAT</Text>
               <View style={styles.mealReviewMacroValueRow}>
-                <Text style={[styles.mealReviewMacroValue, styles.mealReviewMacroValueSoft]}>
+                <Text style={[styles.mealReviewMacroValue, styles.mealReviewMacroValueSoft]} selectable>
                   {reviewDraft.macros.fat}
                 </Text>
                 <Text style={styles.mealReviewMacroUnit}>g</Text>
@@ -690,7 +616,7 @@ function MealReviewSheet({
 
           <View style={styles.mealReviewIngredientsHeader}>
             <Text style={styles.mealReviewIngredientsTitle}>INGREDIENTS</Text>
-            <Pressable onPress={onAddIngredient} testID="cc-review-add-ingredient">
+            <Pressable onPress={() => { haptic.tap(); onAddIngredient(); }} testID="cc-review-add-ingredient">
               <Text style={styles.mealReviewAddLink}>+ ADD</Text>
             </Pressable>
           </View>
@@ -708,13 +634,13 @@ function MealReviewSheet({
               testID={`cc-review-ingredient-${index}`}
             >
               <View style={styles.mealReviewIngredientCopy}>
-                <Text style={styles.mealReviewIngredientName}>{ingredient.name}</Text>
-                <Text style={styles.mealReviewIngredientMacros}>
+                <Text style={styles.mealReviewIngredientName} selectable>{ingredient.name}</Text>
+                <Text style={styles.mealReviewIngredientMacros} selectable>
                   {`P ${Math.round(ingredient.proteinG)}g · C ${Math.round(ingredient.carbsG)}g · F ${Math.round(ingredient.fatG)}g`}
                 </Text>
               </View>
-              <Text style={styles.mealReviewIngredientQty}>{`${Math.round(ingredient.grams)} g`}</Text>
-              <Text style={styles.mealReviewIngredientCal}>{ingredient.calories}</Text>
+              <Text style={styles.mealReviewIngredientQty} selectable>{`${Math.round(ingredient.grams)} g`}</Text>
+              <Text style={styles.mealReviewIngredientCal} selectable>{ingredient.calories}</Text>
             </Pressable>
           ))}
         </View>
@@ -729,11 +655,11 @@ function MealReviewSheet({
           </Pressable>
           <Pressable
             style={styles.mealReviewSaveButton}
-            onPress={() => void dispatch({ type: "review.save" })}
+            onPress={() => { haptic.success(); void dispatch({ type: "review.save" }); }}
             testID="cc-review-save"
           >
             <Text style={styles.mealReviewSaveText}>Save meal</Text>
-            <CheckGlyph color={t.accentInk} />
+            <Icon name="check" size={16} color={t.accentInk} />
           </Pressable>
         </View>
     </BottomSheetScrollView>
@@ -764,13 +690,13 @@ function WorkoutReviewSheet({ onClose }: { onClose: () => void }) {
             <Text style={styles.mealReviewEditLink}>EDIT</Text>
           </Pressable>
         </View>
-        <Text style={styles.mealReviewTranscript}>{`"${reviewDraft.transcript}"`}</Text>
+        <Text style={styles.mealReviewTranscript} selectable>{`"${reviewDraft.transcript}"`}</Text>
 
         <View style={styles.mealReviewBigCard}>
           <View style={styles.mealReviewHeroRow}>
             <View style={styles.mealReviewHeroLeft}>
               <Text style={styles.mealReviewEyebrow}>{eyebrow}</Text>
-              <Text style={styles.mealReviewName}>{workout.exerciseName}</Text>
+              <Text style={styles.mealReviewName} selectable>{workout.exerciseName}</Text>
             </View>
           </View>
 
@@ -870,11 +796,11 @@ function WorkoutReviewSheet({ onClose }: { onClose: () => void }) {
           </Pressable>
           <Pressable
             style={styles.mealReviewSaveButton}
-            onPress={() => void dispatch({ type: "review.save" })}
+            onPress={() => { haptic.success(); void dispatch({ type: "review.save" }); }}
             testID="cc-review-save"
           >
             <Text style={styles.mealReviewSaveText}>Save sets</Text>
-            <CheckGlyph color={t.accentInk} />
+            <Icon name="check" size={16} color={t.accentInk} />
           </Pressable>
         </View>
     </BottomSheetScrollView>
@@ -930,10 +856,10 @@ function ErrorSheet({ onClose }: { onClose: () => void }) {
           </Svg>
         </View>
 
-        <Text style={styles.errorHeading}>{error.copy.title}</Text>
-        <Text style={styles.errorMessage}>{error.copy.body}</Text>
+        <Text style={styles.errorHeading} selectable>{error.copy.title}</Text>
+        <Text style={styles.errorMessage} selectable>{error.copy.body}</Text>
         {error.detail ? (
-          <Text style={[styles.errorDetailLine, { color: tone }]}>
+          <Text style={[styles.errorDetailLine, { color: tone }]} selectable>
             {error.detail}
           </Text>
         ) : null}
@@ -1282,7 +1208,7 @@ function SavedToast() {
       >
         <View style={styles.savedToastTopRow}>
           <View style={styles.savedToastCheckCircle}>
-            <CheckGlyph color={t.accentInk} />
+            <Icon name="check" size={13} color={t.accentInk} />
           </View>
           <Text style={styles.savedToastEyebrow}>LOGGED</Text>
         </View>
@@ -1306,6 +1232,7 @@ const styles = StyleSheet.create({
     backgroundColor: t.bg,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
+    borderCurve: "continuous",
     borderTopWidth: 1,
     borderLeftWidth: 1,
     borderRightWidth: 1,
@@ -1347,6 +1274,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: t.line,
     borderRadius: 16,
+    borderCurve: "continuous",
     padding: 16,
     minHeight: 100,
   },
@@ -1371,6 +1299,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 14,
+    borderCurve: "continuous",
     backgroundColor: t.surface,
     borderWidth: 1,
     borderColor: t.line,
@@ -1405,11 +1334,7 @@ const styles = StyleSheet.create({
     backgroundColor: t.accent,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#0F1419",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.12,
-    shadowRadius: 14,
-    elevation: 6,
+    boxShadow: "0 6px 14px rgba(15,20,25,0.12)",
   },
   idleCaption: {
     fontFamily: font.sans[500],
@@ -1466,6 +1391,7 @@ const styles = StyleSheet.create({
     width: "100%",
     aspectRatio: 1.35,
     borderRadius: 18,
+    borderCurve: "continuous",
     backgroundColor: t.surface,
     borderWidth: 1,
     borderColor: t.line,
@@ -1474,6 +1400,7 @@ const styles = StyleSheet.create({
     width: "100%",
     aspectRatio: 1.35,
     borderRadius: 18,
+    borderCurve: "continuous",
     backgroundColor: t.surface,
     borderWidth: 1,
     borderColor: t.line,
@@ -1486,6 +1413,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: t.line,
     borderRadius: 16,
+    borderCurve: "continuous",
     padding: 14,
     minHeight: 84,
   },
@@ -1508,6 +1436,7 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 48,
     borderRadius: 14,
+    borderCurve: "continuous",
     backgroundColor: t.surface,
     borderWidth: 1,
     borderColor: t.line,
@@ -1524,6 +1453,7 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 48,
     borderRadius: 14,
+    borderCurve: "continuous",
     backgroundColor: t.accent,
     alignItems: "center",
     justifyContent: "center",
@@ -1573,6 +1503,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: t.line,
     borderRadius: 20,
+    borderCurve: "continuous",
     paddingHorizontal: 20,
     paddingVertical: 18,
   },
@@ -1625,6 +1556,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "rgba(255,255,255,0.03)",
     borderRadius: 10,
+    borderCurve: "continuous",
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
@@ -1733,6 +1665,7 @@ const styles = StyleSheet.create({
     width: 14,
     height: 3,
     borderRadius: 2,
+    borderCurve: "continuous",
   },
   mealReviewConfidenceText: {
     fontFamily: font.sans[400],
@@ -1752,6 +1685,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: t.line,
     borderRadius: 14,
+    borderCurve: "continuous",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1768,6 +1702,7 @@ const styles = StyleSheet.create({
     height: 52,
     backgroundColor: t.accent,
     borderRadius: 14,
+    borderCurve: "continuous",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -1878,6 +1813,7 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 16,
+    borderCurve: "continuous",
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
@@ -1913,6 +1849,7 @@ const styles = StyleSheet.create({
     width: "100%",
     height: 52,
     borderRadius: 14,
+    borderCurve: "continuous",
     backgroundColor: t.accent,
     flexDirection: "row",
     alignItems: "center",
@@ -1930,6 +1867,7 @@ const styles = StyleSheet.create({
     width: "100%",
     height: 52,
     borderRadius: 14,
+    borderCurve: "continuous",
     backgroundColor: t.surface,
     borderWidth: 1,
     borderColor: t.line,
@@ -1944,6 +1882,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: t.line,
     borderRadius: 14,
+    borderCurve: "continuous",
     paddingHorizontal: 14,
     paddingVertical: 12,
     flexDirection: "row",
@@ -1964,6 +1903,7 @@ const styles = StyleSheet.create({
   errorRecBar: {
     width: 3,
     borderRadius: 2,
+    borderCurve: "continuous",
     backgroundColor: t.textMute,
   },
   errorRecDuration: {
@@ -2005,6 +1945,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: t.line,
     borderRadius: 18,
+    borderCurve: "continuous",
     paddingHorizontal: 20,
     paddingVertical: 18,
   },
@@ -2110,6 +2051,7 @@ const styles = StyleSheet.create({
   listeningBar: {
     width: 4,
     borderRadius: 2,
+    borderCurve: "continuous",
   },
   listeningBarGlow: {},
   listeningStopWrap: {
@@ -2140,16 +2082,13 @@ const styles = StyleSheet.create({
     backgroundColor: t.accent,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#0F1419",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.12,
-    shadowRadius: 14,
-    elevation: 6,
+    boxShadow: "0 6px 14px rgba(15,20,25,0.12)",
   },
   listeningStopSquare: {
     width: 22,
     height: 22,
     borderRadius: 5,
+    borderCurve: "continuous",
     backgroundColor: t.accentInk,
   },
   listeningCaption: {
@@ -2219,6 +2158,7 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
     marginTop: 8,
     borderRadius: 10,
+    borderCurve: "continuous",
     backgroundColor: t.surface,
     borderWidth: 1,
     borderColor: t.line,
@@ -2238,6 +2178,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: t.line,
     borderRadius: 14,
+    borderCurve: "continuous",
     paddingHorizontal: 16,
     paddingVertical: 14,
     flexDirection: "row",
@@ -2249,6 +2190,7 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
+    borderCurve: "continuous",
     backgroundColor: t.accent,
   },
   interpretingDotIdle: { opacity: 0.3 },
@@ -2271,6 +2213,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: t.line,
     borderRadius: 18,
+    borderCurve: "continuous",
     paddingHorizontal: 18,
     paddingVertical: 18,
   },
@@ -2292,6 +2235,7 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 48,
     borderRadius: 14,
+    borderCurve: "continuous",
     backgroundColor: t.surface,
     borderWidth: 1,
     borderColor: t.line,

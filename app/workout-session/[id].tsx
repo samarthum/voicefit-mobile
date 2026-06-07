@@ -14,16 +14,17 @@ import {
   KeyboardAvoidingView,
   KeyboardAwareScrollView,
 } from "react-native-keyboard-controller";
-import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
+import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useAuth } from "@clerk/clerk-expo";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Svg, { Path } from "react-native-svg";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { FloatingCommandBar } from "@/components/FloatingCommandBar";
+import { Icon } from "@/components/Icon";
 import { UndoToast } from "@/components/pulse";
 import { useCommandCenter } from "@/components/command-center";
 import { getExerciseCatalogItem } from "@/lib/exercise-catalog";
 import { apiRequest } from "@/lib/api-client";
+import { haptic } from "@/lib/haptics";
 import { color as token, font, radius as rad } from "@/lib/tokens";
 import { isWebPreviewMode } from "@/lib/web-preview-mode";
 
@@ -187,24 +188,6 @@ const PREVIEW_EMPTY: SessionViewModel = {
   exerciseCards: [],
 };
 
-function BackGlyph() {
-  return (
-    <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
-      <Path d="M15 5L8 12L15 19" stroke={COLORS.textPrimary} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
-    </Svg>
-  );
-}
-
-function DotsGlyph() {
-  return (
-    <Svg width={16} height={16} viewBox="0 0 16 16" fill="none">
-      <Path d="M8 3.5A1 1 0 108 1.5A1 1 0 008 3.5Z" fill={COLORS.textTertiary} />
-      <Path d="M8 9A1 1 0 108 7A1 1 0 008 9Z" fill={COLORS.textTertiary} />
-      <Path d="M8 14.5A1 1 0 108 12.5A1 1 0 008 14.5Z" fill={COLORS.textTertiary} />
-    </Svg>
-  );
-}
-
 function EmptyStateGlyph() {
   return (
     <Svg width={36} height={36} viewBox="0 0 36 36" fill="none">
@@ -212,16 +195,6 @@ function EmptyStateGlyph() {
       <Path d="M14 15H22" stroke={COLORS.textTertiary} strokeWidth={1.8} strokeLinecap="round" />
       <Path d="M14 12H18" stroke={COLORS.textTertiary} strokeWidth={1.8} strokeLinecap="round" />
       <Path d="M14 18H21" stroke={COLORS.textTertiary} strokeWidth={1.8} strokeLinecap="round" />
-    </Svg>
-  );
-}
-
-function MicGlyph() {
-  return (
-    <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
-      <Path d="M12 3.5C10.067 3.5 8.5 5.067 8.5 7V12C8.5 13.933 10.067 15.5 12 15.5C13.933 15.5 15.5 13.933 15.5 12V7C15.5 5.067 13.933 3.5 12 3.5Z" stroke={token.accentInk} strokeWidth={2} />
-      <Path d="M5.5 11.5C5.5 15.09 8.41 18 12 18C15.59 18 18.5 15.09 18.5 11.5" stroke={token.accentInk} strokeWidth={2} strokeLinecap="round" />
-      <Path d="M12 18V21" stroke={token.accentInk} strokeWidth={2} strokeLinecap="round" />
     </Svg>
   );
 }
@@ -299,14 +272,6 @@ function appendPreviewExercise(
   base.finished = false;
   base.sets = String(base.exerciseCards.reduce((sum, card) => sum + card.rows.length, 0));
   return base;
-}
-
-function CheckGlyph() {
-  return (
-    <Svg width={14} height={12} viewBox="0 0 14 12" fill="none">
-      <Path d="M1 6L4.5 9.5L13 1" stroke={token.accentInk} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" fill="none" />
-    </Svg>
-  );
 }
 
 function formatClock(durationMs: number) {
@@ -686,6 +651,7 @@ export default function WorkoutSessionScreen() {
       });
     },
     onSuccess: async () => {
+      haptic.success();
       await Promise.all([
         sessionQuery.refetch(),
         queryClient.invalidateQueries({ queryKey: ["workout-sessions"] }),
@@ -822,6 +788,7 @@ export default function WorkoutSessionScreen() {
           text: "Delete Session",
           style: "destructive",
           onPress: () => {
+            haptic.warning();
             Alert.alert(
               "Delete this session?",
               "This will remove the session and all its sets. This cannot be undone.",
@@ -852,6 +819,7 @@ export default function WorkoutSessionScreen() {
           text: "Delete exercise",
           style: "destructive",
           onPress: () => {
+            haptic.warning();
             Alert.alert(
               `Delete "${exerciseName}"?`,
               "All sets for this exercise will be removed from the session.",
@@ -1096,69 +1064,61 @@ export default function WorkoutSessionScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.root} edges={["top"]}>
+    <View style={styles.root}>
+      <Stack.Screen
+        options={{
+          headerShown: true,
+          title: session?.title ?? "Workout",
+          headerRight: () => (
+            <View style={styles.headerActions}>
+              {!isPreviewId && !isWebPreview && session ? (
+                <Pressable
+                  style={styles.iconButton}
+                  onPress={handleSessionMenu}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Session options"
+                >
+                  <Icon name="ellipsisVertical" size={18} color={token.textMute} />
+                </Pressable>
+              ) : null}
+              {!session?.finished ? (
+                <Pressable
+                  style={[styles.finishButton, styles.finishButtonActive]}
+                  onPress={() => void handleFinish()}
+                  disabled={finishMutation.isPending}
+                >
+                  <Text style={styles.finishButtonText}>Finish</Text>
+                </Pressable>
+              ) : null}
+            </View>
+          ),
+        }}
+      />
       <KeyboardAwareScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
+        contentInsetAdjustmentBehavior="automatic"
         keyboardShouldPersistTaps="handled"
         bottomOffset={16}
       >
-        <View style={styles.header}>
-          <View style={styles.headerLeft}>
-            <Pressable
-              style={styles.iconButton}
-              onPress={() => router.replace("/(tabs)/workouts")}
-              accessibilityRole="button"
-              accessibilityLabel="Go back"
-            >
-              <BackGlyph />
-            </Pressable>
-          </View>
-          <View style={styles.headerCenter}>
-            <Text style={styles.sessionEyebrow}>{session?.finished ? "Done" : "Live · Session"}</Text>
-            <Text style={styles.sessionTitle}>{session?.title ?? "Workout session"}</Text>
-            <Text style={styles.sessionSubtitle}>{session?.subtitle ?? "Loading…"}</Text>
-          </View>
-          <View style={styles.headerRight}>
-            {!isPreviewId && !isWebPreview && session ? (
-              <Pressable
-                style={styles.iconButton}
-                onPress={handleSessionMenu}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel="Session options"
-              >
-                <DotsGlyph />
-              </Pressable>
-            ) : null}
-            {!session?.finished ? (
-              <Pressable
-                style={[styles.finishButton, styles.finishButtonActive]}
-                onPress={() => void handleFinish()}
-                disabled={finishMutation.isPending}
-              >
-                <Text style={styles.finishButtonText}>Finish</Text>
-              </Pressable>
-            ) : null}
-          </View>
-        </View>
 
         <View style={styles.statsStrip}>
           <View style={styles.statCell}>
-            <Text style={styles.statValue}>{session?.duration ?? "0:00"}</Text>
+            <Text selectable style={styles.statValue}>{session?.duration ?? "0:00"}</Text>
             <Text style={styles.statLabel}>Duration</Text>
           </View>
           <View style={styles.statCell}>
-            <Text style={styles.statValue}>{session?.volume ?? "0 kg"}</Text>
+            <Text selectable style={styles.statValue}>{session?.volume ?? "0 kg"}</Text>
             <Text style={styles.statLabel}>Volume</Text>
           </View>
           <View style={styles.statCell}>
-            <Text style={styles.statValue}>{session?.sets ?? "0"}</Text>
+            <Text selectable style={styles.statValue}>{session?.sets ?? "0"}</Text>
             <Text style={styles.statLabel}>Sets</Text>
           </View>
         </View>
 
-        {liveError ? <Text style={styles.errorBanner}>{liveError}</Text> : null}
+        {liveError ? <Text selectable style={styles.errorBanner}>{liveError}</Text> : null}
 
         {sessionQuery.isLoading && !session ? (
           <View style={styles.loadingWrap}>
@@ -1193,7 +1153,7 @@ export default function WorkoutSessionScreen() {
                   onPress={cc.record}
                 >
                   <View style={styles.voicePromptMic}>
-                    <MicGlyph />
+                    <Icon name="mic" size={18} color={token.accentInk} />
                   </View>
                   <Text style={styles.voicePromptText}>"Bench press 3 sets of 10 at 80 kg"</Text>
                 </Pressable>
@@ -1224,7 +1184,7 @@ export default function WorkoutSessionScreen() {
                       accessibilityRole="button"
                       accessibilityLabel={`Options for ${card.name}`}
                     >
-                      <DotsGlyph />
+                      <Icon name="ellipsisVertical" size={16} color={token.textMute} />
                     </Pressable>
                   ) : null}
                 </View>
@@ -1291,7 +1251,7 @@ export default function WorkoutSessionScreen() {
                           </>
                         )}
                         <View style={[styles.checkCell, row.checked ? styles.checkCellFilled : null]}>
-                          {row.checked ? <CheckGlyph /> : null}
+                          {row.checked ? <Icon name="check" size={12} color={token.accentInk} /> : null}
                         </View>
                       </View>
                     );
@@ -1350,12 +1310,12 @@ export default function WorkoutSessionScreen() {
                         />
                         <Pressable
                           style={[styles.checkCell, row.checked ? styles.checkCellFilled : null]}
-                          onPress={() => void handleSaveLiveSet(row.live!)}
+                          onPress={() => { haptic.success(); void handleSaveLiveSet(row.live!); }}
                           disabled={session.finished}
                           accessibilityRole="button"
                           accessibilityLabel={row.checked ? "Set saved" : "Save set"}
                         >
-                          {row.checked ? <CheckGlyph /> : null}
+                          {row.checked ? <Icon name="check" size={12} color={token.accentInk} /> : null}
                         </Pressable>
                       </View>
                     </View>
@@ -1391,7 +1351,7 @@ export default function WorkoutSessionScreen() {
         ) : sessionQuery.error ? (
           <View style={styles.emptyWrap}>
             <Text style={styles.emptyTitle}>Couldn’t load session</Text>
-            <Text style={styles.emptyBody}>
+            <Text selectable style={styles.emptyBody}>
               {sessionQuery.error instanceof Error ? sessionQuery.error.message : "Please try again."}
             </Text>
           </View>
@@ -1503,7 +1463,7 @@ export default function WorkoutSessionScreen() {
           </Pressable>
         </KeyboardAvoidingView>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -1511,49 +1471,17 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: token.bg },
   center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: token.bg },
   scroll: { flex: 1 },
-  scrollContent: { paddingBottom: 178 },
-  header: {
+  scrollContent: { paddingTop: 8, paddingBottom: 178 },
+  headerActions: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 12,
+    gap: 6,
   },
   iconButton: {
     width: 32,
     height: 32,
-    borderRadius: rad.pill,
-    backgroundColor: token.surface,
-    borderWidth: 1,
-    borderColor: token.line,
     alignItems: "center",
     justifyContent: "center",
-  },
-  headerLeft: { width: 72, alignItems: "flex-start" },
-  headerRight: { width: 72, flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 4 },
-  headerCenter: { flex: 1, alignItems: "center" },
-  sessionEyebrow: {
-    fontFamily: font.sans[600],
-    fontSize: 10.5,
-    fontWeight: "600",
-    letterSpacing: 1.68,
-    textTransform: "uppercase",
-    color: token.accent,
-  },
-  sessionTitle: {
-    fontFamily: font.sans[600],
-    fontSize: 16,
-    fontWeight: "600",
-    letterSpacing: -0.16,
-    color: token.text,
-    marginTop: 2,
-  },
-  sessionSubtitle: {
-    marginTop: 2,
-    fontFamily: font.sans[400],
-    fontSize: 12,
-    color: token.textMute,
   },
   finishButton: {
     height: 32,
@@ -1584,6 +1512,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: token.line,
     borderRadius: rad.sm,
+    borderCurve: "continuous",
     paddingHorizontal: 14,
     paddingVertical: 12,
     alignItems: "flex-start",
@@ -1676,6 +1605,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 12,
+    borderCurve: "continuous",
     backgroundColor: token.surface,
     borderWidth: 1,
     borderColor: token.line,
@@ -1689,6 +1619,7 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 8,
+    borderCurve: "continuous",
     alignItems: "center",
     justifyContent: "center",
     marginRight: 4,
@@ -1710,6 +1641,7 @@ const styles = StyleSheet.create({
   rowInput: {
     minHeight: 30,
     borderRadius: 8,
+    borderCurve: "continuous",
     backgroundColor: "transparent",
     fontFamily: font.mono[500],
     fontSize: 16,
@@ -1722,6 +1654,7 @@ const styles = StyleSheet.create({
   previewInputPill: {
     minHeight: 30,
     borderRadius: 8,
+    borderCurve: "continuous",
     backgroundColor: "transparent",
     alignItems: "center",
     justifyContent: "center",
@@ -1738,6 +1671,7 @@ const styles = StyleSheet.create({
     width: 26,
     height: 26,
     borderRadius: 8,
+    borderCurve: "continuous",
     borderWidth: 1,
     borderColor: token.line2,
     alignItems: "center",
@@ -1759,6 +1693,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: token.line,
     borderRadius: 12,
+    borderCurve: "continuous",
   },
   exerciseNoteText: {
     flex: 1,
@@ -1822,6 +1757,7 @@ const styles = StyleSheet.create({
     marginTop: 24,
     height: 56,
     borderRadius: rad.sm,
+    borderCurve: "continuous",
     backgroundColor: token.accent,
     alignItems: "center",
     justifyContent: "center",
@@ -1855,6 +1791,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 12,
     borderRadius: rad.sm,
+    borderCurve: "continuous",
     backgroundColor: token.surface,
     borderWidth: 1,
     borderColor: token.line,
@@ -1878,6 +1815,7 @@ const styles = StyleSheet.create({
   addExerciseGhostButton: {
     marginTop: 4,
     borderRadius: 12,
+    borderCurve: "continuous",
     borderWidth: 1,
     borderStyle: "dashed",
     borderColor: token.line2,
@@ -1922,6 +1860,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: token.line2,
     borderRadius: rad.md,
+    borderCurve: "continuous",
     padding: 24,
   },
   modalTitle: {
@@ -1934,6 +1873,7 @@ const styles = StyleSheet.create({
   },
   modalInput: {
     borderRadius: 12,
+    borderCurve: "continuous",
     borderWidth: 1,
     borderColor: token.line,
     backgroundColor: token.surface2,
@@ -1958,6 +1898,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingVertical: 10,
     borderRadius: 10,
+    borderCurve: "continuous",
   },
   modalButtonCancelText: {
     fontFamily: font.sans[600],
@@ -1969,6 +1910,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingVertical: 10,
     borderRadius: 10,
+    borderCurve: "continuous",
     backgroundColor: token.accent,
   },
   modalButtonDisabled: {
