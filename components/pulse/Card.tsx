@@ -25,6 +25,7 @@ export function Card({
           borderColor: isAccent ? color.accentTintBorder : color.line,
           borderWidth: 1,
           borderRadius: radius[rounded],
+          borderCurve: "continuous",
           padding: padded ? 16 : 0,
         },
         style,

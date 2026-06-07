@@ -62,6 +62,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: 16,
     borderRadius: 14,
+    borderCurve: "continuous",
     borderWidth: 1,
   },
   radio: {

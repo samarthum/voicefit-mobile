@@ -1,6 +1,16 @@
 import type { ReactElement } from "react";
-import { useEffect, useMemo, useRef } from "react";
-import { Animated, Easing, View } from "react-native";
+import { useEffect, useMemo } from "react";
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  withRepeat,
+  withSequence,
+  withDelay,
+  Easing,
+  type SharedValue,
+} from "react-native-reanimated";
+import { View } from "react-native";
 import { color as token } from "@/lib/tokens";
 
 export type WaveformProps = {
@@ -17,6 +27,51 @@ const MIN_SCALE = 0.2;
 const MAX_SCALE = 1;
 const LOOP_PERIOD = 1000;
 
+// One animated bar — isolated so each bar has its own shared value and
+// useAnimatedStyle hook, which is required by the Rules of Hooks.
+function WaveBar({
+  height,
+  color,
+  scaleY,
+  marginLeft,
+}: {
+  height: number;
+  color: string;
+  scaleY: SharedValue<number>;
+  marginLeft: number;
+}) {
+  const animStyle = useAnimatedStyle(() => ({
+    transform: [{ scaleY: scaleY.value }],
+  }));
+
+  return (
+    <View
+      style={{
+        width: BAR_WIDTH,
+        height,
+        justifyContent: "flex-end",
+        marginLeft,
+      }}
+    >
+      <Animated.View
+        style={[
+          {
+            width: BAR_WIDTH,
+            height,
+            borderRadius: 2,
+            backgroundColor: color,
+          },
+          animStyle,
+        ]}
+      />
+    </View>
+  );
+}
+
+// We need a fixed-size hook array. React hooks cannot be called conditionally,
+// so we pre-allocate MAX_BARS shared values and slice to `bars` at render time.
+const MAX_BARS = 12;
+
 export function Waveform({
   active,
   bars = 6,
@@ -25,81 +80,75 @@ export function Waveform({
   color = token.accent,
   reducedMotion = false,
 }: WaveformProps): ReactElement {
-  // One Animated.Value per bar — initialised at MIN so a static state reads as
-  // a calm baseline rather than full-height bars.
-  const anims = useRef(
-    Array.from({ length: bars }, () => new Animated.Value(MIN_SCALE)),
-  ).current;
+  // Allocate MAX_BARS shared values unconditionally so hook count is stable
+  // regardless of the `bars` prop — avoids conditional hook call violations.
+  const sv0  = useSharedValue(MIN_SCALE);
+  const sv1  = useSharedValue(MIN_SCALE);
+  const sv2  = useSharedValue(MIN_SCALE);
+  const sv3  = useSharedValue(MIN_SCALE);
+  const sv4  = useSharedValue(MIN_SCALE);
+  const sv5  = useSharedValue(MIN_SCALE);
+  const sv6  = useSharedValue(MIN_SCALE);
+  const sv7  = useSharedValue(MIN_SCALE);
+  const sv8  = useSharedValue(MIN_SCALE);
+  const sv9  = useSharedValue(MIN_SCALE);
+  const sv10 = useSharedValue(MIN_SCALE);
+  const sv11 = useSharedValue(MIN_SCALE);
 
-  // Keep the ref array in sync if the `bars` prop ever changes at runtime.
-  if (anims.length !== bars) {
-    anims.length = 0;
-    for (let i = 0; i < bars; i++) anims.push(new Animated.Value(MIN_SCALE));
-  }
+  const allSvs = [sv0, sv1, sv2, sv3, sv4, sv5, sv6, sv7, sv8, sv9, sv10, sv11] as const;
+  const svs = allSvs.slice(0, Math.min(bars, MAX_BARS));
 
-  // Per-bar phase offset — staggers peaks so the row feels organic. Memoised so
-  // remounts don't reshuffle on every render and cause visual jitter.
-  const phaseOffsets = useMemo(
-    () => Array.from({ length: bars }, (_, i) => (i / bars) * LOOP_PERIOD),
-    [bars],
-  );
-
-  // Heights vary slightly per bar to mimic the screens-c.jsx hand-tuned look.
+  // Bell-curve peak per bar: middle bars taller, edges shorter.
   const peaks = useMemo(
     () =>
       Array.from({ length: bars }, (_, i) => {
         const t = i / Math.max(bars - 1, 1);
-        // Bell-ish curve: middle bars taller, edges shorter.
         const bell = 0.65 + 0.35 * Math.sin(Math.PI * t);
         return Math.min(MAX_SCALE, bell);
       }),
     [bars],
   );
 
+  // Phase offsets stagger the peaks so the row feels organic.
+  const phaseOffsets = useMemo(
+    () => Array.from({ length: bars }, (_, i) => (i / bars) * LOOP_PERIOD),
+    [bars],
+  );
+
   useEffect(() => {
     if (reducedMotion) {
-      anims.forEach((a) => a.setValue(0.5));
-      return;
-    }
-    if (!active) {
-      anims.forEach((a) =>
-        Animated.timing(a, {
-          toValue: MIN_SCALE,
-          duration: 180,
-          easing: Easing.out(Easing.quad),
-          useNativeDriver: true,
-        }).start(),
-      );
+      svs.forEach((sv) => { sv.value = 0.5; });
       return;
     }
 
-    const loops = anims.map((a, i) => {
+    if (!active) {
+      svs.forEach((sv) => {
+        sv.value = withTiming(MIN_SCALE, {
+          duration: 180,
+          easing: Easing.out(Easing.quad),
+        });
+      });
+      return;
+    }
+
+    svs.forEach((sv, i) => {
       const peak = peaks[i] ?? MAX_SCALE;
       const half = LOOP_PERIOD / 2;
       const offset = phaseOffsets[i] ?? 0;
-      const loop = Animated.loop(
-        Animated.sequence([
-          Animated.timing(a, {
-            toValue: peak,
-            duration: half,
-            easing: Easing.inOut(Easing.sin),
-            useNativeDriver: true,
-            delay: offset,
-          }),
-          Animated.timing(a, {
-            toValue: MIN_SCALE,
-            duration: half,
-            easing: Easing.inOut(Easing.sin),
-            useNativeDriver: true,
-          }),
-        ]),
-      );
-      loop.start();
-      return loop;
-    });
 
-    return () => loops.forEach((l) => l.stop());
-  }, [active, reducedMotion, anims, peaks, phaseOffsets]);
+      sv.value = withDelay(
+        offset,
+        withRepeat(
+          withSequence(
+            withTiming(peak, { duration: half, easing: Easing.inOut(Easing.sin) }),
+            withTiming(MIN_SCALE, { duration: half, easing: Easing.inOut(Easing.sin) }),
+          ),
+          -1,
+          false,
+        ),
+      );
+    });
+  }, [active, reducedMotion, bars]);
 
   const gap = bars > 1 ? (width - bars * BAR_WIDTH) / (bars - 1) : 0;
 
@@ -113,33 +162,14 @@ export function Waveform({
         justifyContent: "space-between",
       }}
     >
-      {anims.map((a, i) => (
-        // Outer wrapper aligns to the baseline; scaleY needs an anchor and RN
-        // honours transform-origin via the wrapping View's layout box.
-        <View
+      {svs.map((sv, i) => (
+        <WaveBar
           key={i}
-          style={{
-            width: BAR_WIDTH,
-            height,
-            justifyContent: "flex-end",
-            marginLeft: i === 0 ? 0 : gap,
-          }}
-        >
-          <Animated.View
-            style={{
-              width: BAR_WIDTH,
-              height,
-              borderRadius: 2,
-              backgroundColor: color,
-              transform: [{ scaleY: a }, { translateY: 0 }],
-              // scaleY scales around centre by default — shift origin to bottom
-              // by translating down by half of the unscaled height before scale.
-              // RN doesn't expose transformOrigin reliably, so we fake it with
-              // a bottom-anchored wrapper above + scaleY on the inner View.
-              transformOrigin: "bottom" as never,
-            }}
-          />
-        </View>
+          height={height}
+          color={color}
+          scaleY={sv}
+          marginLeft={i === 0 ? 0 : gap}
+        />
       ))}
     </View>
   );

@@ -2,7 +2,6 @@ import { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -14,6 +13,7 @@ import Svg, { Path, Rect } from "react-native-svg";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { color, font, radius } from "@/lib/tokens";
 import { Wordmark } from "@/components/pulse";
+import { haptic } from "@/lib/haptics";
 
 function HeroOrb() {
   return (
@@ -78,6 +78,7 @@ export default function SignInScreen() {
         setError("Additional verification is required.");
       }
     } catch (err) {
+      haptic.error();
       setError(err instanceof Error ? err.message : "Google sign in failed.");
     } finally {
       setIsGoogleSubmitting(false);
@@ -85,7 +86,7 @@ export default function SignInScreen() {
   };
 
   const handleAppleSignIn = async () => {
-    if (Platform.OS === "android" || Platform.OS === "web") {
+    if (process.env.EXPO_OS === "android" || process.env.EXPO_OS === "web") {
       Alert.alert("Apple Sign In", "Apple sign in is only available on supported Apple platforms.");
       return;
     }
@@ -103,6 +104,7 @@ export default function SignInScreen() {
         setError("Additional verification is required.");
       }
     } catch (err) {
+      haptic.error();
       setError(err instanceof Error ? err.message : "Apple sign in failed.");
     } finally {
       setIsAppleSubmitting(false);
@@ -130,7 +132,7 @@ export default function SignInScreen() {
       <View style={styles.authArea}>
         <Pressable
           style={[styles.appleButton, busy ? styles.disabled : null]}
-          onPress={() => void handleAppleSignIn()}
+          onPress={() => { haptic.press(); void handleAppleSignIn(); }}
           disabled={busy}
         >
           {isAppleSubmitting ? (
@@ -145,7 +147,7 @@ export default function SignInScreen() {
 
         <Pressable
           style={[styles.googleButton, busy ? styles.disabled : null]}
-          onPress={() => void handleGoogleSignIn()}
+          onPress={() => { haptic.press(); void handleGoogleSignIn(); }}
           disabled={busy}
         >
           {isGoogleSubmitting ? (
@@ -167,7 +169,7 @@ export default function SignInScreen() {
           </Text>
         </Pressable>
 
-        {error ? <Text style={styles.error}>{error}</Text> : null}
+        {error ? <Text style={styles.error} selectable>{error}</Text> : null}
 
         <Text style={styles.terms}>By continuing you agree to our Terms &amp; Privacy Policy.</Text>
       </View>
@@ -240,6 +242,7 @@ const styles = StyleSheet.create({
   appleButton: {
     height: 56,
     borderRadius: radius.sm,
+    borderCurve: "continuous",
     backgroundColor: color.accent,
     alignItems: "center",
     justifyContent: "center",
@@ -255,6 +258,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
     height: 56,
     borderRadius: radius.sm,
+    borderCurve: "continuous",
     backgroundColor: color.surface,
     borderWidth: 1,
     borderColor: color.line,

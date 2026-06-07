@@ -1,5 +1,13 @@
-import { useEffect, useRef } from "react";
-import { Animated, Easing, StyleSheet, View } from "react-native";
+import { useEffect } from "react";
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  withRepeat,
+  withSpring,
+  Easing,
+} from "react-native-reanimated";
+import { StyleSheet, View } from "react-native";
 import Svg, { Circle, Path, Rect } from "react-native-svg";
 import { color, motion } from "@/lib/tokens";
 
@@ -11,72 +19,86 @@ export type VoiceRingProps = {
   reducedMotion?: boolean;
 };
 
-const AnimatedCircle = Animated.createAnimatedComponent(Circle);
-const AnimatedView = Animated.View;
+// Reanimated v4 — Animated.createAnimatedComponent is on the Reanimated namespace.
+// For SVG circles driven by spin we keep the rotate on a wrapping Animated.View.
 
-const easeStd = Easing.bezier(motion.ease.std.x1, motion.ease.std.y1, motion.ease.std.x2, motion.ease.std.y2);
-const easeEmph = Easing.bezier(0.34, 1.56, 0.64, 1);
+const easeStd = Easing.bezier(
+  motion.ease.std.x1,
+  motion.ease.std.y1,
+  motion.ease.std.x2,
+  motion.ease.std.y2,
+);
 
 export function VoiceRing({ state, size = 200, reducedMotion = false }: VoiceRingProps) {
-  const pulse = useRef(new Animated.Value(0)).current;
-  const spin = useRef(new Animated.Value(0)).current;
-  const savedScale = useRef(new Animated.Value(0.6)).current;
-  const fade = useRef(new Animated.Value(0)).current;
+  // --- shared values ---
+  const fade = useSharedValue(0);
+  const pulse = useSharedValue(0);        // 0→1 cycling for listening ring
+  const spin = useSharedValue(0);         // 0→360 cycling for interpreting arc
+  const savedScale = useSharedValue(0.6); // 0.6→1 spring for saved checkmark
 
+  // --- fade in on every state change ---
   useEffect(() => {
-    fade.setValue(0);
-    Animated.timing(fade, {
-      toValue: 1,
-      duration: 200,
-      easing: easeStd,
-      useNativeDriver: true,
-    }).start();
+    fade.value = 0;
+    fade.value = withTiming(1, { duration: 200, easing: easeStd });
+  }, [state]);
 
-    if (reducedMotion) return;
-
-    let pulseLoop: Animated.CompositeAnimation | null = null;
-    let spinLoop: Animated.CompositeAnimation | null = null;
-    let savedAnim: Animated.CompositeAnimation | null = null;
-
-    if (state === "listening") {
-      pulse.setValue(0);
-      pulseLoop = Animated.loop(
-        Animated.timing(pulse, {
-          toValue: 1,
-          duration: 1400,
-          easing: easeStd,
-          useNativeDriver: true,
-        })
-      );
-      pulseLoop.start();
-    } else if (state === "interpreting") {
-      spin.setValue(0);
-      spinLoop = Animated.loop(
-        Animated.timing(spin, {
-          toValue: 1,
-          duration: 900,
-          easing: Easing.linear,
-          useNativeDriver: true,
-        })
-      );
-      spinLoop.start();
-    } else if (state === "saved") {
-      savedScale.setValue(0.6);
-      savedAnim = Animated.timing(savedScale, {
-        toValue: 1,
-        duration: motion.dur.expr,
-        easing: easeEmph,
-        useNativeDriver: true,
-      });
-      savedAnim.start();
+  // --- per-state animations ---
+  useEffect(() => {
+    if (reducedMotion) {
+      pulse.value = 0;
+      spin.value = 0;
+      savedScale.value = 1;
+      return;
     }
 
-    return () => {
-      pulseLoop?.stop();
-      spinLoop?.stop();
-      savedAnim?.stop();
-    };
-  }, [state, reducedMotion, pulse, spin, savedScale, fade]);
+    if (state === "listening") {
+      pulse.value = 0;
+      pulse.value = withRepeat(
+        withTiming(1, { duration: 1400, easing: easeStd }),
+        -1,
+        false,
+      );
+    } else {
+      pulse.value = withTiming(0, { duration: 150 });
+    }
+
+    if (state === "interpreting") {
+      spin.value = 0;
+      spin.value = withRepeat(
+        withTiming(360, { duration: 900, easing: Easing.linear }),
+        -1,
+        false,
+      );
+    } else {
+      spin.value = withTiming(0, { duration: 150 });
+    }
+
+    if (state === "saved") {
+      savedScale.value = 0.6;
+      savedScale.value = withSpring(1, {
+        damping: 8,
+        stiffness: 100,
+      });
+    }
+  }, [state, reducedMotion]);
+
+  // --- animated styles ---
+  const containerStyle = useAnimatedStyle(() => ({
+    opacity: fade.value,
+  }));
+
+  const pulseRingStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: 1 + pulse.value * 0.18 }],
+    opacity: 0.5 - pulse.value * 0.5,
+  }));
+
+  const spinStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${spin.value}deg` }],
+  }));
+
+  const savedScaleStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: savedScale.value }],
+  }));
 
   const half = size / 2;
   const stroke = 3;
@@ -84,36 +106,24 @@ export function VoiceRing({ state, size = 200, reducedMotion = false }: VoiceRin
   const circumference = 2 * Math.PI * r;
   const arcLength = circumference * 0.3;
 
-  const pulseScale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.18] });
-  const pulseOpacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.5, 0] });
-  const spinDeg = spin.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "360deg"] });
-
-  const containerStyle = [styles.container, { width: size, height: size, opacity: fade }];
-  const glow = null;
-
   if (state === "idle") {
     return (
-      <AnimatedView style={containerStyle}>
+      <Animated.View style={[styles.container, { width: size, height: size }, containerStyle]}>
         <Svg width={size} height={size}>
           <Circle cx={half} cy={half} r={r} stroke={color.line2} strokeWidth={1} fill="none" />
         </Svg>
         <View style={StyleSheet.absoluteFill}>
           <MicIcon size={size} stroke={color.text} />
         </View>
-      </AnimatedView>
+      </Animated.View>
     );
   }
 
   if (state === "listening") {
     return (
-      <AnimatedView style={[containerStyle, glow]}>
+      <Animated.View style={[styles.container, { width: size, height: size }, containerStyle]}>
         {!reducedMotion && (
-          <Animated.View
-            style={[
-              StyleSheet.absoluteFill,
-              { transform: [{ scale: pulseScale }], opacity: pulseOpacity },
-            ]}
-          >
+          <Animated.View style={[StyleSheet.absoluteFill, pulseRingStyle]}>
             <Svg width={size} height={size}>
               <Circle cx={half} cy={half} r={r} stroke={color.accent} strokeWidth={stroke} fill="none" />
             </Svg>
@@ -125,23 +135,26 @@ export function VoiceRing({ state, size = 200, reducedMotion = false }: VoiceRin
         <View style={StyleSheet.absoluteFill}>
           <MicIcon size={size} stroke={color.accent} />
         </View>
-      </AnimatedView>
+      </Animated.View>
     );
   }
 
   if (state === "interpreting") {
     return (
-      <AnimatedView style={containerStyle}>
+      <Animated.View style={[styles.container, { width: size, height: size }, containerStyle]}>
         <Svg width={size} height={size}>
           <Circle cx={half} cy={half} r={r - stroke / 2} fill={color.accentTintBg} />
           <Circle cx={half} cy={half} r={r} stroke={color.accentRingTrack} strokeWidth={stroke} fill="none" />
         </Svg>
-        {/* stroke-dasharray trick: dash = arcLength, gap = circumference, rotate the whole svg */}
+        {/* Rotating arc overlay */}
         <Animated.View
-          style={[StyleSheet.absoluteFill, { transform: [{ rotate: reducedMotion ? "0deg" : spinDeg }] }]}
+          style={[
+            StyleSheet.absoluteFill,
+            reducedMotion ? undefined : spinStyle,
+          ]}
         >
           <Svg width={size} height={size}>
-            <AnimatedCircle
+            <Circle
               cx={half}
               cy={half}
               r={r}
@@ -156,15 +169,14 @@ export function VoiceRing({ state, size = 200, reducedMotion = false }: VoiceRin
         <View style={[StyleSheet.absoluteFill, styles.center]}>
           <Dots />
         </View>
-      </AnimatedView>
+      </Animated.View>
     );
   }
 
   if (state === "saved") {
-    const scale = reducedMotion ? 1 : savedScale;
     return (
-      <AnimatedView style={containerStyle}>
-        <Animated.View style={[StyleSheet.absoluteFill, { transform: [{ scale }] }]}>
+      <Animated.View style={[styles.container, { width: size, height: size }, containerStyle]}>
+        <Animated.View style={[StyleSheet.absoluteFill, reducedMotion ? undefined : savedScaleStyle]}>
           <Svg width={size} height={size}>
             <Circle cx={half} cy={half} r={r} fill={color.accent} />
             <Path
@@ -177,12 +189,13 @@ export function VoiceRing({ state, size = 200, reducedMotion = false }: VoiceRin
             />
           </Svg>
         </Animated.View>
-      </AnimatedView>
+      </Animated.View>
     );
   }
 
+  // error state
   return (
-    <AnimatedView style={containerStyle}>
+    <Animated.View style={[styles.container, { width: size, height: size }, containerStyle]}>
       <Svg width={size} height={size}>
         <Circle cx={half} cy={half} r={r} stroke={color.negative} strokeWidth={stroke} fill="none" />
       </Svg>
@@ -192,7 +205,7 @@ export function VoiceRing({ state, size = 200, reducedMotion = false }: VoiceRin
           <Circle cx={size * 0.05} cy={size * 0.28} r={size * 0.022} fill={color.negative} />
         </Svg>
       </View>
-    </AnimatedView>
+    </Animated.View>
   );
 }
 

@@ -28,6 +28,7 @@ export function Numeral({ size = "md", tone = "primary", style, children, ...res
 
   return (
     <Text
+      selectable
       {...rest}
       style={[
         SIZES[size],

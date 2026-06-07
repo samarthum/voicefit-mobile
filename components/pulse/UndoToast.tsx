@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from "react";
-import { Animated, Pressable, Text } from "react-native";
+import { useEffect, useRef } from "react";
+import { Pressable, Text } from "react-native";
+import Animated, { FadeInUp, FadeOut, LinearTransition } from "react-native-reanimated";
 import { color, font, radius } from "@/lib/tokens";
-import { ease } from "@/lib/motion";
 
 // onUndo fires when the user taps Undo — caller should reverse the action.
 // onDismiss fires *only* when the timer expires — caller should commit the
@@ -22,55 +22,22 @@ export function UndoToast({
   onUndo,
   onDismiss,
 }: UndoToastProps) {
-  const fade = useRef(new Animated.Value(0)).current;
-  const slide = useRef(new Animated.Value(24)).current;
-  // mounted-state lets the exit animation play before unmount when visible flips false.
-  const [mounted, setMounted] = useState(visible);
+  const dismissRef = useRef(onDismiss);
+  dismissRef.current = onDismiss;
 
   useEffect(() => {
-    if (visible) {
-      setMounted(true);
-      Animated.parallel([
-        Animated.timing(fade, {
-          toValue: 1,
-          duration: 320,
-          easing: ease.std,
-          useNativeDriver: true,
-        }),
-        Animated.timing(slide, {
-          toValue: 0,
-          duration: 320,
-          easing: ease.std,
-          useNativeDriver: true,
-        }),
-      ]).start();
+    if (!visible) return;
+    const timer = setTimeout(() => dismissRef.current(), durationMs);
+    return () => clearTimeout(timer);
+  }, [visible, durationMs]);
 
-      const timer = setTimeout(() => onDismiss(), durationMs);
-      return () => clearTimeout(timer);
-    }
-
-    Animated.parallel([
-      Animated.timing(fade, {
-        toValue: 0,
-        duration: 220,
-        easing: ease.exit,
-        useNativeDriver: true,
-      }),
-      Animated.timing(slide, {
-        toValue: 24,
-        duration: 220,
-        easing: ease.exit,
-        useNativeDriver: true,
-      }),
-    ]).start(({ finished }) => {
-      if (finished) setMounted(false);
-    });
-  }, [visible, durationMs, onDismiss, fade, slide]);
-
-  if (!mounted) return null;
+  if (!visible) return null;
 
   return (
     <Animated.View
+      entering={FadeInUp.duration(220)}
+      exiting={FadeOut.duration(180)}
+      layout={LinearTransition}
       pointerEvents="box-none"
       style={{
         position: "absolute",
@@ -85,8 +52,6 @@ export function UndoToast({
         borderRadius: radius.pill,
         paddingVertical: 12,
         paddingHorizontal: 18,
-        opacity: fade,
-        transform: [{ translateY: slide }],
       }}
     >
       <Text

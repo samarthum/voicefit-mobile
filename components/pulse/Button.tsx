@@ -34,6 +34,7 @@ export function Button({
           borderColor: palette.border,
           borderWidth: variant === "primary" ? 0 : 1,
           borderRadius: radius.sm,
+          borderCurve: "continuous",
           flexDirection: "row",
           alignItems: "center",
           justifyContent: "center",

@@ -7,9 +7,8 @@ import {
   Text,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "@clerk/clerk-expo";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import type { DashboardData, TopMealsResponse } from "@voicefit/contracts/types";
 import Svg, {
@@ -24,10 +23,11 @@ import Svg, {
 import { apiRequest } from "@/lib/api-client";
 import { FloatingCommandBar } from "@/components/FloatingCommandBar";
 import { useCommandCenter, toLocalDateString } from "@/components/command-center";
-import { Wordmark } from "@/components/pulse";
 import { color as token, font, radius as r } from "@/lib/tokens";
 import { type TrendMetric, getISOWeek, safeNumber, metricValueFromPoint } from "@/lib/trends";
 import { isWebPreviewMode } from "@/lib/web-preview-mode";
+import { haptic } from "@/lib/haptics";
+import { formatCompact } from "@/lib/format";
 
 const TAB_LABELS: Record<TrendMetric, string> = {
   calories: "Calories",
@@ -47,8 +47,8 @@ const GRID_LINES = [0, 35, 70, 105, 140] as const;
 
 function formatAverage(metric: TrendMetric, avg: number | null): { num: string; unit: string } {
   if (avg == null) return { num: "—", unit: unitFor(metric) };
-  if (metric === "calories") return { num: Math.round(avg).toLocaleString(), unit: "kcal/day" };
-  if (metric === "steps") return { num: Math.round(avg).toLocaleString(), unit: "steps/day" };
+  if (metric === "calories") return { num: formatCompact(Math.round(avg)), unit: "kcal/day" };
+  if (metric === "steps") return { num: formatCompact(Math.round(avg)), unit: "steps/day" };
   return { num: avg.toFixed(1), unit: "kg avg" };
 }
 
@@ -143,6 +143,8 @@ export default function TrendsScreen() {
     params.metric === "steps" || params.metric === "weight" ? params.metric : "calories";
   const [tab, setTab] = useState<TrendMetric>(initialTab);
   const [chartWidth, setChartWidth] = useState(320);
+
+  const weekNumber = useMemo(() => getISOWeek(new Date()), []);
 
   const dashboardQuery = useQuery<DashboardData>({
     queryKey: ["dashboard", "full", timezone, today],
@@ -263,7 +265,6 @@ export default function TrendsScreen() {
   }, [displaySeries, goal]);
 
   const dayLabels = useMemo(() => lastSevenDayLabels(), []);
-  const weekNumber = useMemo(() => getISOWeek(new Date()), []);
 
   const topMeals = useMemo<MealAggregate[]>(
     () =>
@@ -280,8 +281,8 @@ export default function TrendsScreen() {
   const avgDisplay = formatAverage(tab, avgCurrent);
 
   const goalLabel = useMemo(() => {
-    if (tab === "calories" && goal != null) return `Goal · ${goal.toLocaleString()} kcal`;
-    if (tab === "steps" && goal != null) return `Goal · ${goal.toLocaleString()} steps`;
+    if (tab === "calories" && goal != null) return `Goal · ${formatCompact(goal)} kcal`;
+    if (tab === "steps" && goal != null) return `Goal · ${formatCompact(goal)} steps`;
     return null;
   }, [tab, goal]);
 
@@ -290,14 +291,14 @@ export default function TrendsScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.root} edges={["top"]}>
-      <View style={styles.headerRow}>
-        <Wordmark size={22} />
-        <Text style={styles.weekEyebrow}>Week {weekNumber}</Text>
-      </View>
+    <>
+      {/* NUI-5: native header — provides title + back button; replaces hand-rolled headerRow */}
+      <Stack.Screen options={{ headerShown: true, title: `Trends · Wk ${weekNumber}` }} />
 
       <ScrollView
+        style={styles.root}
         contentContainerStyle={styles.scroll}
+        contentInsetAdjustmentBehavior="automatic"
         keyboardDismissMode="on-drag"
         keyboardShouldPersistTaps="handled"
       >
@@ -307,9 +308,15 @@ export default function TrendsScreen() {
             return (
               <Pressable
                 key={t}
-                onPress={() => setTab(t)}
+                onPress={() => {
+                  haptic.selection();
+                  setTab(t);
+                }}
                 style={[styles.tabPill, active && styles.tabPillActive]}
                 testID={`trends-tab-${t}`}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: active }}
+                accessibilityLabel={TAB_LABELS[t]}
               >
                 <Text style={[styles.tabText, active && styles.tabTextActive]}>{TAB_LABELS[t]}</Text>
               </Pressable>
@@ -322,12 +329,13 @@ export default function TrendsScreen() {
             <View style={styles.bigCardLeft}>
               <Text style={styles.smallLabel}>7-day average</Text>
               <View style={styles.avgRow}>
-                <Text style={styles.avgNum}>{avgDisplay.num}</Text>
+                <Text selectable style={styles.avgNum}>{avgDisplay.num}</Text>
                 <Text style={styles.avgUnit}>{avgDisplay.unit}</Text>
               </View>
             </View>
             <View style={styles.bigCardRight}>
               <Text
+                selectable
                 style={[
                   styles.changeText,
                   { color: change == null ? token.textMute : changeIsGood ? token.accent : token.textMute },
@@ -437,7 +445,7 @@ export default function TrendsScreen() {
                   <View style={styles.mealRowTop}>
                     <Text style={styles.mealName} numberOfLines={1}>{meal.name}</Text>
                     <Text style={styles.mealCount}>{meal.count}×</Text>
-                    <Text style={styles.mealKcal}>{meal.kcal.toLocaleString()}</Text>
+                    <Text selectable style={styles.mealKcal}>{formatCompact(meal.kcal)}</Text>
                   </View>
                   <View style={styles.mealTrack}>
                     <View
@@ -462,7 +470,7 @@ export default function TrendsScreen() {
         onPress={() => cc.open()}
         onMicPress={() => cc.startRecording()}
       />
-    </SafeAreaView>
+    </>
   );
 }
 
@@ -475,22 +483,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 4,
     paddingBottom: 146,
-  },
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 10,
-  },
-  weekEyebrow: {
-    fontFamily: font.sans[600],
-    fontSize: 11,
-    fontWeight: "600",
-    letterSpacing: 1.32,
-    color: token.textMute,
-    textTransform: "uppercase",
   },
   tabsRow: {
     flexDirection: "row",
@@ -526,6 +518,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: token.line,
     borderRadius: r.lg,
+    borderCurve: "continuous",
     paddingTop: 20,
     paddingHorizontal: 22,
     paddingBottom: 18,
@@ -640,6 +633,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: token.line,
     borderRadius: r.md,
+    borderCurve: "continuous",
     paddingVertical: 6,
   },
   mealRow: {
@@ -677,11 +671,13 @@ const styles = StyleSheet.create({
     height: 3,
     backgroundColor: token.line,
     borderRadius: 2,
+    borderCurve: "continuous",
     overflow: "hidden",
   },
   mealFill: {
     height: "100%",
     borderRadius: 2,
+    borderCurve: "continuous",
   },
   emptyText: {
     fontFamily: font.sans[400],

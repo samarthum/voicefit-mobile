@@ -40,6 +40,9 @@ import {
   buildLinePaths,
   metricValueFromPoint,
 } from "@/lib/trends";
+import { haptic } from "@/lib/haptics";
+import { Icon } from "@/components/Icon";
+import { formatCompact } from "@/lib/format";
 
 type RecentMeal = Omit<DashboardData["recentMeals"][number], "calories"> & {
   calories: number | null;
@@ -102,17 +105,7 @@ function CoachBadge() {
 }
 
 function StepsTrendIcon() {
-  return (
-    <Svg width={14} height={14} viewBox="0 0 14 14" fill="none">
-      <Path
-        d="M4 11V7M4 7L7 4L10 7M10 7V11"
-        stroke={token.accent}
-        strokeWidth={1.4}
-        strokeLinecap="round"
-        fill="none"
-      />
-    </Svg>
-  );
+  return <Icon name="trendUp" size={14} color={token.accent} />;
 }
 
 function CalorieRing({ consumed, goal }: { consumed: number; goal: number }) {
@@ -152,7 +145,7 @@ function CalorieRing({ consumed, goal }: { consumed: number; goal: number }) {
         />
       </Svg>
       <View style={styles.heroRingCenter}>
-        <Text style={styles.heroRingNumber}>{consumed.toLocaleString()}</Text>
+        <Text style={styles.heroRingNumber} selectable>{consumed.toLocaleString()}</Text>
         <Text style={styles.heroRingLabel}>kcal in</Text>
       </View>
     </View>
@@ -482,7 +475,7 @@ export default function DashboardScreen() {
   const renderTrendPrimary = () => {
     if (metricAverage == null) return "--";
     if (trendTab === "calories") return `${Math.round(metricAverage).toLocaleString()} kcal/day`;
-    if (trendTab === "steps") return `${Math.round(metricAverage).toLocaleString()} steps/day`;
+    if (trendTab === "steps") return `${formatCompact(Math.round(metricAverage))} steps/day`;
     return `${metricAverage.toFixed(1)} kg avg`;
   };
 
@@ -522,12 +515,12 @@ export default function DashboardScreen() {
           <Wordmark size={22} />
           <Pressable
             style={styles.addButton}
-            onPress={() => cc.open()}
+            onPress={() => { haptic.tap(); cc.open(); }}
             testID="home-add-button"
             accessibilityRole="button"
             accessibilityLabel="Add entry"
           >
-            <Text style={styles.addButtonText}>+</Text>
+            <Icon name="plus" size={18} color={token.text} />
           </Pressable>
         </View>
 
@@ -549,6 +542,7 @@ export default function DashboardScreen() {
                 style={[styles.dayItem, active && styles.dayItemActive]}
                 testID={`home-day-${day.date}`}
                 onPress={() => {
+                  haptic.selection();
                   setSelectedDate(day.date);
                 }}
               >
@@ -572,8 +566,8 @@ export default function DashboardScreen() {
 
         {homeBlockingError ? (
           <View style={styles.blockingErrorCard}>
-            <Text style={styles.blockingErrorTitle}>Could not load Home</Text>
-            <Text style={styles.blockingErrorBody}>{getErrorMessage(dashboardQuery.error)}</Text>
+            <Text style={styles.blockingErrorTitle} selectable>Could not load Home</Text>
+            <Text style={styles.blockingErrorBody} selectable>{getErrorMessage(dashboardQuery.error)}</Text>
             <Pressable style={styles.primaryActionButton} onPress={() => void dashboardQuery.refetch()}>
               <Text style={styles.primaryActionText}>Retry</Text>
             </Pressable>
@@ -582,7 +576,7 @@ export default function DashboardScreen() {
           <>
             <Pressable
               style={styles.heroCard}
-              onPress={() => router.push("/trends")}
+              onPress={() => { haptic.tap(); router.push("/trends"); }}
               testID="home-hero-trends"
             >
               <View style={styles.heroCardHeader}>
@@ -607,7 +601,7 @@ export default function DashboardScreen() {
                     </View>
                   ) : (
                     <Text style={styles.heroSummary}>
-                      <Text style={styles.heroSummaryAccent}>
+                      <Text style={styles.heroSummaryAccent} selectable>
                         {Math.max(todayCaloriesGoal - todayCaloriesConsumed, 0).toLocaleString()} kcal
                       </Text>{" "}
                       left to hit your goal.
@@ -633,7 +627,7 @@ export default function DashboardScreen() {
             <View style={styles.metricsRow}>
               <Pressable
                 style={styles.metricCard}
-                onPress={() => router.push({ pathname: "/trends", params: { metric: "steps" } })}
+                onPress={() => { haptic.tap(); router.push({ pathname: "/trends", params: { metric: "steps" } }); }}
                 testID="home-steps-card"
               >
                 <View style={styles.metricTopRow}>
@@ -644,7 +638,7 @@ export default function DashboardScreen() {
                   <LoadingBlock width={96} height={26} radius={6} />
                 ) : (
                   <View style={styles.metricValueRow}>
-                    <Text style={styles.metricMainValue}>{todaySteps.toLocaleString()}</Text>
+                    <Text style={styles.metricMainValue} selectable>{formatCompact(todaySteps)}</Text>
                     <Text style={styles.metricUnit}>/ {todayStepsGoal >= 1000 ? `${Math.round(todayStepsGoal / 1000)}k` : todayStepsGoal}</Text>
                   </View>
                 )}
@@ -660,7 +654,7 @@ export default function DashboardScreen() {
 
               <Pressable
                 style={styles.metricCard}
-                onPress={() => router.push({ pathname: "/trends", params: { metric: "weight" } })}
+                onPress={() => { haptic.tap(); router.push({ pathname: "/trends", params: { metric: "weight" } }); }}
                 testID="home-weight-card"
               >
                 <View style={styles.metricTopRow}>
@@ -675,7 +669,7 @@ export default function DashboardScreen() {
                   <LoadingBlock width={92} height={26} radius={6} />
                 ) : (
                   <View style={styles.metricValueRow}>
-                    <Text style={styles.metricMainValue}>
+                    <Text style={styles.metricMainValue} selectable>
                       {recentWeight == null ? "—" : recentWeight.toFixed(1)}
                     </Text>
                     <Text style={styles.metricUnit}>kg</Text>
@@ -693,7 +687,7 @@ export default function DashboardScreen() {
               </Pressable>
             </View>
 
-            <Pressable style={styles.coachCard} onPress={() => router.push("/coach")} testID="home-ask-coach">
+            <Pressable style={styles.coachCard} onPress={() => { haptic.tap(); router.push("/coach"); }} testID="home-ask-coach">
               <CoachBadge />
               <View style={styles.coachTextWrap}>
                 <Text style={styles.coachTitle}>Ask coach</Text>
@@ -705,12 +699,12 @@ export default function DashboardScreen() {
                   <Text style={styles.coachSub}>{coachSummary}</Text>
                 )}
               </View>
-              <Text style={styles.coachChevron}>›</Text>
+              <Icon name="chevronRight" size={16} color={token.textMute} />
             </Pressable>
 
             <View style={styles.sectionHeaderRow}>
               <Text style={styles.sectionTitle}>Today's log</Text>
-              <Pressable onPress={() => router.push("/meals")} testID="home-recent-meals-see-all">
+              <Pressable onPress={() => { haptic.tap(); router.push("/meals"); }} testID="home-recent-meals-see-all">
                 <Text style={styles.sectionLink}>See all</Text>
               </Pressable>
             </View>
@@ -751,7 +745,7 @@ export default function DashboardScreen() {
                           <Text style={styles.mealKcalPending}>--</Text>
                         ) : (
                           <>
-                            <Text style={styles.mealKcalNum}>{calories}</Text>
+                            <Text style={styles.mealKcalNum} selectable>{calories}</Text>
                             <Text style={styles.mealKcalUnit}>kcal</Text>
                           </>
                         )}
@@ -810,13 +804,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  addButtonText: {
-    fontFamily: font.sans[300],
-    fontSize: 18,
-    lineHeight: 20,
-    color: token.text,
-    fontWeight: "300",
-  },
   offlineBannerWrap: {
     marginTop: 6,
     marginBottom: 4,
@@ -830,6 +817,7 @@ const styles = StyleSheet.create({
   dayItem: {
     flex: 1,
     borderRadius: 12,
+    borderCurve: "continuous",
     paddingVertical: 10,
     paddingHorizontal: 0,
     alignItems: "center",
@@ -876,6 +864,7 @@ const styles = StyleSheet.create({
     width: 3,
     height: 3,
     borderRadius: 3,
+    borderCurve: "continuous",
     marginTop: 5,
     backgroundColor: token.accent,
   },
@@ -890,6 +879,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: token.line,
     borderRadius: 24,
+    borderCurve: "continuous",
     padding: 22,
     paddingBottom: 20,
     marginBottom: 10,
@@ -992,11 +982,13 @@ const styles = StyleSheet.create({
     height: 4,
     backgroundColor: token.line,
     borderRadius: 2,
+    borderCurve: "continuous",
     overflow: "hidden",
   },
   macroFill: {
     height: "100%",
     borderRadius: 2,
+    borderCurve: "continuous",
   },
   metricsRow: {
     flexDirection: "row",
@@ -1009,6 +1001,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: token.line,
     borderRadius: r.md,
+    borderCurve: "continuous",
     padding: 16,
     gap: 0,
   },
@@ -1026,12 +1019,14 @@ const styles = StyleSheet.create({
     height: 3,
     backgroundColor: token.line,
     borderRadius: 2,
+    borderCurve: "continuous",
     overflow: "hidden",
   },
   metricThinFill: {
     height: "100%",
     backgroundColor: token.accent,
     borderRadius: 2,
+    borderCurve: "continuous",
   },
   weightSparklineWrap: {
     marginTop: 6,
@@ -1091,6 +1086,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: token.line,
     borderRadius: r.md,
+    borderCurve: "continuous",
     padding: 16,
     marginBottom: 24,
     flexDirection: "row",
@@ -1125,11 +1121,6 @@ const styles = StyleSheet.create({
   },
   coachLoadingSub: {
     marginTop: 5,
-  },
-  coachChevron: {
-    color: token.textMute,
-    fontSize: 16,
-    fontWeight: "500",
   },
   sectionTitle: {
     fontFamily: font.sans[600],
@@ -1171,6 +1162,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: token.line,
     borderRadius: r.lg,
+    borderCurve: "continuous",
     paddingTop: 20,
     paddingHorizontal: 16,
     paddingBottom: 12,
@@ -1242,6 +1234,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: token.line,
     borderRadius: r.md,
+    borderCurve: "continuous",
     overflow: "hidden",
     marginBottom: 12,
   },
@@ -1369,6 +1362,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: token.line,
     borderRadius: r.md,
+    borderCurve: "continuous",
     padding: 18,
     gap: 10,
     backgroundColor: token.surface,
@@ -1386,6 +1380,7 @@ const styles = StyleSheet.create({
   },
   primaryActionButton: {
     borderRadius: r.sm,
+    borderCurve: "continuous",
     backgroundColor: token.accent,
     paddingHorizontal: 18,
     minHeight: 42,

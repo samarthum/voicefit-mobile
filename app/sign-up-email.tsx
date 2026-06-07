@@ -1,8 +1,6 @@
 import { useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -10,12 +8,14 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSignIn, useSignUp } from "@clerk/clerk-expo";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import Svg, { Path } from "react-native-svg";
-import { SafeAreaView } from "react-native-safe-area-context";
 
 import { color as token, font, radius as rad } from "@/lib/tokens";
+import { haptic } from "@/lib/haptics";
+import { Icon } from "@/components/Icon";
 
 const COLORS = {
   bg: token.bg,
@@ -28,14 +28,6 @@ const COLORS = {
   accent: token.accent,
   accentInk: token.accentInk,
 };
-
-function BackGlyph() {
-  return (
-    <Svg width={10} height={18} viewBox="0 0 10 18" fill="none">
-      <Path d="M9 1L1 9L9 17" stroke={COLORS.textPrimary} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
-    </Svg>
-  );
-}
 
 function EyeGlyph({ secure }: { secure: boolean }) {
   if (secure) {
@@ -91,6 +83,7 @@ export default function SignUpEmailScreen() {
   }, [mode]);
 
   const handleSubmit = async () => {
+    haptic.press();
     setError(null);
     setIsSubmitting(true);
 
@@ -126,30 +119,36 @@ export default function SignUpEmailScreen() {
         }
       }
     } catch (err) {
+      haptic.error();
       setError(err instanceof Error ? err.message : "Authentication failed.");
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  return (
-    <SafeAreaView style={styles.root} edges={["top"]}>
-      <View style={styles.navHeader}>
-        <Pressable
-          style={styles.backButton}
-          onPress={() => router.back()}
-          accessibilityRole="button"
-          accessibilityLabel="Go back"
-        >
-          <BackGlyph />
-        </Pressable>
-      </View>
-
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        keyboardVerticalOffset={0}
+  function HeaderClose() {
+    return (
+      <Pressable
+        onPress={() => router.back()}
+        accessibilityRole="button"
+        accessibilityLabel="Close"
+        style={{ paddingHorizontal: 4 }}
       >
+        <Icon name="close" size={22} color={token.text} />
+      </Pressable>
+    );
+  }
+
+  return (
+    <>
+      <Stack.Screen
+        options={{
+          headerShown: true,
+          title: "Sign up",
+          headerLeft: () => <HeaderClose />,
+        }}
+      />
+      <KeyboardAvoidingView style={{ flex: 1, backgroundColor: token.bg }}>
         <ScrollView
           contentContainerStyle={{ flexGrow: 1 }}
           keyboardShouldPersistTaps="handled"
@@ -239,7 +238,7 @@ export default function SignUpEmailScreen() {
           )}
         </View>
 
-        {error ? <Text style={styles.error}>{error}</Text> : null}
+        {error ? <Text style={styles.error} selectable>{error}</Text> : null}
 
         <Pressable style={styles.submitButton} onPress={() => void handleSubmit()} disabled={isSubmitting}>
           {isSubmitting ? (
@@ -263,30 +262,11 @@ export default function SignUpEmailScreen() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: token.bg,
-  },
-  navHeader: {
-    paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 8,
-  },
-  backButton: {
-    width: 32,
-    height: 32,
-    borderRadius: rad.pill,
-    backgroundColor: token.surface,
-    borderWidth: 1,
-    borderColor: token.line,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   content: {
     flex: 1,
     paddingHorizontal: 28,
@@ -314,12 +294,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: token.line,
     borderRadius: rad.sm,
+    borderCurve: "continuous",
     padding: 4,
     marginBottom: 28,
   },
   authTab: {
     flex: 1,
     borderRadius: 10,
+    borderCurve: "continuous",
     alignItems: "center",
     paddingVertical: 10,
   },
@@ -353,6 +335,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     height: 52,
     borderRadius: rad.sm,
+    borderCurve: "continuous",
     backgroundColor: token.surface,
     borderWidth: 1,
     borderColor: token.line,
@@ -394,6 +377,7 @@ const styles = StyleSheet.create({
   submitButton: {
     height: 56,
     borderRadius: rad.sm,
+    borderCurve: "continuous",
     backgroundColor: token.accent,
     alignItems: "center",
     justifyContent: "center",
