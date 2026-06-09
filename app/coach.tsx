@@ -4,7 +4,6 @@ import {
   Keyboard,
   Modal,
   StyleSheet,
-  TextInput,
   View,
 } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
@@ -28,7 +27,6 @@ import {
   ErrorBubble,
 } from "@/components/coach";
 import { useCoachProfile } from "@/hooks/use-coach-profile";
-import { useCoachVoiceInput } from "@/hooks/use-coach-voice-input";
 import { color as token } from "@/lib/tokens";
 
 // ---------------------------------------------------------------------------
@@ -52,10 +50,8 @@ export default function CoachScreen() {
   const { getToken } = useAuth();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const [draft, setDraft] = useState("");
   const [showMenu, setShowMenu] = useState(false);
   const [historyHydrated, setHistoryHydrated] = useState(false);
-  const inputRef = useRef<TextInput>(null);
   const listRef = useRef<LegendListRef>(null);
   const shouldPinInitialHistoryRef = useRef(false);
   const contentSettleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
@@ -71,21 +67,6 @@ export default function CoachScreen() {
     profileSaving,
     profileSaveError,
   } = useCoachProfile();
-  const handleTranscript = useCallback((transcript: string) => {
-    setDraft(transcript);
-  }, []);
-  const focusComposer = useCallback(() => {
-    inputRef.current?.focus();
-  }, []);
-  const {
-    isRecordingMic,
-    isTranscribing,
-    handleMicPress,
-  } = useCoachVoiceInput({
-    onTranscript: handleTranscript,
-    onTranscriptFocus: focusComposer,
-  });
-
   // Re-pin the list to the latest message when the keyboard comes up.
   // LegendList's `maintainScrollAtEnd` only triggers on data updates, not on
   // viewport changes — so without this the user lands mid-thread when they
@@ -247,15 +228,6 @@ export default function CoachScreen() {
     );
   }, [clearMutation]);
 
-  // ---- Send ----
-  const handleSend = useCallback(() => {
-    const text = draft.trim();
-    if (!text || isStreaming) return;
-    Keyboard.dismiss();
-    sendMessage({ text });
-    setDraft("");
-  }, [draft, isStreaming, sendMessage]);
-
   const handleStarterPress = useCallback(
     (text: string) => {
       if (isStreaming) return;
@@ -264,9 +236,6 @@ export default function CoachScreen() {
     },
     [isStreaming, sendMessage]
   );
-
-  // ---- Render ----
-  const canSend = draft.trim().length > 0 && !isStreaming;
 
   return (
     // Coach keeps its rich custom header (CoachHeader: sparkle orb + menu dropdown),
@@ -302,17 +271,7 @@ export default function CoachScreen() {
         ) : null}
 
         <View>
-          <CoachComposer
-            ref={inputRef}
-            value={draft}
-            canSend={canSend}
-            isStreaming={isStreaming}
-            isRecordingMic={isRecordingMic}
-            isTranscribing={isTranscribing}
-            onChangeText={setDraft}
-            onMicPress={handleMicPress}
-            onSendPress={handleSend}
-          />
+          <CoachComposer />
         </View>
 
         <Modal

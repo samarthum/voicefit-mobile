@@ -1,120 +1,140 @@
-import React, { forwardRef } from "react";
+import React, { useCallback, useRef } from "react";
 import {
   ActivityIndicator,
+  Keyboard,
   Pressable,
   StyleSheet,
   TextInput,
   View,
 } from "react-native";
+import {
+  AuiIf,
+  ComposerPrimitive,
+  useAui,
+  useAuiEvent,
+  useAuiState,
+} from "@assistant-ui/react-native";
 import { Icon } from "@/components/Icon";
 import { haptic } from "@/lib/haptics";
+import { useCoachVoiceInput } from "@/hooks/use-coach-voice-input";
 import { color as token, font, radius as rad } from "@/lib/tokens";
 
 type CoachComposerProps = {
-  value: string;
-  canSend: boolean;
-  isStreaming: boolean;
-  isRecordingMic: boolean;
-  isTranscribing: boolean;
-  onChangeText: (text: string) => void;
-  onInputBlur?: () => void;
-  onInputFocus?: () => void;
-  onMicPress: () => void;
-  onSendPress: () => void;
   placeholder?: string;
 };
 
-export const CoachComposer = forwardRef<TextInput, CoachComposerProps>(
-  function CoachComposer(
-    {
-      value,
-      canSend,
-      isStreaming,
-      isRecordingMic,
-      isTranscribing,
-      onChangeText,
-      onInputBlur,
-      onInputFocus,
-      onMicPress,
-      onSendPress,
-      placeholder = "Ask your coach...",
+export function CoachComposer({
+  placeholder = "Ask your coach...",
+}: CoachComposerProps) {
+  const aui = useAui();
+  const inputRef = useRef<TextInput>(null);
+  // ComposerPrimitive.Input doesn't forward refs (v0.1.22), and we need the
+  // ref to focus the input after a voice transcript lands — so we bind our
+  // own TextInput to the runtime composer with the same setText mechanism.
+  const text = useAuiState((s) => s.composer.text);
+  const canSend = useAuiState((s) => s.composer.canSend);
+
+  const handleChangeText = useCallback(
+    (value: string) => {
+      aui.composer().setText(value);
     },
-    ref
-  ) {
-    const handleMicPress = () => {
-      haptic.press(); // NUI-6: medium haptic on mic press
-      onMicPress();
-    };
+    [aui]
+  );
 
-    const handleSendPress = () => {
-      haptic.tap(); // NUI-6: light haptic on send
-      onSendPress();
-    };
+  const handleTranscript = useCallback(
+    (transcript: string) => {
+      aui.composer().setText(transcript);
+    },
+    [aui]
+  );
+  const focusComposer = useCallback(() => {
+    inputRef.current?.focus();
+  }, []);
+  const { isRecordingMic, isTranscribing, handleMicPress } = useCoachVoiceInput(
+    {
+      onTranscript: handleTranscript,
+      onTranscriptFocus: focusComposer,
+    }
+  );
 
-    return (
-      <View style={styles.composer}>
-        <View style={styles.composerRow}>
-          <TextInput
-            ref={ref}
-            style={styles.composerInput}
-            value={value}
-            onChangeText={onChangeText}
-            placeholder={placeholder}
-            placeholderTextColor={token.textMute}
-            multiline
-            editable={!isStreaming}
-            textAlignVertical="center"
-            returnKeyType="default"
-            onBlur={onInputBlur}
-            onFocus={onInputFocus}
-          />
+  // Fires for sends from the composer (button or keyboard); mirrors the old
+  // handleSend side effects.
+  useAuiEvent("composer.send", () => {
+    haptic.tap(); // NUI-6: light haptic on send
+    Keyboard.dismiss();
+  });
 
-          {/* NUI-11: mic glyph → <Icon name="mic" /> / <Icon name="micOff" /> */}
-          <Pressable
-            style={[
-              styles.micButton,
-              isRecordingMic ? styles.micButtonRecording : null,
-            ]}
-            onPress={handleMicPress}
-            disabled={isTranscribing}
-            accessibilityRole="button"
-            accessibilityLabel={
-              isRecordingMic ? "Stop voice input" : "Start voice input"
-            }
-          >
-            {isTranscribing ? (
-              <ActivityIndicator size="small" color={token.accent} />
-            ) : (
-              <Icon
-                name={isRecordingMic ? "micOff" : "mic"}
-                size={18}
-                color={isRecordingMic ? token.accent : token.textSoft}
-              />
-            )}
-          </Pressable>
+  const onMicPress = () => {
+    haptic.press(); // NUI-6: medium haptic on mic press
+    void handleMicPress();
+  };
 
-          {/* NUI-11: send glyph → <Icon name="send" /> */}
-          <Pressable
+  return (
+    <ComposerPrimitive.Root style={styles.composer}>
+      <View style={styles.composerRow}>
+        <TextInput
+          ref={inputRef}
+          style={styles.composerInput}
+          value={text}
+          onChangeText={handleChangeText}
+          placeholder={placeholder}
+          placeholderTextColor={token.textMute}
+          multiline
+          textAlignVertical="center"
+          returnKeyType="default"
+        />
+
+        {/* NUI-11: mic glyph → <Icon name="mic" /> / <Icon name="micOff" /> */}
+        <Pressable
+          style={[
+            styles.micButton,
+            isRecordingMic ? styles.micButtonRecording : null,
+          ]}
+          onPress={onMicPress}
+          disabled={isTranscribing}
+          accessibilityRole="button"
+          accessibilityLabel={
+            isRecordingMic ? "Stop voice input" : "Start voice input"
+          }
+        >
+          {isTranscribing ? (
+            <ActivityIndicator size="small" color={token.accent} />
+          ) : (
+            <Icon
+              name={isRecordingMic ? "micOff" : "mic"}
+              size={18}
+              color={isRecordingMic ? token.accent : token.textSoft}
+            />
+          )}
+        </Pressable>
+
+        {/* NUI-11: send glyph → <Icon name="send" /> */}
+        <AuiIf condition={(s) => !s.thread.isRunning}>
+          <ComposerPrimitive.Send
             style={[
               styles.sendButton,
               !canSend ? styles.sendButtonDisabled : null,
             ]}
-            disabled={!canSend}
-            onPress={handleSendPress}
             accessibilityRole="button"
             accessibilityLabel="Send coach message"
           >
-            {isStreaming ? (
-              <ActivityIndicator color={token.accentInk} size="small" />
-            ) : (
-              <Icon name="send" size={18} color={token.accentInk} />
-            )}
-          </Pressable>
-        </View>
+            <Icon name="send" size={18} color={token.accentInk} />
+          </ComposerPrimitive.Send>
+        </AuiIf>
+        {/* While the coach is responding, the send pill becomes a stop button. */}
+        <AuiIf condition={(s) => s.thread.isRunning}>
+          <ComposerPrimitive.Cancel
+            style={styles.sendButton}
+            accessibilityRole="button"
+            accessibilityLabel="Stop coach response"
+          >
+            <Icon name="stop" size={18} color={token.accentInk} />
+          </ComposerPrimitive.Cancel>
+        </AuiIf>
       </View>
-    );
-  }
-);
+    </ComposerPrimitive.Root>
+  );
+}
 
 const styles = StyleSheet.create({
   composer: {
