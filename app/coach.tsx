@@ -1,11 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import {
-  Alert,
-  Keyboard,
-  Modal,
-  StyleSheet,
-  View,
-} from "react-native";
+import { Alert, Modal, StyleSheet, View } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -16,7 +10,6 @@ import { AssistantRuntimeProvider } from "@assistant-ui/react-native";
 import { useAISDKRuntime } from "@assistant-ui/react-ai-sdk";
 import type { CoachUIMessage } from "@voicefit/contracts/coach";
 import { fetch as expoFetch } from "expo/fetch";
-import type { LegendListRef } from "@legendapp/list";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/api-client";
 import { CoachProfileForm } from "@/components/CoachProfileForm";
@@ -51,12 +44,6 @@ export default function CoachScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [showMenu, setShowMenu] = useState(false);
-  const [historyHydrated, setHistoryHydrated] = useState(false);
-  const listRef = useRef<LegendListRef>(null);
-  const shouldPinInitialHistoryRef = useRef(false);
-  const contentSettleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null
-  );
   const {
     profile,
     showProfileModal,
@@ -67,19 +54,6 @@ export default function CoachScreen() {
     profileSaving,
     profileSaveError,
   } = useCoachProfile();
-  // Re-pin the list to the latest message when the keyboard comes up.
-  // LegendList's `maintainScrollAtEnd` only triggers on data updates, not on
-  // viewport changes — so without this the user lands mid-thread when they
-  // tap the composer. This listener only scrolls; layout is handled by the
-  // keyboard-controller KeyboardAvoidingView.
-  useEffect(() => {
-    const showSub = Keyboard.addListener("keyboardDidShow", () => {
-      listRef.current?.scrollToEnd({ animated: true });
-    });
-    return () => {
-      showSub.remove();
-    };
-  }, []);
 
   // ---- Initial messages from server ----
   const {
@@ -113,14 +87,7 @@ export default function CoachScreen() {
     }),
     onError: (err) => console.error("Coach chat error:", err),
   });
-  const {
-    messages,
-    sendMessage,
-    setMessages,
-    status,
-    error: chatError,
-    regenerate,
-  } = chat;
+  const { setMessages, error: chatError, regenerate } = chat;
 
   // assistant-ui runtime bridged from the useChat instance we keep owning
   // (preserves the custom transport, setMessages hydration, error/regenerate).
@@ -131,70 +98,9 @@ export default function CoachScreen() {
   useEffect(() => {
     if (serverMessages != null && !hydratedRef.current) {
       hydratedRef.current = true;
-      shouldPinInitialHistoryRef.current = serverMessages.length > 0;
       setMessages(serverMessages);
-      setHistoryHydrated(true);
     }
   }, [serverMessages, setMessages]);
-
-  const isStreaming = status === "streaming" || status === "submitted";
-
-  // `setMessages(serverMessages)` updates useChat before LegendList has
-  // measured the hydrated rows. `initialScrollIndex` handles the remount, and
-  // this fallback catches late markdown/tool layout on physical devices.
-  const didAutoScrollHistoryRef = useRef(false);
-  const scrollToLatestHistoryMessage = useCallback(() => {
-    listRef.current?.scrollToEnd({ animated: false });
-  }, []);
-
-  useEffect(() => {
-    if (
-      !historyHydrated ||
-      didAutoScrollHistoryRef.current ||
-      messages.length === 0
-    ) {
-      return;
-    }
-
-    didAutoScrollHistoryRef.current = true;
-    const timeouts = [0, 50, 150, 350, 700, 1200].map((delay) =>
-      setTimeout(scrollToLatestHistoryMessage, delay)
-    );
-
-    requestAnimationFrame(() => {
-      scrollToLatestHistoryMessage();
-    });
-
-    return () => {
-      timeouts.forEach(clearTimeout);
-    };
-  }, [historyHydrated, messages.length, scrollToLatestHistoryMessage]);
-
-  useEffect(() => {
-    return () => {
-      if (contentSettleTimeoutRef.current != null) {
-        clearTimeout(contentSettleTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  const handleMessageListContentSizeChange = useCallback(
-    (_width: number, _height: number) => {
-      if (!shouldPinInitialHistoryRef.current) return;
-
-      scrollToLatestHistoryMessage();
-
-      if (contentSettleTimeoutRef.current != null) {
-        clearTimeout(contentSettleTimeoutRef.current);
-      }
-
-      contentSettleTimeoutRef.current = setTimeout(() => {
-        shouldPinInitialHistoryRef.current = false;
-        contentSettleTimeoutRef.current = null;
-      }, 250);
-    },
-    [scrollToLatestHistoryMessage]
-  );
 
   // ---- Clear conversation ----
   const clearMutation = useMutation({
@@ -228,68 +134,54 @@ export default function CoachScreen() {
     );
   }, [clearMutation]);
 
-  const handleStarterPress = useCallback(
-    (text: string) => {
-      if (isStreaming) return;
-      Keyboard.dismiss();
-      sendMessage({ text });
-    },
-    [isStreaming, sendMessage]
-  );
-
   return (
     // Coach keeps its rich custom header (CoachHeader: sparkle orb + menu dropdown),
     // which the native Stack header can't replicate — so the native header stays off
     // (global default) and SafeAreaView covers the top inset. (NUI-5 / NUI-10)
     <AssistantRuntimeProvider runtime={runtime}>
-    <SafeAreaView style={styles.root} edges={["top"]}>
-      <KeyboardAvoidingView style={styles.flex} behavior="padding">
-        <CoachHeader
-          showMenu={showMenu}
-          onBackPress={() => router.back()}
-          onMenuPress={() => setShowMenu((visible) => !visible)}
-          onDismissMenu={() => setShowMenu(false)}
-          onEditProfilePress={openProfileModal}
-          onClearConversationPress={handleClear}
-        />
-
-        <CoachMessageList
-          ref={listRef}
-          messages={messages}
-          loadingHistory={loadingHistory}
-          historyHydrated={historyHydrated}
-          starterPrompts={STARTER_PROMPTS}
-          onStarterPress={handleStarterPress}
-          onContentSizeChange={handleMessageListContentSizeChange}
-        />
-
-        {chatError != null ? (
-          <ErrorBubble
-            message={chatError.message || "Something went wrong."}
-            onRetry={regenerate}
+      <SafeAreaView style={styles.root} edges={["top"]}>
+        <KeyboardAvoidingView style={styles.flex} behavior="padding">
+          <CoachHeader
+            showMenu={showMenu}
+            onBackPress={() => router.back()}
+            onMenuPress={() => setShowMenu((visible) => !visible)}
+            onDismissMenu={() => setShowMenu(false)}
+            onEditProfilePress={openProfileModal}
+            onClearConversationPress={handleClear}
           />
-        ) : null}
 
-        <View>
-          <CoachComposer />
-        </View>
-
-        <Modal
-          visible={showProfileModal}
-          animationType="slide"
-          presentationStyle="formSheet"
-          onRequestClose={closeProfileModal}
-        >
-          <CoachProfileForm
-            initialData={profile}
-            onSave={handleProfileSave}
-            onSkip={dismissProfileModal}
-            isSaving={profileSaving}
-            errorMessage={profileSaveError?.message}
+          <CoachMessageList
+            loadingHistory={loadingHistory}
+            starterPrompts={STARTER_PROMPTS}
           />
-        </Modal>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+
+          {chatError != null ? (
+            <ErrorBubble
+              message={chatError.message || "Something went wrong."}
+              onRetry={regenerate}
+            />
+          ) : null}
+
+          <View>
+            <CoachComposer />
+          </View>
+
+          <Modal
+            visible={showProfileModal}
+            animationType="slide"
+            presentationStyle="formSheet"
+            onRequestClose={closeProfileModal}
+          >
+            <CoachProfileForm
+              initialData={profile}
+              onSave={handleProfileSave}
+              onSkip={dismissProfileModal}
+              isSaving={profileSaving}
+              errorMessage={profileSaveError?.message}
+            />
+          </Modal>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
     </AssistantRuntimeProvider>
   );
 }
