@@ -1,6 +1,6 @@
 # Coach Chat → assistant-ui Migration Plan
 
-Status: **proposed** · Branch: `claude/zen-archimedes-ajxjwx` · Date: 2026-06-09
+Status: **implemented** · Plan branch: `claude/zen-archimedes-ajxjwx` · Implementation branch: `claude/keen-cray-x7c8lc` · Date: 2026-06-09
 
 This plan covers migrating the coach chat feature from a hand-rolled UI on top of
 the Vercel AI SDK (`useChat` + custom components) to
