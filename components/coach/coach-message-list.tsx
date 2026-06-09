@@ -196,20 +196,20 @@ function UserMessage() {
 }
 
 function AssistantMessage() {
+  // Coach replies render flat on the canvas (no bubble) — modern chat style:
+  // full width, just the meta row above the markdown body.
   return (
     <MessagePrimitive.Root style={bubbleStyles.assistantGroup}>
       <View style={bubbleStyles.metaRow}>
         <SparkleGlyph />
         <Text style={bubbleStyles.coachLabel}>Coach</Text>
       </View>
-      <View style={bubbleStyles.assistantBubble}>
-        <MessagePrimitive.Parts
-          components={assistantPartComponents}
-          // Keep the loader exclusively for the "no content yet" state; the
-          // default (true) would also render it under running tool lines.
-          unstable_showEmptyOnNonTextEnd={false}
-        />
-      </View>
+      <MessagePrimitive.Parts
+        components={assistantPartComponents}
+        // Keep the loader exclusively for the "no content yet" state; the
+        // default (true) would also render it under running tool lines.
+        unstable_showEmptyOnNonTextEnd={false}
+      />
     </MessagePrimitive.Root>
   );
 }
@@ -342,8 +342,8 @@ function CheckGlyph() {
 const markdownStyles = {
   body: {
     fontFamily: font.sans[400],
-    fontSize: 14.5,
-    lineHeight: 22,
+    fontSize: 15,
+    lineHeight: 24,
     color: token.text,
     letterSpacing: -0.07,
   },
@@ -377,7 +377,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     gap: 10,
   },
-  listSeparator: { height: 16 },
+  listSeparator: { height: 20 },
   assistantLoader: { alignSelf: "flex-start" },
   emptyCenter: {
     flex: 1,
@@ -453,17 +453,14 @@ const bubbleStyles = StyleSheet.create({
   userBubble: {
     maxWidth: "85%",
     backgroundColor: token.accent,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 4,
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 16,
+    borderRadius: 20,
     borderCurve: "continuous", // NUI-2
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 10,
   },
   userText: {
     fontFamily: font.sans[500],
-    fontSize: 14.5,
+    fontSize: 15,
     lineHeight: 22,
     color: token.accentInk,
     fontWeight: "500",
@@ -475,7 +472,6 @@ const bubbleStyles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
     marginBottom: 6,
-    paddingHorizontal: 4,
   },
   coachLabel: {
     fontFamily: font.sans[600],
@@ -485,24 +481,9 @@ const bubbleStyles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 1.47,
   },
-  assistantBubble: {
-    maxWidth: "92%",
-    backgroundColor: token.surface,
-    borderWidth: 1,
-    borderColor: token.line,
-    borderTopLeftRadius: 4,
-    borderTopRightRadius: 16,
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 16,
-    borderCurve: "continuous", // NUI-2
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
+  // Flat tool activity stack above the reply text (no bordered box).
   toolSection: {
     marginBottom: 8,
-    paddingBottom: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: token.line,
   },
 });
 

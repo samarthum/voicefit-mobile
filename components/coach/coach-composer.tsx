@@ -70,11 +70,14 @@ export function CoachComposer({
   };
 
   return (
+    // Single floating pill: input + mic + send live inside one rounded
+    // container (no full-width top border), buttons pinned to the bottom edge
+    // so they stay put while the input grows.
     <ComposerPrimitive.Root style={styles.composer}>
-      <View style={styles.composerRow}>
+      <View style={styles.pill}>
         <TextInput
           ref={inputRef}
-          style={styles.composerInput}
+          style={styles.input}
           value={text}
           onChangeText={handleChangeText}
           placeholder={placeholder}
@@ -118,7 +121,7 @@ export function CoachComposer({
             accessibilityRole="button"
             accessibilityLabel="Send coach message"
           >
-            <Icon name="send" size={18} color={token.accentInk} />
+            <Icon name="send" size={17} color={token.accentInk} />
           </ComposerPrimitive.Send>
         </AuiIf>
         {/* While the coach is responding, the send pill becomes a stop button. */}
@@ -128,7 +131,7 @@ export function CoachComposer({
             accessibilityRole="button"
             accessibilityLabel="Stop coach response"
           >
-            <Icon name="stop" size={18} color={token.accentInk} />
+            <Icon name="stop" size={17} color={token.accentInk} />
           </ComposerPrimitive.Cancel>
         </AuiIf>
       </View>
@@ -138,52 +141,50 @@ export function CoachComposer({
 
 const styles = StyleSheet.create({
   composer: {
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 12,
+    paddingHorizontal: 12,
+    paddingTop: 6,
+    paddingBottom: 10,
     backgroundColor: token.bg,
-    borderTopWidth: 1,
-    borderTopColor: token.line,
   },
-  composerRow: {
+  pill: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  composerInput: {
-    flex: 1,
-    minHeight: 44,
-    maxHeight: 100,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: rad.sm,
+    alignItems: "flex-end",
+    gap: 4,
+    paddingVertical: 6,
+    paddingLeft: 16,
+    paddingRight: 6,
+    borderRadius: 26,
     borderCurve: "continuous", // NUI-2
     backgroundColor: token.surface,
     borderWidth: 1,
-    borderColor: token.line,
+    borderColor: token.line2,
+    boxShadow: "0 4px 12px rgba(15,20,25,0.06)",
+  },
+  input: {
+    flex: 1,
+    maxHeight: 120,
+    paddingVertical: 8,
+    paddingHorizontal: 0,
     color: token.text,
     fontFamily: font.sans[400],
-    fontSize: 14.5,
+    fontSize: 15,
+    lineHeight: 20,
     letterSpacing: -0.07,
   },
   micButton: {
-    width: 40,
-    height: 40,
+    width: 36,
+    height: 36,
     borderRadius: rad.pill,
     // NUI-2: pill shape — skip borderCurve per spec
-    backgroundColor: token.surface,
-    borderWidth: 1,
-    borderColor: token.line,
     alignItems: "center",
     justifyContent: "center",
   },
   micButtonRecording: {
     backgroundColor: token.accentTintBg,
-    borderColor: token.accentTintBorder,
   },
   sendButton: {
-    width: 40,
-    height: 40,
+    width: 36,
+    height: 36,
     borderRadius: rad.pill,
     // NUI-2: pill shape — skip borderCurve per spec
     backgroundColor: token.accent,
