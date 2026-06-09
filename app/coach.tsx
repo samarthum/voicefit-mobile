@@ -13,6 +13,8 @@ import { useRouter } from "expo-router";
 import { useAuth } from "@clerk/clerk-expo";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
+import { AssistantRuntimeProvider } from "@assistant-ui/react-native";
+import { useAISDKRuntime } from "@assistant-ui/react-ai-sdk";
 import type { CoachUIMessage } from "@voicefit/contracts/coach";
 import { fetch as expoFetch } from "expo/fetch";
 import type { LegendListRef } from "@legendapp/list";
@@ -117,14 +119,7 @@ export default function CoachScreen() {
   });
 
   // ---- useChat ----
-  const {
-    messages,
-    sendMessage,
-    setMessages,
-    status,
-    error: chatError,
-    regenerate,
-  } = useChat<CoachUIMessage>({
+  const chat = useChat<CoachUIMessage>({
     transport: new DefaultChatTransport<CoachUIMessage>({
       fetch: expoFetch as unknown as typeof globalThis.fetch,
       api: `${API_BASE}/api/coach/chat`,
@@ -137,6 +132,18 @@ export default function CoachScreen() {
     }),
     onError: (err) => console.error("Coach chat error:", err),
   });
+  const {
+    messages,
+    sendMessage,
+    setMessages,
+    status,
+    error: chatError,
+    regenerate,
+  } = chat;
+
+  // assistant-ui runtime bridged from the useChat instance we keep owning
+  // (preserves the custom transport, setMessages hydration, error/regenerate).
+  const runtime = useAISDKRuntime(chat);
 
   // Hydrate useChat from server-persisted messages once loaded
   const hydratedRef = useRef(false);
@@ -265,6 +272,7 @@ export default function CoachScreen() {
     // Coach keeps its rich custom header (CoachHeader: sparkle orb + menu dropdown),
     // which the native Stack header can't replicate — so the native header stays off
     // (global default) and SafeAreaView covers the top inset. (NUI-5 / NUI-10)
+    <AssistantRuntimeProvider runtime={runtime}>
     <SafeAreaView style={styles.root} edges={["top"]}>
       <KeyboardAvoidingView style={styles.flex} behavior="padding">
         <CoachHeader
@@ -323,6 +331,7 @@ export default function CoachScreen() {
         </Modal>
       </KeyboardAvoidingView>
     </SafeAreaView>
+    </AssistantRuntimeProvider>
   );
 }
 

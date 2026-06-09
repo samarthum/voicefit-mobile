@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@ai-sdk/react": "^3.0.156",
+    "@ai-sdk/react": "^3.0.199",
     "@assistant-ui/react-ai-sdk": "^1.3.33",
     "@assistant-ui/react-native": "^0.1.22",
     "@clerk/clerk-expo": "^2.19.21",
@@ -25,7 +25,7 @@
     "@tanstack/react-query": "^5.90.20",
     "@ungap/structured-clone": "^1.3.0",
     "@voicefit/contracts": "file:./vendor/voicefit-contracts-0.0.9.tgz",
-    "ai": "^6.0.154",
+    "ai": "^6.0.197",
     "expo": "~54.0.33",
     "expo-audio": "~1.1.1",
     "expo-font": "~14.0.11",
