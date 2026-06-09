@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -14,19 +14,28 @@ import {
   KeyboardAvoidingView,
   KeyboardAwareScrollView,
 } from "react-native-keyboard-controller";
-import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
+import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useAuth } from "@clerk/clerk-expo";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Svg, { Path } from "react-native-svg";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { FakeTabBar } from "../../components/FakeTabBar";
-import { FloatingCommandBar } from "../../components/FloatingCommandBar";
-import { UndoToast } from "../../components/pulse";
-import { useCommandCenter } from "../../components/command-center";
-import { getExerciseCatalogItem } from "../../lib/exercise-catalog";
-import { apiRequest } from "../../lib/api-client";
-import { color as token, font, radius as rad } from "../../lib/tokens";
-import { isWebPreviewMode } from "../../lib/web-preview-mode";
+import { FloatingCommandBar } from "@/components/FloatingCommandBar";
+import { Icon } from "@/components/Icon";
+import { UndoToast } from "@/components/pulse";
+import { useCommandCenter } from "@/components/command-center";
+import {
+  SessionStatsStrip,
+  WorkoutExerciseCard,
+  type ExerciseCardData,
+  type ExerciseType,
+  type RenderRow,
+  type SetDraft,
+  type WorkoutSet,
+} from "@/components/workout";
+import { getExerciseCatalogItem } from "@/lib/exercise-catalog";
+import { apiRequest } from "@/lib/api-client";
+import { haptic } from "@/lib/haptics";
+import { color as token, font, radius as rad } from "@/lib/tokens";
+import { isWebPreviewMode } from "@/lib/web-preview-mode";
 
 const COLORS = {
   bg: token.bg,
@@ -43,23 +52,6 @@ const COLORS = {
   positive: token.positive,
 };
 
-type ExerciseType = "resistance" | "cardio";
-
-interface WorkoutSet {
-  id: string;
-  sessionId: string;
-  performedAt: string;
-  exerciseName: string;
-  exerciseType: ExerciseType;
-  reps: number | null;
-  weightKg: number | null;
-  durationMinutes: number | null;
-  notes: string | null;
-  transcriptRaw: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
 interface WorkoutSessionDetail {
   id: string;
   userId: string;
@@ -73,30 +65,6 @@ interface WorkoutSessionDetail {
   previousSets?: Record<string, Array<{ weightKg: number | null; reps: number | null; durationMinutes: number | null }>>;
 }
 
-type SetDraft = {
-  reps: string;
-  weightKg: string;
-  durationMinutes: string;
-};
-
-type RenderRow = {
-  id: string;
-  setLabel: string;
-  previous: string;
-  isWarmup: boolean;
-  checked: boolean;
-  live?: WorkoutSet;
-  displayWeight?: string;
-  displayReps?: string;
-};
-
-type ExerciseCard = {
-  name: string;
-  meta: string;
-  exerciseType: ExerciseType;
-  rows: RenderRow[];
-};
-
 type SessionViewModel = {
   id: string;
   title: string;
@@ -106,7 +74,7 @@ type SessionViewModel = {
   sets: string;
   finished: boolean;
   empty: boolean;
-  exerciseCards: ExerciseCard[];
+  exerciseCards: ExerciseCardData[];
 };
 
 const PREVIEW_ACTIVE: SessionViewModel = {
@@ -188,24 +156,6 @@ const PREVIEW_EMPTY: SessionViewModel = {
   exerciseCards: [],
 };
 
-function BackGlyph() {
-  return (
-    <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
-      <Path d="M15 5L8 12L15 19" stroke={COLORS.textPrimary} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
-    </Svg>
-  );
-}
-
-function DotsGlyph() {
-  return (
-    <Svg width={16} height={16} viewBox="0 0 16 16" fill="none">
-      <Path d="M8 3.5A1 1 0 108 1.5A1 1 0 008 3.5Z" fill={COLORS.textTertiary} />
-      <Path d="M8 9A1 1 0 108 7A1 1 0 008 9Z" fill={COLORS.textTertiary} />
-      <Path d="M8 14.5A1 1 0 108 12.5A1 1 0 008 14.5Z" fill={COLORS.textTertiary} />
-    </Svg>
-  );
-}
-
 function EmptyStateGlyph() {
   return (
     <Svg width={36} height={36} viewBox="0 0 36 36" fill="none">
@@ -213,16 +163,6 @@ function EmptyStateGlyph() {
       <Path d="M14 15H22" stroke={COLORS.textTertiary} strokeWidth={1.8} strokeLinecap="round" />
       <Path d="M14 12H18" stroke={COLORS.textTertiary} strokeWidth={1.8} strokeLinecap="round" />
       <Path d="M14 18H21" stroke={COLORS.textTertiary} strokeWidth={1.8} strokeLinecap="round" />
-    </Svg>
-  );
-}
-
-function MicGlyph() {
-  return (
-    <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
-      <Path d="M12 3.5C10.067 3.5 8.5 5.067 8.5 7V12C8.5 13.933 10.067 15.5 12 15.5C13.933 15.5 15.5 13.933 15.5 12V7C15.5 5.067 13.933 3.5 12 3.5Z" stroke={token.accentInk} strokeWidth={2} />
-      <Path d="M5.5 11.5C5.5 15.09 8.41 18 12 18C15.59 18 18.5 15.09 18.5 11.5" stroke={token.accentInk} strokeWidth={2} strokeLinecap="round" />
-      <Path d="M12 18V21" stroke={token.accentInk} strokeWidth={2} strokeLinecap="round" />
     </Svg>
   );
 }
@@ -244,7 +184,7 @@ function getPreviewSession(sessionId: string | undefined): SessionViewModel | nu
   return null;
 }
 
-function makePreviewExerciseCard(exerciseName: string, exerciseType: ExerciseType): ExerciseCard {
+function makePreviewExerciseCard(exerciseName: string, exerciseType: ExerciseType): ExerciseCardData {
   const catalog = getExerciseCatalogItem(exerciseName);
   const meta = catalog
     ? `${catalog.equipment} · ${catalog.group}`
@@ -300,14 +240,6 @@ function appendPreviewExercise(
   base.finished = false;
   base.sets = String(base.exerciseCards.reduce((sum, card) => sum + card.rows.length, 0));
   return base;
-}
-
-function CheckGlyph() {
-  return (
-    <Svg width={14} height={12} viewBox="0 0 14 12" fill="none">
-      <Path d="M1 6L4.5 9.5L13 1" stroke={token.accentInk} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" fill="none" />
-    </Svg>
-  );
 }
 
 function formatClock(durationMs: number) {
@@ -687,6 +619,7 @@ export default function WorkoutSessionScreen() {
       });
     },
     onSuccess: async () => {
+      haptic.success();
       await Promise.all([
         sessionQuery.refetch(),
         queryClient.invalidateQueries({ queryKey: ["workout-sessions"] }),
@@ -823,6 +756,7 @@ export default function WorkoutSessionScreen() {
           text: "Delete Session",
           style: "destructive",
           onPress: () => {
+            haptic.warning();
             Alert.alert(
               "Delete this session?",
               "This will remove the session and all its sets. This cannot be undone.",
@@ -853,6 +787,7 @@ export default function WorkoutSessionScreen() {
           text: "Delete exercise",
           style: "destructive",
           onPress: () => {
+            haptic.warning();
             Alert.alert(
               `Delete "${exerciseName}"?`,
               "All sets for this exercise will be removed from the session.",
@@ -1008,7 +943,7 @@ export default function WorkoutSessionScreen() {
     await finishMutation.mutateAsync();
   };
 
-  const handleAddSet = async (card: ExerciseCard) => {
+  const handleAddSet = async (card: ExerciseCardData) => {
     if (isPreviewId || isWebPreview) {
       setPreviewSession((current) => {
         if (!current) return current;
@@ -1097,69 +1032,52 @@ export default function WorkoutSessionScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.root} edges={["top"]}>
+    <View style={styles.root}>
+      <Stack.Screen
+        options={{
+          headerShown: true,
+          title: session?.title ?? "Workout",
+          headerRight: () => (
+            <View style={styles.headerActions}>
+              {!isPreviewId && !isWebPreview && session ? (
+                <Pressable
+                  style={styles.iconButton}
+                  onPress={handleSessionMenu}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Session options"
+                >
+                  <Icon name="ellipsisVertical" size={18} color={token.textMute} />
+                </Pressable>
+              ) : null}
+              {!session?.finished ? (
+                <Pressable
+                  style={[styles.finishButton, styles.finishButtonActive]}
+                  onPress={() => void handleFinish()}
+                  disabled={finishMutation.isPending}
+                >
+                  <Text style={styles.finishButtonText}>Finish</Text>
+                </Pressable>
+              ) : null}
+            </View>
+          ),
+        }}
+      />
       <KeyboardAwareScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
+        contentInsetAdjustmentBehavior="automatic"
         keyboardShouldPersistTaps="handled"
         bottomOffset={16}
       >
-        <View style={styles.header}>
-          <View style={styles.headerLeft}>
-            <Pressable
-              style={styles.iconButton}
-              onPress={() => router.replace("/(tabs)/workouts")}
-              accessibilityRole="button"
-              accessibilityLabel="Go back"
-            >
-              <BackGlyph />
-            </Pressable>
-          </View>
-          <View style={styles.headerCenter}>
-            <Text style={styles.sessionEyebrow}>{session?.finished ? "Done" : "Live · Session"}</Text>
-            <Text style={styles.sessionTitle}>{session?.title ?? "Workout session"}</Text>
-            <Text style={styles.sessionSubtitle}>{session?.subtitle ?? "Loading…"}</Text>
-          </View>
-          <View style={styles.headerRight}>
-            {!isPreviewId && !isWebPreview && session ? (
-              <Pressable
-                style={styles.iconButton}
-                onPress={handleSessionMenu}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel="Session options"
-              >
-                <DotsGlyph />
-              </Pressable>
-            ) : null}
-            {!session?.finished ? (
-              <Pressable
-                style={[styles.finishButton, styles.finishButtonActive]}
-                onPress={() => void handleFinish()}
-                disabled={finishMutation.isPending}
-              >
-                <Text style={styles.finishButtonText}>Finish</Text>
-              </Pressable>
-            ) : null}
-          </View>
-        </View>
 
-        <View style={styles.statsStrip}>
-          <View style={styles.statCell}>
-            <Text style={styles.statValue}>{session?.duration ?? "0:00"}</Text>
-            <Text style={styles.statLabel}>Duration</Text>
-          </View>
-          <View style={styles.statCell}>
-            <Text style={styles.statValue}>{session?.volume ?? "0 kg"}</Text>
-            <Text style={styles.statLabel}>Volume</Text>
-          </View>
-          <View style={styles.statCell}>
-            <Text style={styles.statValue}>{session?.sets ?? "0"}</Text>
-            <Text style={styles.statLabel}>Sets</Text>
-          </View>
-        </View>
+        <SessionStatsStrip
+          duration={session?.duration ?? "0:00"}
+          volume={session?.volume ?? "0 kg"}
+          sets={session?.sets ?? "0"}
+        />
 
-        {liveError ? <Text style={styles.errorBanner}>{liveError}</Text> : null}
+        {liveError ? <Text selectable style={styles.errorBanner}>{liveError}</Text> : null}
 
         {sessionQuery.isLoading && !session ? (
           <View style={styles.loadingWrap}>
@@ -1194,7 +1112,7 @@ export default function WorkoutSessionScreen() {
                   onPress={cc.record}
                 >
                   <View style={styles.voicePromptMic}>
-                    <MicGlyph />
+                    <Icon name="mic" size={18} color={token.accentInk} />
                   </View>
                   <Text style={styles.voicePromptText}>"Bench press 3 sets of 10 at 80 kg"</Text>
                 </Pressable>
@@ -1203,174 +1121,31 @@ export default function WorkoutSessionScreen() {
           </View>
         ) : session ? (
           <View style={styles.cardsWrap}>
-            {session.exerciseCards.map((card) => {
-              const noteText = sessionQuery.data?.exerciseNotes?.[card.name] ?? "";
-              const hasNote = noteText.trim().length > 0;
-              return (
-              <View key={card.name} style={styles.exerciseCard}>
-                <View style={styles.exerciseHeader}>
-                  <View>
-                    <Text style={styles.exerciseTitle}>{card.name}</Text>
-                    <View style={styles.exerciseMetaRow}>
-                      <View style={styles.exerciseMetaDot} />
-                      <Text style={styles.exerciseMeta}>{card.meta}</Text>
-                    </View>
-                  </View>
-                  {!isPreviewId && !isWebPreview ? (
-                    <Pressable
-                      onPress={() => handleExerciseMenu(card.name)}
-                      hitSlop={10}
-                      style={styles.exerciseDotsButton}
-                      testID={`exercise-menu-${card.name}`}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Options for ${card.name}`}
-                    >
-                      <DotsGlyph />
-                    </Pressable>
-                  ) : null}
-                </View>
-
-                {!isPreviewId && !isWebPreview ? (
-                  hasNote ? (
-                    <Pressable
-                      onPress={() => openExerciseNoteEditor(card.name)}
-                      style={styles.exerciseNoteRow}
-                      disabled={session.finished}
-                    >
-                      <Text style={styles.exerciseNoteText}>{noteText}</Text>
-                    </Pressable>
-                  ) : !session.finished ? (
-                    <Pressable
-                      onPress={() => openExerciseNoteEditor(card.name)}
-                      style={styles.exerciseNoteRow}
-                    >
-                      <Text style={styles.exerciseNoteAdd}>＋ Add note</Text>
-                    </Pressable>
-                  ) : null
-                ) : null}
-
-                <View style={styles.tableHeader}>
-                  <Text style={[styles.tableHeaderLabel, styles.colSet]}>Set</Text>
-                  <Text style={[styles.tableHeaderLabel, styles.colPrevious]}>Previous</Text>
-                  {card.exerciseType === "cardio" ? (
-                    <>
-                      <Text style={[styles.tableHeaderLabel, styles.colValue]}>Min</Text>
-                      <Text style={[styles.tableHeaderLabel, styles.colValue]}>—</Text>
-                    </>
-                  ) : (
-                    <>
-                      <Text style={[styles.tableHeaderLabel, styles.colValue]}>KG</Text>
-                      <Text style={[styles.tableHeaderLabel, styles.colValue]}>Reps</Text>
-                    </>
-                  )}
-                  <View style={styles.colCheck} />
-                </View>
-
-                {card.rows.map((row) => {
-                  if (!row.live) {
-                    return (
-                      <View key={row.id} style={[styles.setRow, row.checked ? styles.setRowChecked : null]}>
-                        <View style={[styles.setChip, row.isWarmup ? styles.warmupChip : null]}>
-                          <Text style={[styles.setChipText, row.isWarmup ? styles.warmupChipText : null]}>
-                            {row.setLabel}
-                          </Text>
-                        </View>
-                        <Text style={[styles.rowText, styles.colPrevious]}>{row.previous}</Text>
-                        {row.checked ? (
-                          <>
-                            <Text style={[styles.rowText, styles.colValue]}>{row.displayWeight ?? "—"}</Text>
-                            <Text style={[styles.rowText, styles.colValue]}>{row.displayReps ?? "—"}</Text>
-                          </>
-                        ) : (
-                          <>
-                            <View style={[styles.previewInputPill, styles.colValue]}>
-                              <Text style={styles.previewInputText}>{row.displayWeight ?? ""}</Text>
-                            </View>
-                            <View style={[styles.previewInputPill, styles.colValue]}>
-                              <Text style={styles.previewInputText}>{row.displayReps ?? ""}</Text>
-                            </View>
-                          </>
-                        )}
-                        <View style={[styles.checkCell, row.checked ? styles.checkCellFilled : null]}>
-                          {row.checked ? <CheckGlyph /> : null}
-                        </View>
-                      </View>
-                    );
-                  }
-
-                  const draft = drafts[row.live.id] ?? {
-                    reps: row.live.reps == null ? "" : String(row.live.reps),
-                    weightKg: row.live.weightKg == null ? "" : String(row.live.weightKg),
-                    durationMinutes: row.live.durationMinutes == null ? "" : String(row.live.durationMinutes),
-                  };
-
-                  return (
-                    <View key={row.id}>
-                      <View style={[styles.setRow, row.checked ? styles.setRowChecked : null]}>
-                        <Pressable
-                          onLongPress={() => handleDeleteSet(row.live!)}
-                          delayLongPress={400}
-                          style={[styles.setChip, row.isWarmup ? styles.warmupChip : null]}
-                          hitSlop={6}
-                        >
-                          <Text style={[styles.setChipText, row.isWarmup ? styles.warmupChipText : null]}>
-                            {row.setLabel}
-                          </Text>
-                        </Pressable>
-                        <Text style={[styles.rowText, styles.colPrevious]}>{row.previous}</Text>
-                        <TextInput
-                          style={[styles.rowInput, styles.colValue]}
-                          value={draft.weightKg}
-                          onChangeText={(value) =>
-                            setDrafts((prev) => ({
-                              ...prev,
-                              [row.live!.id]: { ...draft, weightKg: value.replace(/[^\d.]/g, "") },
-                            }))
-                          }
-                          keyboardType="decimal-pad"
-                          placeholder="-"
-                          placeholderTextColor={COLORS.textTertiary}
-                          editable={!session.finished}
-                        />
-                        <TextInput
-                          style={[styles.rowInput, styles.colValue]}
-                          value={row.live.exerciseType === "cardio" ? draft.durationMinutes : draft.reps}
-                          onChangeText={(value) =>
-                            setDrafts((prev) => ({
-                              ...prev,
-                              [row.live!.id]:
-                                row.live!.exerciseType === "cardio"
-                                  ? { ...draft, durationMinutes: value.replace(/[^\d]/g, "") }
-                                  : { ...draft, reps: value.replace(/[^\d]/g, "") },
-                            }))
-                          }
-                          keyboardType="number-pad"
-                          placeholder="-"
-                          placeholderTextColor={COLORS.textTertiary}
-                          editable={!session.finished}
-                        />
-                        <Pressable
-                          style={[styles.checkCell, row.checked ? styles.checkCellFilled : null]}
-                          onPress={() => void handleSaveLiveSet(row.live!)}
-                          disabled={session.finished}
-                          accessibilityRole="button"
-                          accessibilityLabel={row.checked ? "Set saved" : "Save set"}
-                        >
-                          {row.checked ? <CheckGlyph /> : null}
-                        </Pressable>
-                      </View>
-                    </View>
-                  );
-                })}
-
-                {!session.finished && (
-                  <Pressable style={styles.addSetRow} onPress={() => void handleAddSet(card)} hitSlop={8}>
-                    <Text style={styles.addSetText}>＋ Add Set</Text>
-                  </Pressable>
-                )}
-              </View>
-              );
-            })}
+            {session.exerciseCards.map((card) => (
+              <WorkoutExerciseCard
+                key={card.name}
+                card={card}
+                sessionFinished={session.finished}
+                isPreview={isPreviewId || isWebPreview}
+                drafts={drafts}
+                noteText={sessionQuery.data?.exerciseNotes?.[card.name] ?? ""}
+                onExerciseMenu={handleExerciseMenu}
+                onOpenNoteEditor={openExerciseNoteEditor}
+                onChangeDraft={(setId, patch) =>
+                  setDrafts((prev) => ({
+                    ...prev,
+                    [setId]: { ...(prev[setId] ?? { reps: "", weightKg: "", durationMinutes: "" }), ...patch },
+                  }))
+                }
+                onToggleComplete={(row) => {
+                  if (row.live) { haptic.success(); void handleSaveLiveSet(row.live); }
+                }}
+                onLongPressChip={(row) => {
+                  if (row.live) handleDeleteSet(row.live);
+                }}
+                onAddSet={handleAddSet}
+              />
+            ))}
 
             {!session.finished && (
               <Pressable
@@ -1392,7 +1167,7 @@ export default function WorkoutSessionScreen() {
         ) : sessionQuery.error ? (
           <View style={styles.emptyWrap}>
             <Text style={styles.emptyTitle}>Couldn’t load session</Text>
-            <Text style={styles.emptyBody}>
+            <Text selectable style={styles.emptyBody}>
               {sessionQuery.error instanceof Error ? sessionQuery.error.message : "Please try again."}
             </Text>
           </View>
@@ -1413,8 +1188,6 @@ export default function WorkoutSessionScreen() {
         onUndo={handleUndoDelete}
         onDismiss={handleConfirmDelete}
       />
-      <FakeTabBar active="workouts" />
-
       <Modal
         visible={renameModalVisible}
         transparent
@@ -1506,7 +1279,7 @@ export default function WorkoutSessionScreen() {
           </Pressable>
         </KeyboardAvoidingView>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -1514,49 +1287,17 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: token.bg },
   center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: token.bg },
   scroll: { flex: 1 },
-  scrollContent: { paddingBottom: 178 },
-  header: {
+  scrollContent: { paddingTop: 8, paddingBottom: 178 },
+  headerActions: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 12,
+    gap: 6,
   },
   iconButton: {
     width: 32,
     height: 32,
-    borderRadius: rad.pill,
-    backgroundColor: token.surface,
-    borderWidth: 1,
-    borderColor: token.line,
     alignItems: "center",
     justifyContent: "center",
-  },
-  headerLeft: { width: 72, alignItems: "flex-start" },
-  headerRight: { width: 72, flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 4 },
-  headerCenter: { flex: 1, alignItems: "center" },
-  sessionEyebrow: {
-    fontFamily: font.sans[600],
-    fontSize: 10.5,
-    fontWeight: "600",
-    letterSpacing: 1.68,
-    textTransform: "uppercase",
-    color: token.accent,
-  },
-  sessionTitle: {
-    fontFamily: font.sans[600],
-    fontSize: 16,
-    fontWeight: "600",
-    letterSpacing: -0.16,
-    color: token.text,
-    marginTop: 2,
-  },
-  sessionSubtitle: {
-    marginTop: 2,
-    fontFamily: font.sans[400],
-    fontSize: 12,
-    color: token.textMute,
   },
   finishButton: {
     height: 32,
@@ -1575,38 +1316,6 @@ const styles = StyleSheet.create({
     color: token.accentInk,
   },
   finishButtonTextDisabled: { color: token.textMute },
-  statsStrip: {
-    flexDirection: "row",
-    gap: 10,
-    paddingHorizontal: 20,
-    paddingBottom: 16,
-  },
-  statCell: {
-    flex: 1,
-    backgroundColor: token.surface,
-    borderWidth: 1,
-    borderColor: token.line,
-    borderRadius: rad.sm,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    alignItems: "flex-start",
-  },
-  statValue: {
-    fontFamily: font.mono[500],
-    fontSize: 20,
-    fontWeight: "500",
-    letterSpacing: -0.6,
-    color: token.text,
-  },
-  statLabel: {
-    marginBottom: 4,
-    fontFamily: font.sans[600],
-    fontSize: 9.5,
-    fontWeight: "600",
-    letterSpacing: 1.52,
-    textTransform: "uppercase",
-    color: token.textMute,
-  },
   errorBanner: {
     marginHorizontal: 16,
     marginTop: 12,
@@ -1617,178 +1326,6 @@ const styles = StyleSheet.create({
   },
   loadingWrap: { paddingVertical: 48, alignItems: "center" },
   cardsWrap: { paddingHorizontal: 20, paddingTop: 4, gap: 24 },
-  exerciseCard: {
-    backgroundColor: "transparent",
-  },
-  exerciseHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingBottom: 10,
-  },
-  exerciseDotsButton: {
-    width: 32,
-    height: 32,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  exerciseTitle: {
-    fontFamily: font.sans[600],
-    fontSize: 18,
-    fontWeight: "600",
-    letterSpacing: -0.27,
-    color: token.text,
-  },
-  exerciseMetaRow: {
-    marginTop: 3,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  exerciseMetaDot: { width: 4, height: 4, borderRadius: rad.pill, backgroundColor: token.textMute },
-  exerciseMeta: {
-    fontFamily: font.sans[600],
-    fontSize: 10.5,
-    fontWeight: "600",
-    letterSpacing: 1.47,
-    textTransform: "uppercase",
-    color: token.textMute,
-  },
-  tableHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 14,
-    paddingTop: 6,
-    paddingBottom: 4,
-  },
-  tableHeaderLabel: {
-    fontFamily: font.sans[600],
-    fontSize: 9.5,
-    fontWeight: "600",
-    letterSpacing: 1.52,
-    textTransform: "uppercase",
-    color: token.textMute,
-  },
-  colSet: { width: 32 },
-  colPrevious: { flex: 1.1 },
-  colValue: { flex: 0.75, textAlign: "center" },
-  colCheck: { width: 38, alignItems: "flex-end" },
-  setRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 12,
-    backgroundColor: token.surface,
-    borderWidth: 1,
-    borderColor: token.line,
-    marginBottom: 6,
-  },
-  setRowChecked: {
-    backgroundColor: token.accentTintBg,
-    borderColor: token.accentTintBorder,
-  },
-  setChip: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 4,
-  },
-  warmupChip: {},
-  setChipText: {
-    fontFamily: font.mono[500],
-    fontSize: 14,
-    fontWeight: "500",
-    color: token.text,
-  },
-  warmupChipText: { color: token.accent },
-  rowText: {
-    fontFamily: font.mono[400],
-    fontSize: 12,
-    fontWeight: "400",
-    color: token.textMute,
-  },
-  rowInput: {
-    minHeight: 30,
-    borderRadius: 8,
-    backgroundColor: "transparent",
-    fontFamily: font.mono[500],
-    fontSize: 16,
-    fontWeight: "500",
-    color: token.text,
-    textAlign: "center",
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-  },
-  previewInputPill: {
-    minHeight: 30,
-    borderRadius: 8,
-    backgroundColor: "transparent",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-  },
-  previewInputText: {
-    fontFamily: font.mono[500],
-    fontSize: 16,
-    fontWeight: "500",
-    color: token.text,
-  },
-  checkCell: {
-    width: 26,
-    height: 26,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: token.line2,
-    alignItems: "center",
-    justifyContent: "center",
-    marginLeft: 8,
-  },
-  checkCellFilled: {
-    backgroundColor: token.accent,
-    borderColor: token.accent,
-  },
-  exerciseNoteRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 10,
-    marginBottom: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    backgroundColor: token.surface,
-    borderWidth: 1,
-    borderColor: token.line,
-    borderRadius: 12,
-  },
-  exerciseNoteText: {
-    flex: 1,
-    fontFamily: font.sans[400],
-    fontSize: 12.5,
-    color: token.text,
-    lineHeight: 19,
-    letterSpacing: -0.06,
-  },
-  exerciseNoteAdd: {
-    flex: 1,
-    fontFamily: font.sans[400],
-    fontSize: 12.5,
-    color: token.textMute,
-    lineHeight: 19,
-  },
-  addSetRow: {
-    paddingTop: 10,
-    paddingHorizontal: 14,
-  },
-  addSetText: {
-    fontFamily: font.sans[600],
-    fontSize: 12,
-    fontWeight: "600",
-    letterSpacing: 0.48,
-    color: token.accent,
-  },
   emptyWrap: {
     alignItems: "center",
     paddingHorizontal: 24,
@@ -1825,6 +1362,7 @@ const styles = StyleSheet.create({
     marginTop: 24,
     height: 56,
     borderRadius: rad.sm,
+    borderCurve: "continuous",
     backgroundColor: token.accent,
     alignItems: "center",
     justifyContent: "center",
@@ -1858,6 +1396,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 12,
     borderRadius: rad.sm,
+    borderCurve: "continuous",
     backgroundColor: token.surface,
     borderWidth: 1,
     borderColor: token.line,
@@ -1881,6 +1420,7 @@ const styles = StyleSheet.create({
   addExerciseGhostButton: {
     marginTop: 4,
     borderRadius: 12,
+    borderCurve: "continuous",
     borderWidth: 1,
     borderStyle: "dashed",
     borderColor: token.line2,
@@ -1925,6 +1465,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: token.line2,
     borderRadius: rad.md,
+    borderCurve: "continuous",
     padding: 24,
   },
   modalTitle: {
@@ -1937,6 +1478,7 @@ const styles = StyleSheet.create({
   },
   modalInput: {
     borderRadius: 12,
+    borderCurve: "continuous",
     borderWidth: 1,
     borderColor: token.line,
     backgroundColor: token.surface2,
@@ -1961,6 +1503,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingVertical: 10,
     borderRadius: 10,
+    borderCurve: "continuous",
   },
   modalButtonCancelText: {
     fontFamily: font.sans[600],
@@ -1972,6 +1515,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingVertical: 10,
     borderRadius: 10,
+    borderCurve: "continuous",
     backgroundColor: token.accent,
   },
   modalButtonDisabled: {

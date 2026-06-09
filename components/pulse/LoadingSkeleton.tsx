@@ -1,6 +1,14 @@
-import { useEffect, useRef } from "react";
-import { Animated, Easing, type StyleProp, type ViewStyle } from "react-native";
-import { color } from "../../lib/tokens";
+import { useEffect } from "react";
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  withRepeat,
+  withSequence,
+  Easing,
+} from "react-native-reanimated";
+import type { StyleProp, ViewStyle } from "react-native";
+import { color } from "@/lib/tokens";
 
 type LoadingBlockProps = {
   width?: number | `${number}%` | "100%";
@@ -17,33 +25,27 @@ export function LoadingBlock({
   style,
   reducedMotion = false,
 }: LoadingBlockProps) {
-  const pulse = useRef(new Animated.Value(1)).current;
+  const opacity = useSharedValue(1);
 
   useEffect(() => {
     if (reducedMotion) {
-      pulse.setValue(1);
+      opacity.value = 1;
       return;
     }
-    pulse.setValue(1);
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, {
-          toValue: 0.6,
-          duration: 700,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulse, {
-          toValue: 1,
-          duration: 700,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-      ]),
+    opacity.value = 1;
+    opacity.value = withRepeat(
+      withSequence(
+        withTiming(0.6, { duration: 700, easing: Easing.inOut(Easing.ease) }),
+        withTiming(1, { duration: 700, easing: Easing.inOut(Easing.ease) }),
+      ),
+      -1,
+      false,
     );
-    loop.start();
-    return () => loop.stop();
-  }, [pulse, reducedMotion]);
+  }, [reducedMotion]);
+
+  const animStyle = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+  }));
 
   return (
     <Animated.View
@@ -52,9 +54,10 @@ export function LoadingBlock({
           width,
           height,
           borderRadius: radius,
+          borderCurve: "continuous",
           backgroundColor: color.surface2,
-          opacity: pulse,
         },
+        animStyle,
         style,
       ]}
     />

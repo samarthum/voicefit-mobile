@@ -1,5 +1,5 @@
 import type { DashboardData } from "@voicefit/contracts/types";
-import { COLORS } from "../components/command-center";
+import { COLORS } from "@/components/command-center";
 
 export type TrendMetric = "calories" | "steps" | "weight";
 

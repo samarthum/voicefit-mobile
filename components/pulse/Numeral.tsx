@@ -1,5 +1,5 @@
 import { Text, type TextProps } from "react-native";
-import { color, font } from "../../lib/tokens";
+import { color, font } from "@/lib/tokens";
 
 const SIZES = {
   xs: { fontFamily: font.mono[400], fontSize: 11, lineHeight: 14, letterSpacing: 0 },
@@ -28,6 +28,7 @@ export function Numeral({ size = "md", tone = "primary", style, children, ...res
 
   return (
     <Text
+      selectable
       {...rest}
       style={[
         SIZES[size],

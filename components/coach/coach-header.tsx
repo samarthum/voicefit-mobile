@@ -1,7 +1,8 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import Svg, { Path } from "react-native-svg";
-import { color as token, font, radius as rad } from "../../lib/tokens";
+import { Icon } from "@/components/Icon";
+import { color as token, font, radius as rad } from "@/lib/tokens";
 
 type CoachHeaderProps = {
   showMenu: boolean;
@@ -42,6 +43,7 @@ export function CoachHeader({
       ) : null}
 
       <View style={styles.header}>
+        {/* NUI-11: back chevron → <Icon name="back" /> */}
         <Pressable
           style={styles.headerCircleButton}
           hitSlop={8}
@@ -49,11 +51,12 @@ export function CoachHeader({
           accessibilityRole="button"
           accessibilityLabel="Go back"
         >
-          <BackChevronGlyph />
+          <Icon name="back" size={18} color={token.text} />
         </Pressable>
 
         <View style={styles.headerCenter}>
           <View style={styles.headerSparkleOrb}>
+            {/* Sparkle inline SVG — no exact semantic match in Icon for a filled sparkle orb */}
             <SparkleInkGlyph />
           </View>
           <View>
@@ -66,6 +69,7 @@ export function CoachHeader({
         </View>
 
         <View>
+          {/* NUI-11: ellipsis → <Icon name="ellipsisHorizontal" /> */}
           <Pressable
             style={styles.headerCircleButton}
             hitSlop={8}
@@ -73,7 +77,7 @@ export function CoachHeader({
             accessibilityRole="button"
             accessibilityLabel="Open coach menu"
           >
-            <MoreGlyph />
+            <Icon name="ellipsisHorizontal" size={20} color={token.text} />
           </Pressable>
 
           {showMenu ? (
@@ -103,51 +107,15 @@ export function CoachHeader({
   );
 }
 
-function BackChevronGlyph() {
-  return (
-    <Svg width={10} height={16} viewBox="0 0 10 16" fill="none">
-      <Path
-        d="M9 1L1 8L9 15"
-        stroke={token.text}
-        strokeWidth={1.8}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </Svg>
-  );
-}
-
+// SparkleInkGlyph — bespoke filled sparkle for the coach orb.
+// Icon.tsx has "sparkle" (sparkles/auto-awesome) but this is a distinct
+// smaller filled shape used as an orb avatar — keep as inline SVG.
 function SparkleInkGlyph() {
   return (
     <Svg width={14} height={14} viewBox="0 0 14 14" fill="none">
       <Path
         d="M7 1L8.2 5.3L12.5 6.5L8.2 7.7L7 12L5.8 7.7L1.5 6.5L5.8 5.3L7 1Z"
         fill={token.accentInk}
-      />
-    </Svg>
-  );
-}
-
-function MoreGlyph() {
-  return (
-    <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
-      <Path
-        d="M12 13C12.5523 13 13 12.5523 13 12C13 11.4477 12.5523 11 12 11C11.4477 11 11 11.4477 11 12C11 12.5523 11.4477 13 12 13Z"
-        fill={token.text}
-        stroke={token.text}
-        strokeWidth={2}
-      />
-      <Path
-        d="M19 13C19.5523 13 20 12.5523 20 12C20 11.4477 19.5523 11 19 11C18.4477 11 18 11.4477 18 12C18 12.5523 18.4477 13 19 13Z"
-        fill={token.text}
-        stroke={token.text}
-        strokeWidth={2}
-      />
-      <Path
-        d="M5 13C5.55228 13 6 12.5523 6 12C6 11.4477 5.55228 11 5 11C4.44772 11 4 11.4477 4 12C4 12.5523 4.44772 13 5 13Z"
-        fill={token.text}
-        stroke={token.text}
-        strokeWidth={2}
       />
     </Svg>
   );
@@ -174,6 +142,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: rad.pill,
+    // NUI-2: pill shape — skip borderCurve per spec
     backgroundColor: token.surface,
     borderWidth: 1,
     borderColor: token.line,
@@ -189,13 +158,12 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: rad.pill,
+    // NUI-2: pill shape — skip borderCurve per spec
     backgroundColor: token.accent,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: token.accent,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.4,
-    shadowRadius: 10,
+    // NUI-1: boxShadow replaces the legacy RN shadow props
+    boxShadow: `0 0 10px ${token.accent}66`,
   },
   headerTitle: {
     fontFamily: font.sans[600],
@@ -230,13 +198,11 @@ const styles = StyleSheet.create({
     width: 200,
     backgroundColor: token.surface,
     borderRadius: rad.sm,
+    borderCurve: "continuous", // NUI-2
     borderWidth: 1,
     borderColor: token.line2,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.4,
-    shadowRadius: 40,
-    elevation: 12,
+    // NUI-1: boxShadow replaces the legacy RN shadow/elevation props
+    boxShadow: "0 20px 40px rgba(0,0,0,0.40)",
     zIndex: 100,
     overflow: "hidden",
   },

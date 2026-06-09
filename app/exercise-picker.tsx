@@ -7,13 +7,13 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import Svg, { Path } from "react-native-svg";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { FloatingCommandBar } from "../components/FloatingCommandBar";
-import { useCommandCenter } from "../components/command-center";
-import { EXERCISE_CATALOG, type ExerciseCatalogItem } from "../lib/exercise-catalog";
-import { color as token, font, radius as r } from "../lib/tokens";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
+import { FloatingCommandBar } from "@/components/FloatingCommandBar";
+import { Icon } from "@/components/Icon";
+import { useCommandCenter } from "@/components/command-center";
+import { haptic } from "@/lib/haptics";
+import { EXERCISE_CATALOG, type ExerciseCatalogItem } from "@/lib/exercise-catalog";
+import { color as token, font, radius as r } from "@/lib/tokens";
 
 const COLORS = {
   bg: token.bg,
@@ -33,32 +33,17 @@ const FILTERS = ["All", "Chest", "Back", "Shoulders", "Legs", "Arms", "Core", "C
 
 type ExerciseItem = ExerciseCatalogItem & { recent?: string };
 
-function CloseGlyph() {
+function HeaderClose() {
+  const router = useRouter();
   return (
-    <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
-      <Path d="M5 5L19 19M19 5L5 19" stroke={token.textSoft} strokeWidth={2.2} strokeLinecap="round" />
-    </Svg>
-  );
-}
-
-function SearchGlyph() {
-  return (
-    <Svg width={14} height={14} viewBox="0 0 14 14" fill="none">
-      <Path
-        d="M6 1.5C8.485 1.5 10.5 3.515 10.5 6C10.5 8.485 8.485 10.5 6 10.5C3.515 10.5 1.5 8.485 1.5 6C1.5 3.515 3.515 1.5 6 1.5Z"
-        stroke={token.textMute}
-        strokeWidth={1.4}
-      />
-      <Path d="M9.5 9.5L13 13" stroke={token.textMute} strokeWidth={1.4} strokeLinecap="round" />
-    </Svg>
-  );
-}
-
-function PlusGlyph() {
-  return (
-    <Svg width={12} height={12} viewBox="0 0 24 24" fill="none">
-      <Path d="M12 5V19M5 12H19" stroke={token.accent} strokeWidth={2.2} strokeLinecap="round" />
-    </Svg>
+    <Pressable
+      onPress={() => router.back()}
+      accessibilityRole="button"
+      accessibilityLabel="Close"
+      style={{ padding: 4 }}
+    >
+      <Icon name="close" size={22} color={token.text} />
+    </Pressable>
   );
 }
 
@@ -84,12 +69,12 @@ function ExerciseRow({
       </View>
       <Pressable
         style={styles.addCircle}
-        onPress={onAdd}
+        onPress={() => { haptic.tap(); onAdd(); }}
         hitSlop={8}
         accessibilityRole="button"
         accessibilityLabel={`Add ${item.name}`}
       >
-        <PlusGlyph />
+        <Icon name="plus" size={14} color={token.accent} />
       </Pressable>
     </View>
   );
@@ -150,27 +135,23 @@ export default function ExercisePickerScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.root} edges={["top"]}>
+    <View style={styles.root}>
+      <Stack.Screen
+        options={{
+          headerShown: true,
+          title: "Add exercise",
+          headerLeft: () => <HeaderClose />,
+        }}
+      />
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
+        contentInsetAdjustmentBehavior="automatic"
         keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.header}>
-          <Pressable
-            style={styles.iconButton}
-            onPress={() => router.back()}
-            accessibilityRole="button"
-            accessibilityLabel="Close"
-          >
-            <CloseGlyph />
-          </Pressable>
-          <Text style={styles.title}>Add exercise</Text>
-          <Text style={styles.createLink}>New</Text>
-        </View>
 
         <View style={styles.searchWrap}>
-          <SearchGlyph />
+          <Icon name="search" size={16} color={token.textMute} />
           <TextInput
             style={styles.searchInput}
             value={search}
@@ -229,7 +210,7 @@ export default function ExercisePickerScreen() {
         bottomOffset={8}
         safeAreaBottom
       />
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -246,37 +227,6 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     paddingBottom: 96,
   },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingBottom: 14,
-  },
-  iconButton: {
-    width: 32,
-    height: 32,
-    borderRadius: r.pill,
-    backgroundColor: token.surface,
-    borderWidth: 1,
-    borderColor: token.line,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  title: {
-    fontFamily: font.sans[600],
-    fontSize: 17,
-    fontWeight: "600",
-    letterSpacing: -0.17,
-    color: token.text,
-  },
-  createLink: {
-    fontFamily: font.sans[600],
-    fontSize: 11.5,
-    fontWeight: "600",
-    letterSpacing: 1.38,
-    textTransform: "uppercase",
-    color: token.accent,
-  },
   searchWrap: {
     flexDirection: "row",
     alignItems: "center",
@@ -284,6 +234,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     marginBottom: 10,
     borderRadius: r.sm,
+    borderCurve: "continuous",
     backgroundColor: token.surface,
     borderWidth: 1,
     borderColor: token.line,
@@ -348,6 +299,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: token.line,
     borderRadius: 12,
+    borderCurve: "continuous",
     marginBottom: 6,
   },
   exerciseLeft: {
@@ -382,9 +334,6 @@ const styles = StyleSheet.create({
     borderColor: token.line,
     alignItems: "center",
     justifyContent: "center",
-  },
-  headerPlaceholder: {
-    width: 32,
   },
   emptyText: {
     fontFamily: font.sans[400],

@@ -1,22 +1,26 @@
 import { Text, View } from "react-native";
-import { color, font } from "../../lib/tokens";
+import Animated, { FadeInUp, FadeOut, LinearTransition } from "react-native-reanimated";
+import { color, font } from "@/lib/tokens";
 
 type OfflineBannerProps = {
   queuedCount?: number;
   message?: string;
 };
 
-// rgba derived from color.warn (#FFB347) at 0.08 / 0.30 alpha — kept as inline literals
+// rgba derived from color.warn (#E8924B) at 0.08 / 0.30 alpha — kept as inline literals
 // because tokens.ts doesn't expose pre-baked alpha variants for warn.
-const WARN_BG = "rgba(255,179,71,0.08)";
-const WARN_BORDER = "rgba(255,179,71,0.3)";
+const WARN_BG = "rgba(232,146,75,0.08)";
+const WARN_BORDER = "rgba(232,146,75,0.3)";
 
 export function OfflineBanner({
   queuedCount = 0,
   message = "Offline · logging to queue",
 }: OfflineBannerProps) {
   return (
-    <View
+    <Animated.View
+      entering={FadeInUp.duration(220)}
+      exiting={FadeOut.duration(180)}
+      layout={LinearTransition}
       style={{
         flexDirection: "row",
         alignItems: "center",
@@ -25,6 +29,7 @@ export function OfflineBanner({
         borderColor: WARN_BORDER,
         borderWidth: 1,
         borderRadius: 12,
+        borderCurve: "continuous",
         paddingVertical: 10,
         paddingHorizontal: 14,
       }}
@@ -61,7 +66,7 @@ export function OfflineBanner({
           {queuedCount} QUEUED
         </Text>
       ) : null}
-    </View>
+    </Animated.View>
   );
 }
 

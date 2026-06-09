@@ -8,6 +8,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { haptic } from "@/lib/haptics";
 
 const COLORS = {
   bg: "#0A0B0A",
@@ -145,6 +146,7 @@ export function CoachProfileForm({
   );
 
   const handleSave = () => {
+    haptic.success(); // NUI-6: success haptic on save
     void onSave({
       goal,
       heightCm: heightCm ? Number(heightCm) : null,
@@ -250,8 +252,9 @@ export function CoachProfileForm({
       />
 
       <View style={styles.buttonRow}>
+        {/* NUI-14: selectable on error text */}
         {errorMessage ? (
-          <Text style={styles.errorText}>{errorMessage}</Text>
+          <Text style={styles.errorText} selectable>{errorMessage}</Text>
         ) : null}
         <Pressable
           style={[styles.saveButton, isSaving ? styles.buttonDisabled : null]}
@@ -310,6 +313,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
     borderRadius: 10,
+    borderCurve: "continuous", // NUI-2
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 16,
@@ -325,6 +329,7 @@ const styles = StyleSheet.create({
   saveButton: {
     backgroundColor: COLORS.accent,
     borderRadius: 12,
+    borderCurve: "continuous", // NUI-2
     paddingVertical: 14,
     alignItems: "center",
   },
@@ -336,6 +341,7 @@ const styles = StyleSheet.create({
   },
   skipButton: {
     borderRadius: 12,
+    borderCurve: "continuous", // NUI-2
     paddingVertical: 12,
     alignItems: "center",
   },

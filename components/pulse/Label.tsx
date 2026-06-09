@@ -1,5 +1,5 @@
 import { Text, type TextProps } from "react-native";
-import { color, font } from "../../lib/tokens";
+import { color, font } from "@/lib/tokens";
 
 type LabelProps = TextProps & {
   tone?: "default" | "primary" | "accent" | "soft";

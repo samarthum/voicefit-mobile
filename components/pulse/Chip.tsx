@@ -1,5 +1,5 @@
 import { Pressable, Text, View, type PressableProps } from "react-native";
-import { color, font, radius } from "../../lib/tokens";
+import { color, font, radius } from "@/lib/tokens";
 
 type ChipProps = {
   label: string;

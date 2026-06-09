@@ -1,6 +1,6 @@
 import { View, Text } from "react-native";
 import Svg, { Circle, Path } from "react-native-svg";
-import { color, font } from "../../lib/tokens";
+import { color, font } from "@/lib/tokens";
 
 export function Wordmark({ size = 22 }: { size?: number }) {
   const glyph = size * 0.7;

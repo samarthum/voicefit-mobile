@@ -1,14 +1,14 @@
-import "../polyfills";
+import "@/polyfills";
 import { ClerkProvider } from "@clerk/clerk-expo";
 import { focusManager, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import * as SecureStore from "expo-secure-store";
-import { Slot } from "expo-router";
+import { Stack } from "expo-router";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { useEffect } from "react";
-import { ActivityIndicator, AppState, Platform, Pressable, StatusBar, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, AppState, Pressable, StatusBar, StyleSheet, Text, View } from "react-native";
 import { useFonts } from "expo-font";
 import {
   InterTight_300Light,
@@ -23,8 +23,8 @@ import {
   GeistMono_500Medium,
   GeistMono_600SemiBold,
 } from "@expo-google-fonts/geist-mono";
-import { CommandCenterProvider, CommandCenterOverlay } from "../components/command-center";
-import { color } from "../lib/tokens";
+import { CommandCenterProvider, CommandCenterOverlay } from "@/components/command-center";
+import { color } from "@/lib/tokens";
 
 const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
@@ -94,7 +94,7 @@ export default function RootLayout() {
   });
 
   useEffect(() => {
-    if (Platform.OS === "web") return undefined;
+    if (process.env.EXPO_OS === "web") return undefined;
     const subscription = AppState.addEventListener("change", (status) => {
       focusManager.setFocused(status === "active");
     });
@@ -124,7 +124,25 @@ export default function RootLayout() {
               <CommandCenterProvider>
                 <BottomSheetModalProvider>
                   <StatusBar barStyle="dark-content" backgroundColor={color.bg} />
-                  <Slot />
+                  <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: color.bg } }}>
+                    <Stack.Screen name="index" />
+                    <Stack.Screen name="(tabs)" />
+                    <Stack.Screen
+                      name="meal-edit/[id]"
+                      options={{ presentation: "formSheet", sheetGrabberVisible: true, sheetAllowedDetents: [0.7, 1] }}
+                    />
+                    <Stack.Screen name="exercise-picker" options={{ presentation: "modal" }} />
+                    <Stack.Screen name="workout-session/[id]" />
+                    <Stack.Screen name="meals" />
+                    <Stack.Screen name="trends" />
+                    <Stack.Screen name="coach" />
+                    <Stack.Screen name="feed" />
+                    <Stack.Screen name="log" />
+                    <Stack.Screen name="sign-in" />
+                    <Stack.Screen name="sign-up-email" options={{ presentation: "modal" }} />
+                    <Stack.Screen name="oauth-native-callback" />
+                    <Stack.Screen name="+not-found" />
+                  </Stack>
                   <CommandCenterOverlay />
                 </BottomSheetModalProvider>
               </CommandCenterProvider>

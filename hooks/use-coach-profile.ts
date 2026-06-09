@@ -2,8 +2,8 @@ import { useAuth } from "@clerk/clerk-expo";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useState } from "react";
 
-import type { CoachProfileData } from "../components/CoachProfileForm";
-import { apiRequest } from "../lib/api-client";
+import type { CoachProfileData } from "@/components/CoachProfileForm";
+import { apiRequest } from "@/lib/api-client";
 
 const COACH_PROFILE_QUERY_KEY = ["coach-profile"] as const;
 

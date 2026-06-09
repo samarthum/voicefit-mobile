@@ -6,8 +6,9 @@ import {
   TextInput,
   View,
 } from "react-native";
-import Svg, { Path } from "react-native-svg";
-import { color as token, font, radius as rad } from "../../lib/tokens";
+import { Icon } from "@/components/Icon";
+import { haptic } from "@/lib/haptics";
+import { color as token, font, radius as rad } from "@/lib/tokens";
 
 type CoachComposerProps = {
   value: string;
@@ -40,6 +41,16 @@ export const CoachComposer = forwardRef<TextInput, CoachComposerProps>(
     },
     ref
   ) {
+    const handleMicPress = () => {
+      haptic.press(); // NUI-6: medium haptic on mic press
+      onMicPress();
+    };
+
+    const handleSendPress = () => {
+      haptic.tap(); // NUI-6: light haptic on send
+      onSendPress();
+    };
+
     return (
       <View style={styles.composer}>
         <View style={styles.composerRow}>
@@ -58,12 +69,13 @@ export const CoachComposer = forwardRef<TextInput, CoachComposerProps>(
             onFocus={onInputFocus}
           />
 
+          {/* NUI-11: mic glyph → <Icon name="mic" /> / <Icon name="micOff" /> */}
           <Pressable
             style={[
               styles.micButton,
               isRecordingMic ? styles.micButtonRecording : null,
             ]}
-            onPress={onMicPress}
+            onPress={handleMicPress}
             disabled={isTranscribing}
             accessibilityRole="button"
             accessibilityLabel={
@@ -73,24 +85,29 @@ export const CoachComposer = forwardRef<TextInput, CoachComposerProps>(
             {isTranscribing ? (
               <ActivityIndicator size="small" color={token.accent} />
             ) : (
-              <MicGlyph color={isRecordingMic ? token.accent : token.textSoft} />
+              <Icon
+                name={isRecordingMic ? "micOff" : "mic"}
+                size={18}
+                color={isRecordingMic ? token.accent : token.textSoft}
+              />
             )}
           </Pressable>
 
+          {/* NUI-11: send glyph → <Icon name="send" /> */}
           <Pressable
             style={[
               styles.sendButton,
               !canSend ? styles.sendButtonDisabled : null,
             ]}
             disabled={!canSend}
-            onPress={onSendPress}
+            onPress={handleSendPress}
             accessibilityRole="button"
             accessibilityLabel="Send coach message"
           >
             {isStreaming ? (
               <ActivityIndicator color={token.accentInk} size="small" />
             ) : (
-              <SendGlyph color={token.accentInk} />
+              <Icon name="send" size={18} color={token.accentInk} />
             )}
           </Pressable>
         </View>
@@ -98,44 +115,6 @@ export const CoachComposer = forwardRef<TextInput, CoachComposerProps>(
     );
   }
 );
-
-function MicGlyph({ color = token.textSoft }: { color?: string }) {
-  return (
-    <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
-      <Path
-        d="M12 3.5C10.067 3.5 8.5 5.067 8.5 7V12C8.5 13.933 10.067 15.5 12 15.5C13.933 15.5 15.5 13.933 15.5 12V7C15.5 5.067 13.933 3.5 12 3.5Z"
-        stroke={color}
-        strokeWidth={2}
-      />
-      <Path
-        d="M5.5 11.5C5.5 15.09 8.41 18 12 18C15.59 18 18.5 15.09 18.5 11.5"
-        stroke={color}
-        strokeWidth={2}
-        strokeLinecap="round"
-      />
-      <Path
-        d="M12 18V21"
-        stroke={color}
-        strokeWidth={2}
-        strokeLinecap="round"
-      />
-    </Svg>
-  );
-}
-
-function SendGlyph({ color }: { color: string }) {
-  return (
-    <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
-      <Path
-        d="M3.5 20L20 12L3.5 4L6.2 10.4L13 12L6.2 13.6L3.5 20Z"
-        stroke={color}
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </Svg>
-  );
-}
 
 const styles = StyleSheet.create({
   composer: {
@@ -158,6 +137,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: rad.sm,
+    borderCurve: "continuous", // NUI-2
     backgroundColor: token.surface,
     borderWidth: 1,
     borderColor: token.line,
@@ -170,6 +150,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: rad.pill,
+    // NUI-2: pill shape — skip borderCurve per spec
     backgroundColor: token.surface,
     borderWidth: 1,
     borderColor: token.line,
@@ -184,6 +165,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: rad.pill,
+    // NUI-2: pill shape — skip borderCurve per spec
     backgroundColor: token.accent,
     alignItems: "center",
     justifyContent: "center",

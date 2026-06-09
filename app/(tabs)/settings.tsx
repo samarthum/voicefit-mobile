@@ -15,15 +15,16 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CoachProfileForm,
   type CoachProfileData,
-} from "../../components/CoachProfileForm";
+} from "@/components/CoachProfileForm";
 import { useRouter } from "expo-router";
-import Svg, { Circle, Path } from "react-native-svg";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { FloatingCommandBar } from "../../components/FloatingCommandBar";
-import { useCommandCenter } from "../../components/command-center";
-import { apiRequest } from "../../lib/api-client";
-import { color as token, font, radius as r } from "../../lib/tokens";
-import { isWebPreviewMode } from "../../lib/web-preview-mode";
+import { FloatingCommandBar } from "@/components/FloatingCommandBar";
+import { useCommandCenter } from "@/components/command-center";
+import { apiRequest } from "@/lib/api-client";
+import { color as token, font, radius as r } from "@/lib/tokens";
+import { isWebPreviewMode } from "@/lib/web-preview-mode";
+import { Icon } from "@/components/Icon";
+import { haptic } from "@/lib/haptics";
 
 const COLORS = {
   bg: token.bg,
@@ -73,102 +74,35 @@ function initialsFor(name: string, email: string) {
 }
 
 function RowChevron() {
-  return (
-    <Svg width={8} height={14} viewBox="0 0 8 14" fill="none">
-      <Path
-        d="M1 1L7 7L1 13"
-        stroke={COLORS.textTertiary}
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </Svg>
-  );
+  return <Icon name="chevronRight" size={14} color={COLORS.textTertiary} />;
 }
 
 function UnitsGlyph() {
-  return (
-    <Svg width={16} height={16} viewBox="0 0 16 16" fill="none">
-      <Path d="M8 3V13M3 8H13" stroke={COLORS.blue} strokeWidth={2} strokeLinecap="round" />
-    </Svg>
-  );
+  return <Icon name="units" size={16} color={COLORS.blue} />;
 }
 
 function TimeGlyph() {
-  return (
-    <Svg width={16} height={16} viewBox="0 0 16 16" fill="none">
-      <Circle cx={8} cy={8} r={6} stroke={COLORS.orange} strokeWidth={1.8} />
-      <Path d="M8 5.5V8.5L10 9.5" stroke={COLORS.orange} strokeWidth={1.8} strokeLinecap="round" />
-    </Svg>
-  );
+  return <Icon name="clock" size={16} color={COLORS.orange} />;
 }
 
 function HeartGlyph() {
-  return (
-    <Svg width={16} height={16} viewBox="0 0 16 16" fill="none">
-      <Path
-        d="M8 13.5C8 13.5 2 10.1 2 5.8C2 3.4 4.9 1.8 8 4.5C11.1 1.8 14 3.4 14 5.8C14 10.1 8 13.5 8 13.5Z"
-        stroke={COLORS.healthRed}
-        strokeWidth={1.6}
-        strokeLinejoin="round"
-      />
-    </Svg>
-  );
+  return <Icon name="heart" size={16} color={COLORS.healthRed} />;
 }
 
 function HealthConnectGlyph() {
-  return (
-    <Svg width={16} height={16} viewBox="0 0 16 16" fill="none">
-      <Path
-        d="M4 3H12C12.55 3 13 3.45 13 4V12C13 12.55 12.55 13 12 13H4C3.45 13 3 12.55 3 12V4C3 3.45 3.45 3 4 3Z"
-        stroke={COLORS.green}
-        strokeWidth={1.8}
-      />
-      <Path d="M5.5 8L7.2 9.7L10.8 6.2" stroke={COLORS.green} strokeWidth={1.8} strokeLinecap="round" />
-    </Svg>
-  );
+  return <Icon name="checkCircle" size={16} color={COLORS.green} />;
 }
 
 function PlayGlyph() {
-  return (
-    <Svg width={14} height={14} viewBox="0 0 14 14" fill="none">
-      <Path d="M4 10V4L11 7L4 10Z" fill={token.accent} />
-    </Svg>
-  );
+  return <Icon name="play" size={14} color={token.accent} />;
 }
 
 function CalendarGlyph() {
-  return (
-    <Svg width={14} height={14} viewBox="0 0 14 14" fill="none">
-      <Path
-        d="M2 3H12V11.5C12 11.78 11.78 12 11.5 12H2.5C2.22 12 2 11.78 2 11.5V3Z"
-        stroke={token.accent}
-        strokeWidth={1.4}
-      />
-      <Path d="M2 5H12" stroke={token.accent} strokeWidth={1.4} />
-      <Path d="M5 2V4M9 2V4" stroke={token.accent} strokeWidth={1.4} strokeLinecap="round" />
-    </Svg>
-  );
+  return <Icon name="calendar" size={14} color={token.accent} />;
 }
 
 function BellGlyph() {
-  return (
-    <Svg width={14} height={14} viewBox="0 0 14 14" fill="none">
-      <Path
-        d="M3.5 10H10.5L9.5 8.5V6.5C9.5 4.84 8.16 3.5 6.5 3.5C4.84 3.5 3.5 4.84 3.5 6.5V8.5L2.5 10H4.5"
-        stroke={token.accent}
-        strokeWidth={1.4}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <Path
-        d="M5.5 11C5.5 11.55 5.95 12 6.5 12C7.05 12 7.5 11.55 7.5 11"
-        stroke={token.accent}
-        strokeWidth={1.4}
-        strokeLinecap="round"
-      />
-    </Svg>
-  );
+  return <Icon name="bell" size={14} color={token.accent} />;
 }
 
 function SettingsRow({
@@ -191,7 +125,7 @@ function SettingsRow({
         <Text style={styles.settingLabel}>{label}</Text>
       </View>
       <View style={styles.settingRight}>
-        <Text style={styles.settingValue}>{value}</Text>
+        <Text style={styles.settingValue} selectable>{value}</Text>
         {showChevron ? <RowChevron /> : null}
       </View>
     </View>
@@ -327,6 +261,7 @@ export default function SettingsScreen() {
 
     try {
       if (isWebPreview) {
+        haptic.success();
         setSaveSuccess("Goals updated.");
         return;
       }
@@ -367,6 +302,7 @@ export default function SettingsScreen() {
       );
       await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       hasEditedRef.current = false;
+      haptic.success();
       setSaveSuccess("Goals updated.");
     } catch (saveErr) {
       setSaveError(getErrorMessage(saveErr));
@@ -390,8 +326,8 @@ export default function SettingsScreen() {
             <Text style={styles.avatarText}>{profile.initials}</Text>
           </View>
           <View>
-            <Text style={styles.profileName}>{profile.name}</Text>
-            <Text style={styles.profileEmail}>{profile.email}</Text>
+            <Text style={styles.profileName} selectable>{profile.name}</Text>
+            <Text style={styles.profileEmail} selectable>{profile.email}</Text>
           </View>
         </View>
 
@@ -465,9 +401,9 @@ export default function SettingsScreen() {
           )}
         </View>
 
-        {error && !isWebPreview ? <Text style={styles.inlineError}>{getErrorMessage(error)}</Text> : null}
-        {saveError ? <Text style={styles.inlineError}>{saveError}</Text> : null}
-        {saveSuccess ? <Text style={styles.inlineSuccess}>{saveSuccess}</Text> : null}
+        {error && !isWebPreview ? <Text style={styles.inlineError} selectable>{getErrorMessage(error)}</Text> : null}
+        {saveError ? <Text style={styles.inlineError} selectable>{saveError}</Text> : null}
+        {saveSuccess ? <Text style={styles.inlineSuccess} selectable>{saveSuccess}</Text> : null}
 
         <Pressable
           style={[styles.saveButton, isSaving ? styles.buttonDisabled : null]}
@@ -481,21 +417,16 @@ export default function SettingsScreen() {
         <View style={styles.groupCard}>
           <Pressable
             style={styles.settingRow}
-            onPress={() => setShowCoachProfile(true)}
+            onPress={() => { haptic.tap(); setShowCoachProfile(true); }}
           >
             <View style={styles.settingLeft}>
               <View style={[styles.settingIcon, { backgroundColor: token.surface2 }]}>
-                <Svg width={14} height={14} viewBox="0 0 14 14" fill="none">
-                  <Path
-                    d="M7 1L8.5 5.5L13 7L8.5 8.5L7 13L5.5 8.5L1 7L5.5 5.5L7 1Z"
-                    fill={token.accent}
-                  />
-                </Svg>
+                <Icon name="sparkle" size={14} color={token.accent} />
               </View>
               <Text style={styles.settingLabel}>Coach Profile</Text>
             </View>
             <View style={styles.settingRight}>
-              <Text style={styles.settingValue}>
+              <Text style={styles.settingValue} selectable>
                 {coachProfile ? "Edit" : "Set up"}
               </Text>
               <RowChevron />
@@ -568,6 +499,7 @@ export default function SettingsScreen() {
         </View>
 
         <Pressable style={styles.dangerButton} onPress={() => {
+          haptic.press();
           Alert.alert("Sign Out", "Are you sure you want to sign out?", [
             { text: "Cancel", style: "cancel" },
             { text: "Sign Out", style: "destructive", onPress: () => void signOut() },
@@ -625,6 +557,7 @@ const styles = StyleSheet.create({
     padding: 18,
     marginBottom: 22,
     borderRadius: r.md,
+    borderCurve: "continuous",
     backgroundColor: token.surface,
     borderWidth: 1,
     borderColor: token.line,
@@ -669,6 +602,7 @@ const styles = StyleSheet.create({
   groupCard: {
     overflow: "hidden",
     borderRadius: r.sm,
+    borderCurve: "continuous",
     backgroundColor: token.surface,
     borderWidth: 1,
     borderColor: token.line,
@@ -735,6 +669,7 @@ const styles = StyleSheet.create({
     width: "100%",
     marginBottom: 22,
     borderRadius: r.sm,
+    borderCurve: "continuous",
     backgroundColor: token.accent,
     height: 48,
     alignItems: "center",
@@ -768,6 +703,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 10,
+    borderCurve: "continuous",
     backgroundColor: token.surface2,
     alignItems: "center",
     justifyContent: "center",

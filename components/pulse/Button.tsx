@@ -1,5 +1,5 @@
 import { Pressable, Text, type PressableProps } from "react-native";
-import { color, elevation, font, radius } from "../../lib/tokens";
+import { color, elevation, font, radius } from "@/lib/tokens";
 
 type ButtonProps = Omit<PressableProps, "children"> & {
   title: string;
@@ -34,6 +34,7 @@ export function Button({
           borderColor: palette.border,
           borderWidth: variant === "primary" ? 0 : 1,
           borderRadius: radius.sm,
+          borderCurve: "continuous",
           flexDirection: "row",
           alignItems: "center",
           justifyContent: "center",

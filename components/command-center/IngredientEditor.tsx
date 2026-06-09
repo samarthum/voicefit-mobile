@@ -1,20 +1,18 @@
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Keyboard,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { MealIngredient } from "@voicefit/contracts/types";
-import { color as t, font } from "../../lib/tokens";
-import type { MealReviewIngredient } from "./types";
-import { getErrorMessage, scaleIngredientByGrams } from "./helpers";
+import { color as t, font } from "@/lib/tokens";
+import type { MealReviewIngredient } from "@/components/command-center/types";
+import { getErrorMessage, scaleIngredientByGrams } from "@/components/command-center/helpers";
 
 export type IngredientEditorMode =
   | { kind: "add" }
@@ -54,31 +52,12 @@ export function IngredientEditor({
   onCancel,
 }: IngredientEditorProps) {
   const insets = useSafeAreaInsets();
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
-  const androidKeyboardLift = Platform.OS === "android" ? keyboardHeight : 0;
   const [name, setName] = useState(mode.kind === "edit" ? mode.ingredient.name : "");
   const [gramsText, setGramsText] = useState(
     mode.kind === "edit" ? String(Math.round(mode.ingredient.grams)) : "",
   );
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  // Lift the sheet above the keyboard on Android (KeyboardAvoidingView's
-  // "padding" behavior is iOS-only). Mirrors the Sheet pattern in
-  // CommandCenterOverlay.
-  useEffect(() => {
-    const showSub = Keyboard.addListener("keyboardDidShow", (event) => {
-      setKeyboardHeight(event.endCoordinates.height);
-    });
-    const hideSub = Keyboard.addListener("keyboardDidHide", () => {
-      setKeyboardHeight(0);
-    });
-
-    return () => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, []);
 
   // Clear stale errors when the user types again so they don't see an outdated
   // failure from the previous attempt.
@@ -146,13 +125,13 @@ export function IngredientEditor({
         accessibilityLabel="Dismiss ingredient editor"
       />
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior="padding"
         style={styles.kav}
       >
         <View
           style={[
             styles.sheet,
-            { paddingBottom: insets.bottom + 22, marginBottom: androidKeyboardLift },
+            { paddingBottom: insets.bottom + 22 },
           ]}
         >
           <View style={styles.handleRow}>
@@ -192,7 +171,7 @@ export function IngredientEditor({
           </View>
 
           {errorMessage ? (
-            <Text style={styles.errorText} testID="cc-ingredient-editor-error">
+            <Text style={styles.errorText} testID="cc-ingredient-editor-error" selectable>
               {errorMessage}
             </Text>
           ) : null}
@@ -243,6 +222,7 @@ const styles = StyleSheet.create({
     backgroundColor: t.bg,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
+    borderCurve: "continuous",
     paddingHorizontal: 22,
     paddingTop: 8,
     borderTopWidth: 1,
@@ -257,6 +237,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 4,
     borderRadius: 2,
+    borderCurve: "continuous",
     backgroundColor: t.line2,
   },
   title: {
@@ -284,8 +265,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: t.line,
     borderRadius: 12,
+    borderCurve: "continuous",
     paddingHorizontal: 14,
-    paddingVertical: Platform.OS === "ios" ? 14 : 10,
+    paddingVertical: process.env.EXPO_OS === "ios" ? 14 : 10,
     fontFamily: font.sans[400],
     fontSize: 16,
     color: t.text,
@@ -312,6 +294,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: t.line,
     borderRadius: 14,
+    borderCurve: "continuous",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -328,6 +311,7 @@ const styles = StyleSheet.create({
     height: 52,
     backgroundColor: t.accent,
     borderRadius: 14,
+    borderCurve: "continuous",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",

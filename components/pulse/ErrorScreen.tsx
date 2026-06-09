@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { color, font } from "../../lib/tokens";
+import { color, font } from "@/lib/tokens";
 
 export type ErrorScreenTone = "negative" | "warn";
 
@@ -65,11 +65,11 @@ export function ErrorScreen({
         </View>
 
         <Text style={styles.title}>{title}</Text>
-        {body ? <Text style={styles.body}>{body}</Text> : null}
+        {body ? <Text selectable style={styles.body}>{body}</Text> : null}
 
         {errorRef ? (
           <View style={styles.refPill}>
-            <Text style={styles.refText}>{errorRef}</Text>
+            <Text selectable style={styles.refText}>{errorRef}</Text>
           </View>
         ) : null}
       </View>
@@ -144,6 +144,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: color.line,
     borderRadius: 10,
+    borderCurve: "continuous",
   },
   refText: {
     fontFamily: font.mono[400],
@@ -155,6 +156,7 @@ const styles = StyleSheet.create({
   primaryBtn: {
     height: 56,
     borderRadius: 14,
+    borderCurve: "continuous",
     backgroundColor: color.accent,
     alignItems: "center",
     justifyContent: "center",
@@ -169,6 +171,7 @@ const styles = StyleSheet.create({
   secondaryBtn: {
     height: 48,
     borderRadius: 14,
+    borderCurve: "continuous",
     borderWidth: 1,
     borderColor: color.line2,
     alignItems: "center",

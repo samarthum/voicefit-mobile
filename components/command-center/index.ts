@@ -1,5 +1,5 @@
-export { CommandCenterProvider, useCommandCenter, useCommandCenterOverlay } from "./CommandCenterProvider";
-export { CommandCenterOverlay } from "./CommandCenterOverlay";
+export { CommandCenterProvider, useCommandCenter, useCommandCenterOverlay } from "@/components/command-center/CommandCenterProvider";
+export { CommandCenterOverlay } from "@/components/command-center/CommandCenterOverlay";
 export type {
   CommandCenterContext,
   CommandCenterEvent,
@@ -8,5 +8,5 @@ export type {
   CommandCenterSnapshot,
   ScreenContext,
   CommandState,
-} from "./types";
-export { COLORS, toLocalDateString } from "./helpers";
+} from "@/components/command-center/types";
+export { COLORS, toLocalDateString } from "@/components/command-center/helpers";

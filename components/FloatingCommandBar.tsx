@@ -1,29 +1,15 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Svg, { Circle, Path, Rect } from "react-native-svg";
-import { color, font, radius } from "../lib/tokens";
+import Svg, { Circle } from "react-native-svg";
+import { color, font, radius } from "@/lib/tokens";
+import { Icon } from "@/components/Icon";
+import { haptic } from "@/lib/haptics";
 
 function PulseDot() {
   return (
     <Svg width={14} height={14} viewBox="0 0 14 14">
       <Circle cx={7} cy={7} r={6} stroke={color.accent} strokeOpacity={0.35} fill="none" />
       <Circle cx={7} cy={7} r={2.5} fill={color.accent} />
-    </Svg>
-  );
-}
-
-function MicGlyph() {
-  return (
-    <Svg width={14} height={18} viewBox="0 0 14 18" fill="none">
-      <Rect x={4} y={0} width={6} height={10} rx={3} fill={color.accentInk} />
-      <Path
-        d="M1 8C1 11.5 3.8 14 7 14C10.2 14 13 11.5 13 8"
-        stroke={color.accentInk}
-        strokeWidth={1.6}
-        strokeLinecap="round"
-        fill="none"
-      />
-      <Path d="M7 14V17M4.5 17H9.5" stroke={color.accentInk} strokeWidth={1.6} strokeLinecap="round" />
     </Svg>
   );
 }
@@ -72,11 +58,11 @@ export function FloatingCommandBar({
         </Pressable>
         <Pressable
           style={styles.micButton}
-          onPress={onMicPress ?? onPress}
+          onPress={() => { haptic.press(); (onMicPress ?? onPress)(); }}
           accessibilityRole="button"
           accessibilityLabel="Start voice input"
         >
-          <MicGlyph />
+          <Icon name="mic" size={18} color={color.accentInk} />
         </Pressable>
       </View>
     </View>
@@ -92,6 +78,7 @@ const styles = StyleSheet.create({
   bar: {
     minHeight: 58,
     borderRadius: radius.md,
+    borderCurve: "continuous",
     backgroundColor: color.surface,
     borderWidth: 1,
     borderColor: color.line,

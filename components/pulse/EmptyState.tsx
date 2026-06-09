@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { color, font } from "../../lib/tokens";
+import { color, font } from "@/lib/tokens";
 
 export type EmptyStateProps = {
   icon: ReactNode;
@@ -36,6 +36,7 @@ const styles = StyleSheet.create({
     borderStyle: "dashed",
     borderColor: color.line2,
     borderRadius: 18,
+    borderCurve: "continuous",
     padding: 24,
     alignItems: "center",
   },
@@ -43,6 +44,7 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 14,
+    borderCurve: "continuous",
     backgroundColor: color.surface2,
     borderWidth: 1,
     borderColor: color.line,

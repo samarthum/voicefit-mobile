@@ -12,13 +12,15 @@ import {
 import { useAuth } from "@clerk/clerk-expo";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
-import Svg, { Path } from "react-native-svg";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { FloatingCommandBar } from "../../components/FloatingCommandBar";
-import { useCommandCenter } from "../../components/command-center";
-import { apiRequest } from "../../lib/api-client";
-import { color as token, font, radius as r } from "../../lib/tokens";
-import { isWebPreviewMode } from "../../lib/web-preview-mode";
+import { FloatingCommandBar } from "@/components/FloatingCommandBar";
+import { Icon } from "@/components/Icon";
+import { useCommandCenter } from "@/components/command-center";
+import { apiRequest } from "@/lib/api-client";
+import { formatCompact } from "@/lib/format";
+import { haptic } from "@/lib/haptics";
+import { color as token, font, radius as r } from "@/lib/tokens";
+import { isWebPreviewMode } from "@/lib/web-preview-mode";
 import type { WorkoutSessionsListResponse } from "@voicefit/contracts/types";
 
 const COLORS = {
@@ -100,28 +102,6 @@ function formatWeekEyebrow(now: Date): string {
   return `Week ${getISOWeek(now)} · ${month}`;
 }
 
-function PlusGlyph() {
-  return (
-    <Svg width={12} height={12} viewBox="0 0 12 12" fill="none">
-      <Path d="M6 2V10M2 6H10" stroke={token.accentInk} strokeWidth={1.8} strokeLinecap="round" />
-    </Svg>
-  );
-}
-
-function ChevronGlyph() {
-  return (
-    <Svg width={8} height={14} viewBox="0 0 8 14" fill="none">
-      <Path
-        d="M1 1L7 7L1 13"
-        stroke={COLORS.textTertiary}
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </Svg>
-  );
-}
-
 function formatSessionSubtitle(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
@@ -194,6 +174,7 @@ export default function WorkoutsScreen() {
       });
     },
     onSuccess: async (session) => {
+      haptic.success();
       setCreateFeedback("Workout session created.");
       if (createToastTimerRef.current) clearTimeout(createToastTimerRef.current);
       createToastTimerRef.current = setTimeout(() => setCreateFeedback(null), 2200);
@@ -245,7 +226,7 @@ export default function WorkoutsScreen() {
     const weeklyPRs = thisWeekSessions.reduce((sum, s) => sum + (s.prCount ?? 0), 0);
     return {
       sessions: String(thisWeekSessions.length),
-      volume: weeklyVolume > 0 ? weeklyVolume.toLocaleString() : "—",
+      volume: weeklyVolume > 0 ? formatCompact(weeklyVolume) : "—",
       prs: String(weeklyPRs),
     };
   }, [isWebPreview, thisWeekSessions]);
@@ -294,6 +275,7 @@ export default function WorkoutsScreen() {
   };
 
   const handleCreateSession = async () => {
+    haptic.press();
     if (isWebPreview) {
       router.push({
         pathname: "/workout-session/[id]",
@@ -330,7 +312,7 @@ export default function WorkoutsScreen() {
                 onPress={() => void handleCreateSession()}
                 disabled={createSessionMutation.isPending}
               >
-                <PlusGlyph />
+                <Icon name="plus" size={12} color={token.accentInk} />
                 <Text style={styles.newButtonText}>
                   {createSessionMutation.isPending ? "Creating…" : "New session"}
                 </Text>
@@ -340,17 +322,17 @@ export default function WorkoutsScreen() {
             <View style={styles.statsRow}>
               <View style={styles.statPill}>
                 <Text style={styles.statStatLabel}>Sessions</Text>
-                <Text style={styles.statValue}>{stats.sessions}</Text>
+                <Text selectable style={styles.statValue}>{stats.sessions}</Text>
                 <Text style={styles.statSubLabel}>this week</Text>
               </View>
               <View style={styles.statPill}>
                 <Text style={styles.statStatLabel}>Volume</Text>
-                <Text style={styles.statValue}>{stats.volume}</Text>
+                <Text selectable style={styles.statValue}>{stats.volume}</Text>
                 <Text style={styles.statSubLabel}>kg</Text>
               </View>
               <View style={[styles.statPill, styles.statPillAccent]}>
                 <Text style={[styles.statStatLabel, styles.statStatLabelAccent]}>PRs</Text>
-                <Text style={[styles.statValue, styles.statValueAccent]}>{stats.prs}</Text>
+                <Text selectable style={[styles.statValue, styles.statValueAccent]}>{stats.prs}</Text>
                 <Text style={styles.statSubLabel}>new</Text>
               </View>
             </View>
@@ -398,7 +380,7 @@ export default function WorkoutsScreen() {
           ) : sessionsQuery.isError && !isWebPreview && !sessionsQuery.data ? (
             <View style={styles.errorCard}>
               <Text style={styles.errorTitle}>Couldn’t load workouts</Text>
-              <Text style={styles.errorBody}>
+              <Text selectable style={styles.errorBody}>
                 {sessionsQuery.error instanceof Error
                   ? sessionsQuery.error.message
                   : "Please try again."}
@@ -447,18 +429,18 @@ export default function WorkoutsScreen() {
             <View style={styles.sessionMetrics}>
               <View style={styles.sessionMetric}>
                 <Text style={styles.sessionMetricLabel}>Sets</Text>
-                <Text style={styles.sessionMetricValue}>{session.setsLabel}</Text>
+                <Text selectable style={styles.sessionMetricValue}>{session.setsLabel}</Text>
               </View>
               {session.prCount > 0 ? (
                 <View style={styles.sessionMetric}>
                   <Text style={[styles.sessionMetricLabel, styles.sessionMetricLabelAccent]}>PRs</Text>
-                  <Text style={[styles.sessionMetricValue, styles.sessionMetricValueAccent]}>
+                  <Text selectable style={[styles.sessionMetricValue, styles.sessionMetricValueAccent]}>
                     {session.prCount}
                   </Text>
                 </View>
               ) : null}
               <View style={styles.sessionChevron}>
-                <ChevronGlyph />
+                <Icon name="chevronRight" size={16} color={COLORS.textTertiary} />
               </View>
             </View>
           </Pressable>
@@ -546,6 +528,7 @@ const styles = StyleSheet.create({
   statPill: {
     flex: 1,
     borderRadius: r.sm,
+    borderCurve: "continuous",
     backgroundColor: token.surface,
     borderWidth: 1,
     borderColor: token.line,
@@ -585,6 +568,7 @@ const styles = StyleSheet.create({
   },
   weekCard: {
     borderRadius: r.sm,
+    borderCurve: "continuous",
     backgroundColor: token.surface,
     borderWidth: 1,
     borderColor: token.line,
@@ -631,6 +615,7 @@ const styles = StyleSheet.create({
   weekBar: {
     width: "100%",
     borderRadius: 4,
+    borderCurve: "continuous",
   },
   weekBarLabel: {
     fontFamily: font.sans[600],
@@ -658,6 +643,7 @@ const styles = StyleSheet.create({
   sessionCard: {
     marginBottom: 10,
     borderRadius: 16,
+    borderCurve: "continuous",
     backgroundColor: token.surface,
     borderWidth: 1,
     borderColor: token.line,
@@ -762,6 +748,7 @@ const styles = StyleSheet.create({
   },
   emptyCard: {
     borderRadius: r.md,
+    borderCurve: "continuous",
     backgroundColor: token.surface,
     borderWidth: 1,
     borderColor: token.line,
@@ -783,6 +770,7 @@ const styles = StyleSheet.create({
   },
   errorCard: {
     borderRadius: r.md,
+    borderCurve: "continuous",
     backgroundColor: token.surface,
     borderWidth: 1,
     borderColor: token.line,
@@ -830,6 +818,7 @@ const styles = StyleSheet.create({
     right: 20,
     bottom: 82,
     borderRadius: r.sm,
+    borderCurve: "continuous",
     paddingVertical: 12,
     paddingHorizontal: 14,
     backgroundColor: token.accent,

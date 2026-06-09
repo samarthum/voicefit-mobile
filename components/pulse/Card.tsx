@@ -1,5 +1,5 @@
 import { View, type ViewProps } from "react-native";
-import { color, radius } from "../../lib/tokens";
+import { color, radius } from "@/lib/tokens";
 
 type CardProps = ViewProps & {
   variant?: "surface" | "accentTint";
@@ -25,6 +25,7 @@ export function Card({
           borderColor: isAccent ? color.accentTintBorder : color.line,
           borderWidth: 1,
           borderRadius: radius[rounded],
+          borderCurve: "continuous",
           padding: padded ? 16 : 0,
         },
         style,
