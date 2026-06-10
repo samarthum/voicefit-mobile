@@ -14,6 +14,7 @@ import {
   useAuiEvent,
   useAuiState,
 } from "@assistant-ui/react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from "@/components/Icon";
 import { haptic } from "@/lib/haptics";
 import { useCoachVoiceInput } from "@/hooks/use-coach-voice-input";
@@ -27,6 +28,7 @@ export function CoachComposer({
   placeholder = "Ask your coach...",
 }: CoachComposerProps) {
   const aui = useAui();
+  const insets = useSafeAreaInsets();
   const inputRef = useRef<TextInput>(null);
   // ComposerPrimitive.Input doesn't forward refs (v0.1.22), and we need the
   // ref to focus the input after a voice transcript lands — so we bind our
@@ -72,8 +74,11 @@ export function CoachComposer({
   return (
     // Single floating pill: input + mic + send live inside one rounded
     // container (no full-width top border), buttons pinned to the bottom edge
-    // so they stay put while the input grows.
-    <ComposerPrimitive.Root style={styles.composer}>
+    // so they stay put while the input grows. The screen only safe-areas the
+    // top edge, so the composer clears the gesture bar / home indicator here.
+    <ComposerPrimitive.Root
+      style={[styles.composer, { paddingBottom: Math.max(insets.bottom, 10) }]}
+    >
       <View style={styles.pill}>
         <TextInput
           ref={inputRef}
@@ -143,7 +148,6 @@ const styles = StyleSheet.create({
   composer: {
     paddingHorizontal: 12,
     paddingTop: 6,
-    paddingBottom: 10,
     backgroundColor: token.bg,
   },
   pill: {

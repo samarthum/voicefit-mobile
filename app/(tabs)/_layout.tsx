@@ -23,7 +23,20 @@ export default function TabsLayout() {
   }
 
   return (
-    <NativeTabs tintColor={color.accent}>
+    // Untinted, the Android Material 3 bottom bar follows the SYSTEM theme
+    // (dark gray surface + system indicator pill) — theme every slot with our
+    // tokens so it matches the rest of the app.
+    <NativeTabs
+      tintColor={color.accent}
+      backgroundColor={color.surface}
+      iconColor={{ default: color.textMute, selected: color.accent }}
+      labelStyle={{
+        default: { color: color.textMute },
+        selected: { color: color.accent },
+      }}
+      indicatorColor={color.accentRingTrack}
+      rippleColor={color.accentTintBg}
+    >
       <NativeTabs.Trigger name="dashboard">
         <Label>Today</Label>
         <Icon sf="house.fill" androidSrc={<VectorIcon family={MaterialIcons} name="home" />} />

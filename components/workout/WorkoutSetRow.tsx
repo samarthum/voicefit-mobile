@@ -9,7 +9,7 @@
  * This component is purely presentational — it only fires callbacks.
  */
 
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { Icon } from "@/components/Icon";
 import { color as token, font } from "@/lib/tokens";
 import type { RenderRow, SetDraft } from "./types";
@@ -85,6 +85,15 @@ export function WorkoutSetRow({
     weightKg: liveSet.weightKg == null ? "" : String(liveSet.weightKg),
     durationMinutes: liveSet.durationMinutes == null ? "" : String(liveSet.durationMinutes),
   };
+  const repsValue =
+    liveSet.exerciseType === "cardio"
+      ? effectiveDraft.durationMinutes
+      : effectiveDraft.reps;
+  // Android bug: an EMPTY TextInput with textAlign "center" renders the caret
+  // at the far right edge (facebook/react-native#28794). Hide the caret while
+  // empty — it reappears correctly centered as soon as a digit is typed.
+  const hideEmptyCaret = (value: string) =>
+    Platform.OS === "android" && value === "";
 
   return (
     <View>
@@ -110,14 +119,11 @@ export function WorkoutSetRow({
           placeholder="-"
           placeholderTextColor={token.textMute}
           editable={!sessionFinished}
+          caretHidden={hideEmptyCaret(effectiveDraft.weightKg)}
         />
         <TextInput
           style={[styles.rowInput, styles.colValue]}
-          value={
-            liveSet.exerciseType === "cardio"
-              ? effectiveDraft.durationMinutes
-              : effectiveDraft.reps
-          }
+          value={repsValue}
           onChangeText={(value) =>
             onChangeDraft?.(
               liveSet.id,
@@ -130,6 +136,7 @@ export function WorkoutSetRow({
           placeholder="-"
           placeholderTextColor={token.textMute}
           editable={!sessionFinished}
+          caretHidden={hideEmptyCaret(repsValue)}
         />
         <Pressable
           style={[styles.checkCell, row.checked ? styles.checkCellFilled : null]}

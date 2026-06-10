@@ -129,7 +129,17 @@ export default function RootLayout() {
               <CommandCenterProvider>
                 <BottomSheetModalProvider>
                   <StatusBar barStyle="dark-content" backgroundColor={color.bg} />
-                  <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: color.bg } }}>
+                  <Stack
+                    screenOptions={{
+                      headerShown: false,
+                      contentStyle: { backgroundColor: color.bg },
+                      // Screens that opt into native headers get a flat,
+                      // canvas-colored bar (no Android elevation shadow).
+                      headerShadowVisible: false,
+                      headerStyle: { backgroundColor: color.bg },
+                      headerTintColor: color.text,
+                    }}
+                  >
                     <Stack.Screen name="index" />
                     <Stack.Screen name="(tabs)" />
                     <Stack.Screen

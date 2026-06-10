@@ -1178,7 +1178,7 @@ export default function WorkoutSessionScreen() {
         <FloatingCommandBar
           hint={session?.empty ? "Did 3 sets of squats at 100kg…" : "80 kilos for 10 reps…"}
           {...cc.launcherProps}
-          bottomOffset={91}
+          bottomOffset={12}
           safeAreaBottom
         />
       )}
