@@ -1,218 +1,262 @@
-import React, { forwardRef, memo, useCallback } from "react";
+import React, { useCallback, useEffect, useRef } from "react";
 import {
   ActivityIndicator,
+  FlatList,
+  Keyboard,
   Pressable,
   StyleSheet,
   Text,
   View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
 } from "react-native";
-import { LegendList, type LegendListRef } from "@legendapp/list";
-import { getToolName, isStaticToolUIPart } from "ai";
-import type { CoachUIMessage } from "@voicefit/contracts/coach";
+import {
+  MessagePrimitive,
+  ThreadPrimitive,
+  useAuiState,
+  type EmptyMessagePartProps,
+  type TextMessagePartProps,
+  type ThreadMessage,
+  type ToolCallMessagePartProps,
+} from "@assistant-ui/react-native";
 import Markdown from "react-native-markdown-display";
 import Svg, { Path } from "react-native-svg";
+import {
+  getCoachToolLabel,
+  getToolLineState,
+  type ToolLineState,
+} from "@/components/coach/coach-tool-line";
 import { color as token, font, radius as rad } from "@/lib/tokens";
 
 type CoachMessageListProps = {
-  messages: CoachUIMessage[];
   loadingHistory: boolean;
-  historyHydrated: boolean;
   starterPrompts: string[];
-  onStarterPress: (text: string) => void;
-  onContentSizeChange?: (width: number, height: number) => void;
-  bottomSpacerHeight?: number;
 };
 
-export const CoachMessageList = forwardRef<
-  LegendListRef,
-  CoachMessageListProps
->(function CoachMessageList(
-  {
-    messages,
-    loadingHistory,
-    historyHydrated,
-    starterPrompts,
-    onStarterPress,
-    onContentSizeChange,
-    bottomSpacerHeight = 0,
-  },
-  ref
-) {
-  const renderItem = useCallback(({ item }: { item: CoachUIMessage }) => {
-    if (item.role === "user") {
-      return <UserBubble text={getMessageText(item)} />;
-    }
-
-    return <AssistantBubble messageId={item.id} parts={item.parts} />;
-  }, []);
-
-  const keyExtractor = useCallback((item: CoachUIMessage) => item.id, []);
-
-  const ListEmpty = useCallback(() => {
-    if (loadingHistory) {
-      return (
+export function CoachMessageList({
+  loadingHistory,
+  starterPrompts,
+}: CoachMessageListProps) {
+  return (
+    <ThreadPrimitive.Root style={styles.flex}>
+      {loadingHistory ? (
         <View style={styles.emptyCenter}>
           <ActivityIndicator color={token.accent} />
         </View>
-      );
-    }
-
-    return (
-      <View style={styles.emptyState}>
-        <Text style={styles.emptyTitle}>
-          Ask me anything about your training, food, or progress.
-        </Text>
-        <Text style={styles.emptyBody}>
-          I can look at your meals, workouts, steps, and weight to give you
-          personalized insights.
-        </Text>
-        <View style={styles.starterGrid}>
-          {starterPrompts.map((prompt) => (
-            <Pressable
-              key={prompt}
-              style={styles.starterChip}
-              onPress={() => onStarterPress(prompt)}
-              accessibilityRole="button"
-            >
-              <Text style={styles.starterChipText}>{prompt}</Text>
-            </Pressable>
-          ))}
-        </View>
-      </View>
-    );
-  }, [loadingHistory, onStarterPress, starterPrompts]);
-
-  return (
-    <LegendList
-      key={historyHydrated ? "coach-history-ready" : "coach-history-loading"}
-      ref={ref}
-      data={messages}
-      renderItem={renderItem}
-      keyExtractor={keyExtractor}
-      estimatedItemSize={120}
-      initialScrollIndex={
-        historyHydrated && messages.length > 0
-          ? { index: messages.length - 1 }
-          : undefined
-      }
-      contentInsetAdjustmentBehavior="automatic"
-      keyboardDismissMode="on-drag"
-      keyboardShouldPersistTaps="handled"
-      onContentSizeChange={onContentSizeChange}
-      contentContainerStyle={styles.listContent}
-      ItemSeparatorComponent={ListSeparator}
-      ListFooterComponent={
-        bottomSpacerHeight > 0 ? (
-          <View style={{ height: bottomSpacerHeight }} />
-        ) : null
-      }
-      ListEmptyComponent={ListEmpty}
-      alignItemsAtEnd
-      maintainScrollAtEnd
-    />
-  );
-});
-
-export function getMessageText(message: CoachUIMessage) {
-  return (
-    message.parts
-      .filter(
-        (part): part is { type: "text"; text: string } =>
-          part.type === "text"
-      )
-      .map((part) => part.text)
-      .join("\n") || ""
+      ) : (
+        <>
+          <ThreadPrimitive.If empty>
+            <EmptyState starterPrompts={starterPrompts} />
+          </ThreadPrimitive.If>
+          <ThreadPrimitive.If empty={false}>
+            <CoachMessages />
+          </ThreadPrimitive.If>
+        </>
+      )}
+    </ThreadPrimitive.Root>
   );
 }
 
-type UserBubbleProps = { text: string };
+// ---------------------------------------------------------------------------
+// Message list (FlatList via ThreadPrimitive.Messages)
+// ---------------------------------------------------------------------------
 
-export const UserBubble = memo(function UserBubble({ text }: UserBubbleProps) {
+// ThreadPrimitive.Messages spreads extra props onto its FlatList; with React 19
+// `ref` rides along as a regular prop, but the published prop type doesn't
+// declare it — this cast adds it. (Needed for scroll pinning below.)
+const ThreadMessages = ThreadPrimitive.Messages as React.ComponentType<
+  React.ComponentProps<typeof ThreadPrimitive.Messages> & {
+    ref?: React.Ref<FlatList<ThreadMessage>>;
+  }
+>;
+
+// Minimal structural type: the package exports two distinct `MessageState`
+// types, and the one ThreadMessages' children receives isn't the re-exported
+// one — `role` is all we need here anyway.
+const renderMessage = ({ message }: { message: { role: string } }) =>
+  message.role === "user" ? <UserMessage /> : <AssistantMessage />;
+
+/** How close to the bottom (px) still counts as "pinned to the end". */
+const PIN_THRESHOLD = 80;
+
+function CoachMessages() {
+  const listRef = useRef<FlatList<ThreadMessage>>(null);
+  // Pin-to-bottom: hydrated history lands scrolled to the latest message and
+  // streaming output keeps following it, but scrolling up to read releases
+  // the pin until the user returns to the bottom.
+  const isPinnedRef = useRef(true);
+
+  const handleScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const { contentOffset, contentSize, layoutMeasurement } =
+        event.nativeEvent;
+      const distanceFromEnd =
+        contentSize.height - layoutMeasurement.height - contentOffset.y;
+      isPinnedRef.current = distanceFromEnd < PIN_THRESHOLD;
+    },
+    []
+  );
+
+  // Fires on every content growth: history hydration batches, streaming
+  // tokens, late markdown/tool layout. Re-pinning here replaces the staggered
+  // scroll-timeout workarounds the LegendList version needed.
+  const handleContentSizeChange = useCallback(() => {
+    if (isPinnedRef.current) {
+      listRef.current?.scrollToEnd({ animated: false });
+    }
+  }, []);
+
+  // Re-pin the list to the latest message when the keyboard comes up —
+  // without this the user lands mid-thread when they tap the composer.
+  // Layout is handled by the keyboard-controller KeyboardAvoidingView.
+  useEffect(() => {
+    const showSub = Keyboard.addListener("keyboardDidShow", () => {
+      listRef.current?.scrollToEnd({ animated: true });
+    });
+    return () => {
+      showSub.remove();
+    };
+  }, []);
+
   return (
-    <View style={bubbleStyles.userGroup}>
-      <View style={bubbleStyles.userBubble}>
-        {/* NUI-14: selectable — coach messages are important data */}
-        <Text style={bubbleStyles.userText} selectable>{text}</Text>
+    <ThreadMessages
+      ref={listRef}
+      contentInsetAdjustmentBehavior="automatic"
+      keyboardDismissMode="on-drag"
+      keyboardShouldPersistTaps="handled"
+      onScroll={handleScroll}
+      scrollEventThrottle={32}
+      onContentSizeChange={handleContentSizeChange}
+      contentContainerStyle={styles.listContent}
+      ItemSeparatorComponent={ListSeparator}
+    >
+      {renderMessage}
+    </ThreadMessages>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Empty state
+// ---------------------------------------------------------------------------
+
+function EmptyState({ starterPrompts }: { starterPrompts: string[] }) {
+  return (
+    <View style={styles.emptyState}>
+      <Text style={styles.emptyTitle}>
+        Ask me anything about your training, food, or progress.
+      </Text>
+      <Text style={styles.emptyBody}>
+        I can look at your meals, workouts, steps, and weight to give you
+        personalized insights.
+      </Text>
+      <View style={styles.starterGrid}>
+        {starterPrompts.map((prompt) => (
+          <ThreadPrimitive.Suggestion
+            key={prompt}
+            prompt={prompt}
+            send
+            style={styles.starterChip}
+            onPressIn={dismissKeyboard}
+            accessibilityRole="button"
+          >
+            <Text style={styles.starterChipText}>{prompt}</Text>
+          </ThreadPrimitive.Suggestion>
+        ))}
       </View>
     </View>
   );
-});
+}
 
-type AssistantBubbleProps = {
-  messageId: string;
-  parts: CoachUIMessage["parts"];
-};
+function dismissKeyboard() {
+  Keyboard.dismiss();
+}
 
-export const AssistantBubble = memo(function AssistantBubble({
-  messageId,
-  parts,
-}: AssistantBubbleProps) {
-  const toolParts: Array<{ key: string; label: string; state: string }> = [];
-  const textParts: Array<{ key: string; text: string }> = [];
+// ---------------------------------------------------------------------------
+// Messages
+// ---------------------------------------------------------------------------
 
-  parts.forEach((part, index) => {
-    if (part.type === "text") {
-      if (part.text.trim()) {
-        textParts.push({ key: `${messageId}-t-${index}`, text: part.text });
-      }
-    } else if (isStaticToolUIPart(part)) {
-      const label =
-        part.state === "input-available" || part.state === "output-available"
-          ? part.input.label
-          : undefined;
-      const name = getToolName(part);
-      toolParts.push({
-        key: `${messageId}-tool-${index}`,
-        label: label ?? name.replace(/_/g, " "),
-        state: part.state,
-      });
-    }
-  });
-
-  const hasContent = toolParts.length > 0 || textParts.length > 0;
+function UserMessage() {
+  const text = useAuiState((s) =>
+    s.message.parts
+      .map((part) => (part.type === "text" ? part.text : ""))
+      .filter(Boolean)
+      .join("\n")
+  );
 
   return (
-    <View style={bubbleStyles.assistantGroup}>
+    <MessagePrimitive.Root style={bubbleStyles.userGroup}>
+      <View style={bubbleStyles.userBubble}>
+        {/* NUI-14: selectable — coach messages are important data */}
+        <Text style={bubbleStyles.userText} selectable>
+          {text}
+        </Text>
+      </View>
+    </MessagePrimitive.Root>
+  );
+}
+
+function AssistantMessage() {
+  // Coach replies render flat on the canvas (no bubble) — modern chat style:
+  // full width, just the meta row above the markdown body.
+  return (
+    <MessagePrimitive.Root style={bubbleStyles.assistantGroup}>
       <View style={bubbleStyles.metaRow}>
         <SparkleGlyph />
         <Text style={bubbleStyles.coachLabel}>Coach</Text>
       </View>
-      {hasContent ? (
-        <View style={bubbleStyles.assistantBubble}>
-          {toolParts.length > 0 ? (
-            <View style={bubbleStyles.toolSection}>
-              {toolParts.map((toolPart) => (
-                <ToolActivityLine
-                  key={toolPart.key}
-                  label={toolPart.label}
-                  state={toolPart.state}
-                />
-              ))}
-            </View>
-          ) : null}
-          {textParts.map((textPart) => (
-            // NUI-14: Markdown renders <Text> internally; wrap in a selectable
-            // container so the rendered text is long-pressable on both platforms.
-            // react-native-markdown-display accepts selectable via style.text but
-            // the cleaner cross-version approach is the parent View with onStartShouldSetResponder.
-            // Using the `selectable` style key on the body style is the supported path:
-            <Markdown key={textPart.key} style={markdownStyles}>
-              {textPart.text}
-            </Markdown>
-          ))}
-        </View>
-      ) : (
-        <View style={bubbleStyles.assistantBubble}>
-          <ActivityIndicator
-            size="small"
-            color={token.accent}
-            style={styles.assistantLoader}
-          />
-        </View>
-      )}
-    </View>
+      <MessagePrimitive.Parts
+        components={assistantPartComponents}
+        // Keep the loader exclusively for the "no content yet" state; the
+        // default (true) would also render it under running tool lines.
+        unstable_showEmptyOnNonTextEnd={false}
+      />
+    </MessagePrimitive.Root>
   );
-});
+}
+
+function AssistantTextPart({ text }: TextMessagePartProps) {
+  if (!text.trim()) return null;
+  // NUI-14: Markdown renders <Text> internally; the `selectable` style key on
+  // the body style is the supported path for long-press selection.
+  return <Markdown style={markdownStyles}>{text}</Markdown>;
+}
+
+function AssistantEmptyPart(_props: EmptyMessagePartProps) {
+  return (
+    <ActivityIndicator
+      size="small"
+      color={token.accent}
+      style={styles.assistantLoader}
+    />
+  );
+}
+
+function CoachToolPart({ toolName, args, status }: ToolCallMessagePartProps) {
+  return (
+    <ToolActivityLine
+      label={getCoachToolLabel(toolName, args)}
+      state={getToolLineState(status.type)}
+    />
+  );
+}
+
+// ToolGroup is deprecated in favor of MessagePrimitive.GroupedParts, but it's
+// the lightest way to reproduce the bordered tool section around consecutive
+// tool lines; revisit if it's removed.
+function ToolSection({ children }: React.PropsWithChildren) {
+  return <View style={bubbleStyles.toolSection}>{children}</View>;
+}
+
+const assistantPartComponents = {
+  Text: AssistantTextPart,
+  Empty: AssistantEmptyPart,
+  tools: { Fallback: CoachToolPart },
+  ToolGroup: ToolSection,
+};
+
+// ---------------------------------------------------------------------------
+// Error bubble (fed by the useChat instance the screen still owns)
+// ---------------------------------------------------------------------------
 
 export function ErrorBubble({
   message,
@@ -224,7 +268,9 @@ export function ErrorBubble({
   return (
     <View style={errorStyles.container}>
       {/* NUI-14: selectable on error text */}
-      <Text style={errorStyles.text} selectable>{message}</Text>
+      <Text style={errorStyles.text} selectable>
+        {message}
+      </Text>
       {onRetry != null ? (
         <Pressable style={errorStyles.retry} onPress={onRetry}>
           <Text style={errorStyles.retryText}>Retry</Text>
@@ -234,27 +280,28 @@ export function ErrorBubble({
   );
 }
 
+// ---------------------------------------------------------------------------
+// Tool activity line
+// ---------------------------------------------------------------------------
+
 function ToolActivityLine({
   label,
   state,
 }: {
   label: string;
-  state: string;
+  state: ToolLineState;
 }) {
-  const isRunning = state === "input-streaming" || state === "input-available";
-  const isDone = state === "output-available";
-
   return (
     <View style={toolStyles.row}>
-      {isDone ? (
+      {state === "done" ? (
         <CheckGlyph />
-      ) : isRunning ? (
+      ) : state === "running" ? (
         <ActivityIndicator size="small" color={token.accent} />
       ) : (
         <ActivityIndicator size="small" color={token.textMute} />
       )}
       <Text
-        style={[toolStyles.label, isDone ? toolStyles.labelDone : null]}
+        style={[toolStyles.label, state === "done" ? toolStyles.labelDone : null]}
         numberOfLines={1}
       >
         {label}
@@ -295,8 +342,8 @@ function CheckGlyph() {
 const markdownStyles = {
   body: {
     fontFamily: font.sans[400],
-    fontSize: 14.5,
-    lineHeight: 22,
+    fontSize: 15,
+    lineHeight: 24,
     color: token.text,
     letterSpacing: -0.07,
   },
@@ -324,12 +371,13 @@ const markdownStyles = {
 };
 
 const styles = StyleSheet.create({
+  flex: { flex: 1 },
   listContent: {
     paddingVertical: 16,
     paddingHorizontal: 16,
     gap: 10,
   },
-  listSeparator: { height: 16 },
+  listSeparator: { height: 20 },
   assistantLoader: { alignSelf: "flex-start" },
   emptyCenter: {
     flex: 1,
@@ -405,17 +453,14 @@ const bubbleStyles = StyleSheet.create({
   userBubble: {
     maxWidth: "85%",
     backgroundColor: token.accent,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 4,
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 16,
+    borderRadius: 20,
     borderCurve: "continuous", // NUI-2
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 10,
   },
   userText: {
     fontFamily: font.sans[500],
-    fontSize: 14.5,
+    fontSize: 15,
     lineHeight: 22,
     color: token.accentInk,
     fontWeight: "500",
@@ -427,7 +472,6 @@ const bubbleStyles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
     marginBottom: 6,
-    paddingHorizontal: 4,
   },
   coachLabel: {
     fontFamily: font.sans[600],
@@ -437,24 +481,9 @@ const bubbleStyles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 1.47,
   },
-  assistantBubble: {
-    maxWidth: "92%",
-    backgroundColor: token.surface,
-    borderWidth: 1,
-    borderColor: token.line,
-    borderTopLeftRadius: 4,
-    borderTopRightRadius: 16,
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 16,
-    borderCurve: "continuous", // NUI-2
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
+  // Flat tool activity stack above the reply text (no bordered box).
   toolSection: {
     marginBottom: 8,
-    paddingBottom: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: token.line,
   },
 });
 

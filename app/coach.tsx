@@ -1,21 +1,16 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import {
-  Alert,
-  Keyboard,
-  Modal,
-  StyleSheet,
-  TextInput,
-  View,
-} from "react-native";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
+import { Alert, Modal, StyleSheet, View } from "react-native";
+import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
+import Reanimated, { useAnimatedStyle } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useAuth } from "@clerk/clerk-expo";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
+import { AssistantRuntimeProvider } from "@assistant-ui/react-native";
+import { useAISDKRuntime } from "@assistant-ui/react-ai-sdk";
 import type { CoachUIMessage } from "@voicefit/contracts/coach";
 import { fetch as expoFetch } from "expo/fetch";
-import type { LegendListRef } from "@legendapp/list";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/api-client";
 import { CoachProfileForm } from "@/components/CoachProfileForm";
@@ -26,7 +21,6 @@ import {
   ErrorBubble,
 } from "@/components/coach";
 import { useCoachProfile } from "@/hooks/use-coach-profile";
-import { useCoachVoiceInput } from "@/hooks/use-coach-voice-input";
 import { color as token } from "@/lib/tokens";
 
 // ---------------------------------------------------------------------------
@@ -50,15 +44,7 @@ export default function CoachScreen() {
   const { getToken } = useAuth();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const [draft, setDraft] = useState("");
   const [showMenu, setShowMenu] = useState(false);
-  const [historyHydrated, setHistoryHydrated] = useState(false);
-  const inputRef = useRef<TextInput>(null);
-  const listRef = useRef<LegendListRef>(null);
-  const shouldPinInitialHistoryRef = useRef(false);
-  const contentSettleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null
-  );
   const {
     profile,
     showProfileModal,
@@ -69,34 +55,6 @@ export default function CoachScreen() {
     profileSaving,
     profileSaveError,
   } = useCoachProfile();
-  const handleTranscript = useCallback((transcript: string) => {
-    setDraft(transcript);
-  }, []);
-  const focusComposer = useCallback(() => {
-    inputRef.current?.focus();
-  }, []);
-  const {
-    isRecordingMic,
-    isTranscribing,
-    handleMicPress,
-  } = useCoachVoiceInput({
-    onTranscript: handleTranscript,
-    onTranscriptFocus: focusComposer,
-  });
-
-  // Re-pin the list to the latest message when the keyboard comes up.
-  // LegendList's `maintainScrollAtEnd` only triggers on data updates, not on
-  // viewport changes — so without this the user lands mid-thread when they
-  // tap the composer. This listener only scrolls; layout is handled by the
-  // keyboard-controller KeyboardAvoidingView.
-  useEffect(() => {
-    const showSub = Keyboard.addListener("keyboardDidShow", () => {
-      listRef.current?.scrollToEnd({ animated: true });
-    });
-    return () => {
-      showSub.remove();
-    };
-  }, []);
 
   // ---- Initial messages from server ----
   const {
@@ -117,14 +75,7 @@ export default function CoachScreen() {
   });
 
   // ---- useChat ----
-  const {
-    messages,
-    sendMessage,
-    setMessages,
-    status,
-    error: chatError,
-    regenerate,
-  } = useChat<CoachUIMessage>({
+  const chat = useChat<CoachUIMessage>({
     transport: new DefaultChatTransport<CoachUIMessage>({
       fetch: expoFetch as unknown as typeof globalThis.fetch,
       api: `${API_BASE}/api/coach/chat`,
@@ -137,76 +88,20 @@ export default function CoachScreen() {
     }),
     onError: (err) => console.error("Coach chat error:", err),
   });
+  const { setMessages, error: chatError, regenerate } = chat;
+
+  // assistant-ui runtime bridged from the useChat instance we keep owning
+  // (preserves the custom transport, setMessages hydration, error/regenerate).
+  const runtime = useAISDKRuntime(chat);
 
   // Hydrate useChat from server-persisted messages once loaded
   const hydratedRef = useRef(false);
   useEffect(() => {
     if (serverMessages != null && !hydratedRef.current) {
       hydratedRef.current = true;
-      shouldPinInitialHistoryRef.current = serverMessages.length > 0;
       setMessages(serverMessages);
-      setHistoryHydrated(true);
     }
   }, [serverMessages, setMessages]);
-
-  const isStreaming = status === "streaming" || status === "submitted";
-
-  // `setMessages(serverMessages)` updates useChat before LegendList has
-  // measured the hydrated rows. `initialScrollIndex` handles the remount, and
-  // this fallback catches late markdown/tool layout on physical devices.
-  const didAutoScrollHistoryRef = useRef(false);
-  const scrollToLatestHistoryMessage = useCallback(() => {
-    listRef.current?.scrollToEnd({ animated: false });
-  }, []);
-
-  useEffect(() => {
-    if (
-      !historyHydrated ||
-      didAutoScrollHistoryRef.current ||
-      messages.length === 0
-    ) {
-      return;
-    }
-
-    didAutoScrollHistoryRef.current = true;
-    const timeouts = [0, 50, 150, 350, 700, 1200].map((delay) =>
-      setTimeout(scrollToLatestHistoryMessage, delay)
-    );
-
-    requestAnimationFrame(() => {
-      scrollToLatestHistoryMessage();
-    });
-
-    return () => {
-      timeouts.forEach(clearTimeout);
-    };
-  }, [historyHydrated, messages.length, scrollToLatestHistoryMessage]);
-
-  useEffect(() => {
-    return () => {
-      if (contentSettleTimeoutRef.current != null) {
-        clearTimeout(contentSettleTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  const handleMessageListContentSizeChange = useCallback(
-    (_width: number, _height: number) => {
-      if (!shouldPinInitialHistoryRef.current) return;
-
-      scrollToLatestHistoryMessage();
-
-      if (contentSettleTimeoutRef.current != null) {
-        clearTimeout(contentSettleTimeoutRef.current);
-      }
-
-      contentSettleTimeoutRef.current = setTimeout(() => {
-        shouldPinInitialHistoryRef.current = false;
-        contentSettleTimeoutRef.current = null;
-      }, 250);
-    },
-    [scrollToLatestHistoryMessage]
-  );
 
   // ---- Clear conversation ----
   const clearMutation = useMutation({
@@ -225,6 +120,20 @@ export default function CoachScreen() {
     },
   });
 
+  // Keyboard avoidance is driven directly by the keyboard's animated height
+  // instead of a KeyboardAvoidingView. KAV measures layout (onLayout) to size
+  // its padding, but the composer's safe-area padding animates DURING the
+  // keyboard transition and the multiline input grows while typing — each
+  // re-measure made KAV re-adjust, which showed up as an end-of-animation
+  // bump and per-keystroke bouncing. Padding straight off the keyboard frame
+  // gives one source of truth, perfectly in sync with the composer's own
+  // inset collapse (same animated value underneath).
+  const { height: keyboardHeight } = useReanimatedKeyboardAnimation();
+  const keyboardLift = useAnimatedStyle(() => ({
+    // height runs 0 → -keyboardHeight as the keyboard opens
+    paddingBottom: -keyboardHeight.value,
+  }));
+
   const handleClear = useCallback(() => {
     Alert.alert(
       "Clear conversation",
@@ -240,89 +149,55 @@ export default function CoachScreen() {
     );
   }, [clearMutation]);
 
-  // ---- Send ----
-  const handleSend = useCallback(() => {
-    const text = draft.trim();
-    if (!text || isStreaming) return;
-    Keyboard.dismiss();
-    sendMessage({ text });
-    setDraft("");
-  }, [draft, isStreaming, sendMessage]);
-
-  const handleStarterPress = useCallback(
-    (text: string) => {
-      if (isStreaming) return;
-      Keyboard.dismiss();
-      sendMessage({ text });
-    },
-    [isStreaming, sendMessage]
-  );
-
-  // ---- Render ----
-  const canSend = draft.trim().length > 0 && !isStreaming;
-
   return (
     // Coach keeps its rich custom header (CoachHeader: sparkle orb + menu dropdown),
     // which the native Stack header can't replicate — so the native header stays off
     // (global default) and SafeAreaView covers the top inset. (NUI-5 / NUI-10)
-    <SafeAreaView style={styles.root} edges={["top"]}>
-      <KeyboardAvoidingView style={styles.flex} behavior="padding">
-        <CoachHeader
-          showMenu={showMenu}
-          onBackPress={() => router.back()}
-          onMenuPress={() => setShowMenu((visible) => !visible)}
-          onDismissMenu={() => setShowMenu(false)}
-          onEditProfilePress={openProfileModal}
-          onClearConversationPress={handleClear}
-        />
-
-        <CoachMessageList
-          ref={listRef}
-          messages={messages}
-          loadingHistory={loadingHistory}
-          historyHydrated={historyHydrated}
-          starterPrompts={STARTER_PROMPTS}
-          onStarterPress={handleStarterPress}
-          onContentSizeChange={handleMessageListContentSizeChange}
-        />
-
-        {chatError != null ? (
-          <ErrorBubble
-            message={chatError.message || "Something went wrong."}
-            onRetry={regenerate}
+    <AssistantRuntimeProvider runtime={runtime}>
+      <SafeAreaView style={styles.root} edges={["top"]}>
+        <Reanimated.View style={[styles.flex, keyboardLift]}>
+          <CoachHeader
+            showMenu={showMenu}
+            onBackPress={() => router.back()}
+            onMenuPress={() => setShowMenu((visible) => !visible)}
+            onDismissMenu={() => setShowMenu(false)}
+            onEditProfilePress={openProfileModal}
+            onClearConversationPress={handleClear}
           />
-        ) : null}
 
-        <View>
-          <CoachComposer
-            ref={inputRef}
-            value={draft}
-            canSend={canSend}
-            isStreaming={isStreaming}
-            isRecordingMic={isRecordingMic}
-            isTranscribing={isTranscribing}
-            onChangeText={setDraft}
-            onMicPress={handleMicPress}
-            onSendPress={handleSend}
+          <CoachMessageList
+            loadingHistory={loadingHistory}
+            starterPrompts={STARTER_PROMPTS}
           />
-        </View>
 
-        <Modal
-          visible={showProfileModal}
-          animationType="slide"
-          presentationStyle="formSheet"
-          onRequestClose={closeProfileModal}
-        >
-          <CoachProfileForm
-            initialData={profile}
-            onSave={handleProfileSave}
-            onSkip={dismissProfileModal}
-            isSaving={profileSaving}
-            errorMessage={profileSaveError?.message}
-          />
-        </Modal>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+          {chatError != null ? (
+            <ErrorBubble
+              message={chatError.message || "Something went wrong."}
+              onRetry={regenerate}
+            />
+          ) : null}
+
+          <View>
+            <CoachComposer />
+          </View>
+
+          <Modal
+            visible={showProfileModal}
+            animationType="slide"
+            presentationStyle="formSheet"
+            onRequestClose={closeProfileModal}
+          >
+            <CoachProfileForm
+              initialData={profile}
+              onSave={handleProfileSave}
+              onSkip={dismissProfileModal}
+              isSaving={profileSaving}
+              errorMessage={profileSaveError?.message}
+            />
+          </Modal>
+        </Reanimated.View>
+      </SafeAreaView>
+    </AssistantRuntimeProvider>
   );
 }
 

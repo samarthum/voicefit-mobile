@@ -28,10 +28,6 @@ import { color } from "@/lib/tokens";
 
 const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
-if (!publishableKey) {
-  throw new Error("Missing EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY");
-}
-
 const tokenCache = {
   async getToken(key: string) {
     try {
@@ -101,6 +97,15 @@ export default function RootLayout() {
     return () => subscription.remove();
   }, []);
 
+  // Throwing here (render) instead of at module scope lets the route
+  // ErrorBoundary above show a readable message; a module-scope throw
+  // hard-crashes release builds on launch with no UI at all.
+  if (!publishableKey) {
+    throw new Error(
+      "Missing EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY — set it in the EAS project environment variables (and EXPO_PUBLIC_API_BASE_URL too) for this build profile."
+    );
+  }
+
   if (!fontsLoaded) {
     return (
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: color.bg }}>
@@ -124,7 +129,17 @@ export default function RootLayout() {
               <CommandCenterProvider>
                 <BottomSheetModalProvider>
                   <StatusBar barStyle="dark-content" backgroundColor={color.bg} />
-                  <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: color.bg } }}>
+                  <Stack
+                    screenOptions={{
+                      headerShown: false,
+                      contentStyle: { backgroundColor: color.bg },
+                      // Screens that opt into native headers get a flat,
+                      // canvas-colored bar (no Android elevation shadow).
+                      headerShadowVisible: false,
+                      headerStyle: { backgroundColor: color.bg },
+                      headerTintColor: color.text,
+                    }}
+                  >
                     <Stack.Screen name="index" />
                     <Stack.Screen name="(tabs)" />
                     <Stack.Screen
