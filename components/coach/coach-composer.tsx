@@ -1,4 +1,4 @@
-import React, { useCallback, useRef } from "react";
+import React, { useCallback, useEffect, useRef } from "react";
 import {
   ActivityIndicator,
   Keyboard,
@@ -36,9 +36,9 @@ export function CoachComposer({
   const insets = useSafeAreaInsets();
   // Bottom padding is keyboard-aware: the full safe-area inset clears the
   // gesture bar / home indicator while the keyboard is closed, then collapses
-  // to a slim gap as it opens (the KeyboardAvoidingView already lifts the
-  // pill) — interpolating on keyboard progress keeps it in sync with the
-  // slide animation instead of snapping.
+  // to a slim gap as it opens (the screen's keyboard-height padding already
+  // lifts the pill) — interpolating on keyboard progress keeps it in sync
+  // with the slide animation instead of snapping.
   const { progress: keyboardProgress } = useReanimatedKeyboardAnimation();
   const closedPadding = Math.max(insets.bottom, 10);
   const keyboardAwarePadding = useAnimatedStyle(() => ({
@@ -55,12 +55,27 @@ export function CoachComposer({
   const text = useAuiState((s) => s.composer.text);
   const canSend = useAuiState((s) => s.composer.canSend);
 
+  // The input is UNCONTROLLED while typing: a controlled `value` that round-
+  // trips through the composer store echoes back to the native input a frame
+  // late on Android, making each typed character blink. Keystrokes flow one
+  // way (native → store); store text is only written back to the native
+  // input when it changed programmatically — send clearing it, a voice
+  // transcript filling it — detected by comparing against the last typed
+  // value.
+  const lastTypedRef = useRef("");
   const handleChangeText = useCallback(
     (value: string) => {
+      lastTypedRef.current = value;
       aui.composer().setText(value);
     },
     [aui]
   );
+  useEffect(() => {
+    if (text !== lastTypedRef.current) {
+      lastTypedRef.current = text;
+      inputRef.current?.setNativeProps({ text });
+    }
+  }, [text]);
 
   const handleTranscript = useCallback(
     (transcript: string) => {
@@ -100,7 +115,7 @@ export function CoachComposer({
         <TextInput
           ref={inputRef}
           style={styles.input}
-          value={text}
+          defaultValue={text}
           onChangeText={handleChangeText}
           placeholder={placeholder}
           placeholderTextColor={token.textMute}
