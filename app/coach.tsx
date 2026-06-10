@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, Modal, StyleSheet, View } from "react-native";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
+import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
+import Reanimated, { useAnimatedStyle } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useAuth } from "@clerk/clerk-expo";
@@ -119,6 +120,20 @@ export default function CoachScreen() {
     },
   });
 
+  // Keyboard avoidance is driven directly by the keyboard's animated height
+  // instead of a KeyboardAvoidingView. KAV measures layout (onLayout) to size
+  // its padding, but the composer's safe-area padding animates DURING the
+  // keyboard transition and the multiline input grows while typing — each
+  // re-measure made KAV re-adjust, which showed up as an end-of-animation
+  // bump and per-keystroke bouncing. Padding straight off the keyboard frame
+  // gives one source of truth, perfectly in sync with the composer's own
+  // inset collapse (same animated value underneath).
+  const { height: keyboardHeight } = useReanimatedKeyboardAnimation();
+  const keyboardLift = useAnimatedStyle(() => ({
+    // height runs 0 → -keyboardHeight as the keyboard opens
+    paddingBottom: -keyboardHeight.value,
+  }));
+
   const handleClear = useCallback(() => {
     Alert.alert(
       "Clear conversation",
@@ -140,7 +155,7 @@ export default function CoachScreen() {
     // (global default) and SafeAreaView covers the top inset. (NUI-5 / NUI-10)
     <AssistantRuntimeProvider runtime={runtime}>
       <SafeAreaView style={styles.root} edges={["top"]}>
-        <KeyboardAvoidingView style={styles.flex} behavior="padding">
+        <Reanimated.View style={[styles.flex, keyboardLift]}>
           <CoachHeader
             showMenu={showMenu}
             onBackPress={() => router.back()}
@@ -180,7 +195,7 @@ export default function CoachScreen() {
               errorMessage={profileSaveError?.message}
             />
           </Modal>
-        </KeyboardAvoidingView>
+        </Reanimated.View>
       </SafeAreaView>
     </AssistantRuntimeProvider>
   );
