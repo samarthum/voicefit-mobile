@@ -87,3 +87,14 @@ export async function getHealthStepsForDate(date: string): Promise<number | null
     return null;
   }
 }
+
+export async function openHealthSettings(): Promise<boolean> {
+  const hc = await getHealthConnect();
+  if (!hc) return false;
+  try {
+    hc.openHealthConnectSettings();
+    return true;
+  } catch {
+    return false;
+  }
+}

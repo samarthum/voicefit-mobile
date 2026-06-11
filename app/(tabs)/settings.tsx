@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -26,6 +27,8 @@ import { color as token, font, radius as r } from "@/lib/tokens";
 import { isWebPreviewMode } from "@/lib/web-preview-mode";
 import { Icon } from "@/components/Icon";
 import { haptic } from "@/lib/haptics";
+import { useHealthAccess } from "@/hooks/use-health-steps";
+import { openHealthSettings } from "@/lib/health/steps";
 
 const COLORS = {
   bg: token.bg,
@@ -153,6 +156,41 @@ export default function SettingsScreen() {
   const hasEditedRef = useRef(false);
   const [showCoachProfile, setShowCoachProfile] = useState(false);
   const [coachProfileSaving, setCoachProfileSaving] = useState(false);
+  const health = useHealthAccess();
+
+  const healthValue = health.isConnecting
+    ? "Connecting…"
+    : health.access === "granted"
+      ? "Connected"
+      : health.access === "prompt"
+        ? "Set up"
+        : health.access === "unavailable"
+          ? "Unavailable"
+          : "…";
+
+  const handleHealthPress = async () => {
+    haptic.tap();
+    if (health.access === "granted") {
+      // Already connected; let the user manage sharing in the platform UI.
+      void openHealthSettings();
+      return;
+    }
+    const granted = await health.connect();
+    if (granted) {
+      haptic.success();
+      return;
+    }
+    Alert.alert(
+      `Connect ${health.sourceName}`,
+      Platform.OS === "ios"
+        ? "To share steps with VoiceFit, open the Health app and enable Steps under Sharing → Apps → VoiceFit."
+        : "To share steps with VoiceFit, grant the Steps permission to VoiceFit in Health Connect.",
+      [
+        { text: "Not now", style: "cancel" },
+        { text: "Open settings", onPress: () => void openHealthSettings() },
+      ],
+    );
+  };
 
   const { data: coachProfile } = useQuery<CoachProfileData | null>({
     queryKey: ["coach-profile"],
@@ -485,18 +523,50 @@ export default function SettingsScreen() {
 
         <Text style={styles.groupLabel}>Health Integration</Text>
         <View style={styles.groupCard}>
-          <SettingsRow
-            iconBackground={token.surface2}
-            icon={<HeartGlyph />}
-            label="Apple Health"
-            value="Coming Soon"
-          />
-          <SettingsRow
-            iconBackground={token.surface2}
-            icon={<HealthConnectGlyph />}
-            label="Health Connect"
-            value="Coming Soon"
-          />
+          {health.sourceName ? (
+            <Pressable
+              style={styles.settingRow}
+              onPress={() => void handleHealthPress()}
+              disabled={health.isConnecting || health.access === "unavailable"}
+              testID="settings-health-row"
+              accessibilityRole="button"
+              accessibilityLabel={`${health.sourceName}: ${healthValue}`}
+            >
+              <View style={styles.settingLeft}>
+                <View style={[styles.settingIcon, { backgroundColor: token.surface2 }]}>
+                  {Platform.OS === "ios" ? <HeartGlyph /> : <HealthConnectGlyph />}
+                </View>
+                <Text style={styles.settingLabel}>{health.sourceName}</Text>
+              </View>
+              <View style={styles.settingRight}>
+                <Text
+                  style={[
+                    styles.settingValue,
+                    health.access === "granted" ? styles.settingValueConnected : null,
+                  ]}
+                  selectable
+                >
+                  {healthValue}
+                </Text>
+                {health.access === "unavailable" ? null : <RowChevron />}
+              </View>
+            </Pressable>
+          ) : (
+            <>
+              <SettingsRow
+                iconBackground={token.surface2}
+                icon={<HeartGlyph />}
+                label="Apple Health"
+                value="Unavailable"
+              />
+              <SettingsRow
+                iconBackground={token.surface2}
+                icon={<HealthConnectGlyph />}
+                label="Health Connect"
+                value="Unavailable"
+              />
+            </>
+          )}
         </View>
 
         <Pressable style={styles.dangerButton} onPress={() => {
@@ -737,6 +807,11 @@ const styles = StyleSheet.create({
     fontFamily: font.sans[400],
     fontSize: 13,
     color: token.textMute,
+  },
+  settingValueConnected: {
+    color: token.positive,
+    fontFamily: font.sans[600],
+    fontWeight: "600",
   },
   dangerButton: {
     width: "100%",

@@ -1,11 +1,11 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AppState, Platform } from "react-native";
 import { useAuth } from "@clerk/clerk-expo";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as SecureStore from "expo-secure-store";
 import { apiRequest } from "@/lib/api-client";
 import { isWebPreviewMode } from "@/lib/web-preview-mode";
-import { shouldSyncSteps } from "@/lib/health/shared";
+import { shouldSyncSteps, type HealthStepsAccess } from "@/lib/health/shared";
 import {
   checkHealthStepsAccess,
   getHealthStepsForDate,
@@ -15,6 +15,7 @@ import {
 
 const AUTO_PROMPT_FLAG_KEY = "voicefit.health.steps.autoPrompted";
 const HEALTH_STEPS_QUERY_KEY = "health-steps";
+const HEALTH_ACCESS_QUERY_KEY = "health-access";
 
 /**
  * Resolves whether we can read steps from the device health store,
@@ -45,10 +46,19 @@ let ensureAccessPromise: Promise<boolean> | null = null;
 
 function ensureAccessOnce(): Promise<boolean> {
   if (!ensureAccessPromise) {
-    ensureAccessPromise = ensureHealthStepsAccess().catch(() => {
-      ensureAccessPromise = null;
-      return false;
-    });
+    // Only a positive result is cached: access can be granted later from the
+    // settings page (or the Health Connect app), so "no access" must be
+    // re-checked on the next read. The auto-prompt flag keeps the re-check
+    // from showing the permission UI again.
+    ensureAccessPromise = ensureHealthStepsAccess()
+      .then((granted) => {
+        if (!granted) ensureAccessPromise = null;
+        return granted;
+      })
+      .catch(() => {
+        ensureAccessPromise = null;
+        return false;
+      });
   }
   return ensureAccessPromise;
 }
@@ -88,6 +98,63 @@ export function useHealthSteps(date: string) {
   return {
     steps: query.data ?? null,
     isLoading: enabled && query.isLoading,
+    sourceName: healthSourceName,
+  };
+}
+
+/**
+ * Exposes the current health-store access state plus a `connect` action for
+ * the settings page, so users can set up (or retry) the integration whenever
+ * they like — including after declining the one-time dashboard prompt.
+ */
+export function useHealthAccess() {
+  const enabled =
+    (Platform.OS === "ios" || Platform.OS === "android") && !isWebPreviewMode();
+  const queryClient = useQueryClient();
+  const [isConnecting, setIsConnecting] = useState(false);
+
+  const query = useQuery<HealthStepsAccess>({
+    queryKey: [HEALTH_ACCESS_QUERY_KEY],
+    enabled,
+    queryFn: checkHealthStepsAccess,
+  });
+
+  // Re-check when the app foregrounds: the user may have flipped the
+  // permission in the Health app / Health Connect and switched back.
+  useEffect(() => {
+    if (!enabled) return;
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        void queryClient.invalidateQueries({ queryKey: [HEALTH_ACCESS_QUERY_KEY] });
+      }
+    });
+    return () => subscription.remove();
+  }, [enabled, queryClient]);
+
+  const connect = async (): Promise<boolean> => {
+    if (!enabled || isConnecting) return false;
+    setIsConnecting(true);
+    try {
+      // The user is connecting explicitly, so the one-time dashboard
+      // auto-prompt is no longer needed.
+      try {
+        await SecureStore.setItemAsync(AUTO_PROMPT_FLAG_KEY, "1");
+      } catch {
+        // Non-fatal; worst case the dashboard prompts once more.
+      }
+      const granted = await requestHealthStepsPermission();
+      await queryClient.invalidateQueries({ queryKey: [HEALTH_ACCESS_QUERY_KEY] });
+      await queryClient.invalidateQueries({ queryKey: [HEALTH_STEPS_QUERY_KEY] });
+      return granted;
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
+  return {
+    access: enabled ? (query.data ?? null) : ("unavailable" as const),
+    isConnecting,
+    connect,
     sourceName: healthSourceName,
   };
 }

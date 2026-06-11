@@ -19,3 +19,7 @@ export async function requestHealthStepsPermission(): Promise<boolean> {
 export async function getHealthStepsForDate(_date: string): Promise<number | null> {
   return null;
 }
+
+export async function openHealthSettings(): Promise<boolean> {
+  return false;
+}

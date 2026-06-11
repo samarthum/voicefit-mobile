@@ -16,6 +16,7 @@ lib/health/
 hooks/use-health-steps.ts
   useHealthSteps(date)       react-query read of the device step count
   useHealthStepsSync(...)    pushes device steps to POST /api/daily-metrics
+  useHealthAccess()          access state + connect() for the settings page
 ```
 
 Metro's platform extensions pick the right `steps.*.ts` file per platform.
@@ -28,6 +29,13 @@ Behavior on the dashboard (`app/(tabs)/dashboard.tsx`):
 - On first load the app asks for read permission **once per install**
   (flag stored in SecureStore). If the user declines, we never auto-prompt
   again; steps silently fall back to server data.
+- Settings → Health Integration shows the platform source (Apple Health /
+  Health Connect) with its state (Connected / Set up / Unavailable). Tapping
+  "Set up" re-runs the permission flow at any time; if the OS won't re-show
+  the prompt (already answered), an alert explains where to enable access
+  and offers to open the Health app / Health Connect settings. Tapping a
+  connected row opens the platform UI for managing sharing. The state
+  re-checks whenever the app returns to the foreground.
 - The steps card shows `max(device steps, server steps)` for the selected
   day. Device counts only grow during a day, so the larger value is fresher;
   taking the max also avoids clobbering a manually voice-logged count.

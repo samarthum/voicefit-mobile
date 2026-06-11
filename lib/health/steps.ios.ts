@@ -1,3 +1,4 @@
+import { Linking } from "react-native";
 import { localDayRange, type HealthStepsAccess } from "./shared";
 
 /**
@@ -59,5 +60,16 @@ export async function getHealthStepsForDate(date: string): Promise<number | null
     return typeof total === "number" ? Math.round(total) : null;
   } catch {
     return null;
+  }
+}
+
+export async function openHealthSettings(): Promise<boolean> {
+  // Read access is managed inside the Health app (Sharing → Apps → VoiceFit);
+  // there is no URL that deep-links to that screen directly.
+  try {
+    await Linking.openURL("x-apple-health://");
+    return true;
+  } catch {
+    return false;
   }
 }
