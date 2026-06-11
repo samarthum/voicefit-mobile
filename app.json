@@ -29,7 +29,8 @@
       "permissions": [
         "RECORD_AUDIO",
         "CAMERA",
-        "READ_MEDIA_IMAGES"
+        "READ_MEDIA_IMAGES",
+        "android.permission.health.READ_STEPS"
       ],
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
@@ -49,7 +50,25 @@
           "photosPermission": "VoiceFit needs photo library access to log meals from existing photos."
         }
       ],
-      "expo-audio"
+      "expo-audio",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 26
+          }
+        }
+      ],
+      "react-native-health-connect",
+      "./plugins/with-health-connect-permission-usage",
+      [
+        "@kingstinct/react-native-healthkit",
+        {
+          "NSHealthShareUsageDescription": "VoiceFit reads your step count from Apple Health to show your daily activity on the dashboard.",
+          "NSHealthUpdateUsageDescription": false,
+          "background": false
+        }
+      ]
     ],
     "extra": {
       "router": {},

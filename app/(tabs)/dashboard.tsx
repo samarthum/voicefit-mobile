@@ -32,6 +32,8 @@ import {
   metricValueFromPoint,
 } from "@/lib/trends";
 import { haptic } from "@/lib/haptics";
+import { useHealthSteps, useHealthStepsSync } from "@/hooks/use-health-steps";
+import { mergeSteps } from "@/lib/health/shared";
 import { Icon } from "@/components/Icon";
 import { formatCompact } from "@/lib/format";
 import {
@@ -241,7 +243,10 @@ export default function DashboardScreen() {
   const todayCaloriesConsumed = dashboard?.today.calories.consumed ?? 0;
   const todayCaloriesGoal = dashboard?.today.calories.goal ?? 0;
 
-  const todaySteps = dashboard?.today.steps.count ?? 0;
+  const serverSteps = dashboard?.today.steps.count ?? null;
+  const healthSteps = useHealthSteps(selectedDate);
+  useHealthStepsSync(selectedDate, healthSteps.steps, serverSteps, Boolean(dashboard));
+  const todaySteps = mergeSteps(healthSteps.steps, serverSteps) ?? 0;
   const todayStepsGoal = dashboard?.today.steps.goal ?? 0;
 
   const todayMacros = dashboard?.today.macros ?? null;
