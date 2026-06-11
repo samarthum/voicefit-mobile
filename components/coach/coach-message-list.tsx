@@ -19,8 +19,8 @@ import {
   type ThreadMessage,
   type ToolCallMessagePartProps,
 } from "@assistant-ui/react-native";
-import Markdown from "react-native-markdown-display";
 import Svg, { Path } from "react-native-svg";
+import { CoachMarkdown } from "@/components/coach/coach-markdown";
 import {
   getCoachToolLabel,
   getToolLineState,
@@ -216,9 +216,7 @@ function AssistantMessage() {
 
 function AssistantTextPart({ text }: TextMessagePartProps) {
   if (!text.trim()) return null;
-  // NUI-14: Markdown renders <Text> internally; the `selectable` style key on
-  // the body style is the supported path for long-press selection.
-  return <Markdown style={markdownStyles}>{text}</Markdown>;
+  return <CoachMarkdown text={text} />;
 }
 
 function AssistantEmptyPart(_props: EmptyMessagePartProps) {
@@ -338,37 +336,6 @@ function CheckGlyph() {
     </Svg>
   );
 }
-
-const markdownStyles = {
-  body: {
-    fontFamily: font.sans[400],
-    fontSize: 15,
-    lineHeight: 24,
-    color: token.text,
-    letterSpacing: -0.07,
-  },
-  strong: {
-    fontFamily: font.sans[600],
-    fontWeight: "600" as const,
-    color: token.text,
-  },
-  bullet_list_icon: { fontSize: 14, color: token.text },
-  heading2: {
-    fontFamily: font.sans[600],
-    fontSize: 17,
-    fontWeight: "600" as const,
-    marginTop: 8,
-    color: token.text,
-  },
-  heading3: {
-    fontFamily: font.sans[600],
-    fontSize: 16,
-    fontWeight: "600" as const,
-    marginTop: 6,
-    color: token.text,
-  },
-  paragraph: { marginTop: 0, marginBottom: 8 },
-};
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
