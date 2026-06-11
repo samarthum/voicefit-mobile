@@ -8,7 +8,8 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { useEffect } from "react";
-import { ActivityIndicator, AppState, Pressable, StatusBar, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, AppState, Pressable, StyleSheet, Text, View } from "react-native";
+import { StatusBar } from "expo-status-bar";
 import { useFonts } from "expo-font";
 import {
   InterTight_300Light,
@@ -128,7 +129,12 @@ export default function RootLayout() {
                   CommandCenterProvider". */}
               <CommandCenterProvider>
                 <BottomSheetModalProvider>
-                  <StatusBar barStyle="dark-content" backgroundColor={color.bg} />
+                  {/* expo-status-bar (not RN StatusBar): under Android
+                      edge-to-edge the RN `backgroundColor` is a no-op and the
+                      system paints a dark scrim in dark mode. `style="dark"`
+                      pins dark icons over a transparent bar so the app canvas
+                      (color.bg) shows through and matches the in-app header. */}
+                  <StatusBar style="dark" />
                   <Stack
                     screenOptions={{
                       headerShown: false,
