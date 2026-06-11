@@ -515,6 +515,7 @@ export default function SettingsScreen() {
         hint="Log a meal, lift, or weight…"
         onPress={() => cc.open()}
         onMicPress={() => cc.startRecording()}
+        overTabBar
       />
     </SafeAreaView>
   );
@@ -531,7 +532,8 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: 20,
     paddingTop: 8,
-    paddingBottom: 96,
+    // Clear the floating command bar docked above the native tab bar.
+    paddingBottom: 210,
   },
   pageEyebrow: {
     fontFamily: font.sans[600],

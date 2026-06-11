@@ -464,6 +464,7 @@ export default function WorkoutsScreen() {
         hint="80 kilos for 10 reps…"
         onPress={() => cc.open()}
         onMicPress={() => cc.startRecording()}
+        overTabBar
       />
     </SafeAreaView>
   );
@@ -477,7 +478,8 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: 20,
     paddingTop: 8,
-    paddingBottom: 96,
+    // Clear the floating command bar docked above the native tab bar.
+    paddingBottom: 210,
   },
   header: {
     flexDirection: "row",

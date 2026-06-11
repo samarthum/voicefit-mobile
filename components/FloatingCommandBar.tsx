@@ -14,6 +14,11 @@ function PulseDot() {
   );
 }
 
+// Native Material 3 / UITabBar content height the bar must clear when it
+// floats over the native bottom tabs. Mirrors the prototype's `frame.tabBar`
+// token (the command center docks at `bottom: 83px`, just above the tab bar).
+export const TAB_BAR_HEIGHT = 83;
+
 type FloatingCommandBarProps = {
   hint: string;
   onPress: () => void;
@@ -23,10 +28,16 @@ type FloatingCommandBarProps = {
   /**
    * Add the bottom safe-area inset to the bar's offset. Only needed on
    * full-bleed screens (no tab bar) so the bar clears the home indicator.
-   * Tab screens sit above the tab bar — which already consumes the bottom
-   * inset — so they leave this off and dock flush against the nav.
    */
   safeAreaBottom?: boolean;
+  /**
+   * The screen sits over the native bottom tab bar. The native tab content
+   * renders full-height *behind* the tab bar (react-native-screens lays it out
+   * at 100% height), so a bar pinned to `bottom: 0` is hidden underneath the
+   * tab bar. Lift it by the tab-bar height + the bottom safe-area inset (which
+   * the native tab bar itself consumes) so it docks just above the nav.
+   */
+  overTabBar?: boolean;
 };
 
 export function FloatingCommandBar({
@@ -36,11 +47,15 @@ export function FloatingCommandBar({
   testID,
   bottomOffset = 0,
   safeAreaBottom = false,
+  overTabBar = false,
 }: FloatingCommandBarProps) {
   const insets = useSafeAreaInsets();
+  const bottom = overTabBar
+    ? TAB_BAR_HEIGHT + insets.bottom + bottomOffset
+    : bottomOffset + (safeAreaBottom ? insets.bottom : 0);
   return (
     <View
-      style={[styles.wrap, { bottom: bottomOffset + (safeAreaBottom ? insets.bottom : 0) }]}
+      style={[styles.wrap, { bottom }]}
       pointerEvents="box-none"
     >
       <View style={styles.bar}>
