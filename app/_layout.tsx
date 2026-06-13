@@ -1,6 +1,8 @@
 import "@/polyfills";
 import { ClerkProvider } from "@clerk/clerk-expo";
-import { focusManager, QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { focusManager } from "@tanstack/react-query";
+import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
+import { queryClient, persistOptions } from "@/lib/query-client";
 import * as SecureStore from "expo-secure-store";
 import { Stack } from "expo-router";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -45,17 +47,6 @@ const tokenCache = {
     }
   },
 };
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      gcTime: 30 * 60 * 1000,
-      refetchOnReconnect: true,
-      retry: 1,
-      staleTime: 60 * 1000,
-    },
-  },
-});
 
 export function ErrorBoundary({ error, retry }: { error: Error; retry: () => void }) {
   return (
@@ -119,7 +110,7 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <KeyboardProvider>
         <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
-          <QueryClientProvider client={queryClient}>
+          <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
             <SafeAreaProvider>
               {/* CommandCenterProvider must sit ABOVE BottomSheetModalProvider:
                   gorhom renders sheet content through @gorhom/portal into a host
@@ -168,7 +159,7 @@ export default function RootLayout() {
                 </BottomSheetModalProvider>
               </CommandCenterProvider>
             </SafeAreaProvider>
-          </QueryClientProvider>
+          </PersistQueryClientProvider>
         </ClerkProvider>
       </KeyboardProvider>
     </GestureHandlerRootView>

@@ -21,6 +21,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { FloatingCommandBar } from "@/components/FloatingCommandBar";
 import { useCommandCenter } from "@/components/command-center";
 import { apiRequest } from "@/lib/api-client";
+import { asyncStoragePersister } from "@/lib/query-client";
 import { color as token, font, radius as r } from "@/lib/tokens";
 import { isWebPreviewMode } from "@/lib/web-preview-mode";
 import { Icon } from "@/components/Icon";
@@ -502,7 +503,18 @@ export default function SettingsScreen() {
           haptic.press();
           Alert.alert("Sign Out", "Are you sure you want to sign out?", [
             { text: "Cancel", style: "cancel" },
-            { text: "Sign Out", style: "destructive", onPress: () => void signOut() },
+            {
+              text: "Sign Out",
+              style: "destructive",
+              onPress: () => {
+                // Drop both the in-memory and persisted caches so the next
+                // account signed in on this device never sees the previous
+                // user's rehydrated dashboard.
+                queryClient.clear();
+                void asyncStoragePersister.removeClient();
+                void signOut();
+              },
+            },
           ]);
         }}>
           <Text style={styles.dangerButtonText}>Sign Out</Text>
