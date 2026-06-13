@@ -8,6 +8,7 @@ export { VoiceRing, type VoiceRingState, type VoiceRingProps } from "@/component
 export { Waveform, type WaveformProps } from "@/components/pulse/Waveform";
 export { LoadingBlock } from "@/components/pulse/LoadingSkeleton";
 export { OfflineBanner } from "@/components/pulse/OfflineBanner";
+export { TopLoadingBar } from "@/components/pulse/TopLoadingBar";
 export { UndoToast } from "@/components/pulse/UndoToast";
 export { EmptyState, type EmptyStateProps } from "@/components/pulse/EmptyState";
 export {
