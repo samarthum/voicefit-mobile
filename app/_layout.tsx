@@ -27,6 +27,7 @@ import {
   GeistMono_600SemiBold,
 } from "@expo-google-fonts/geist-mono";
 import { CommandCenterProvider, CommandCenterOverlay } from "@/components/command-center";
+import { TopLoadingBar } from "@/components/pulse";
 import { color } from "@/lib/tokens";
 
 const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
@@ -156,6 +157,9 @@ export default function RootLayout() {
                     <Stack.Screen name="+not-found" />
                   </Stack>
                   <CommandCenterOverlay />
+                  {/* Global background-fetch indicator. Sits last so it paints
+                      above every screen, and reads useIsFetching() app-wide. */}
+                  <TopLoadingBar />
                 </BottomSheetModalProvider>
               </CommandCenterProvider>
             </SafeAreaProvider>
