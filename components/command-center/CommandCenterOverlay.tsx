@@ -239,7 +239,11 @@ export function CommandCenterOverlay() {
         backgroundStyle={styles.sheetBackground}
         handleStyle={styles.sheetHandleRow}
         handleIndicatorStyle={styles.sheetHandle}
-        keyboardBehavior="interactive"
+        // Review uses a fixed snap, so interactive lift works. The dynamically
+        // sized input states (idle / photo) can't be lifted far enough by
+        // interactive on edge-to-edge Android, so they fill the parent when the
+        // keyboard appears and let the scrollable body keep the input visible.
+        keyboardBehavior={isReview ? "interactive" : "fillParent"}
         keyboardBlurBehavior="restore"
         android_keyboardInputMode="adjustResize"
       >

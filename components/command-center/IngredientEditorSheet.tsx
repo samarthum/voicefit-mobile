@@ -68,7 +68,9 @@ export function IngredientEditorSheet({
       backgroundStyle={styles.background}
       handleStyle={styles.handleRow}
       handleIndicatorStyle={styles.handle}
-      keyboardBehavior="interactive"
+      // Dynamically sized sheet with text inputs: fill the parent on keyboard
+      // so the name/grams fields stay above it on edge-to-edge Android.
+      keyboardBehavior="fillParent"
       keyboardBlurBehavior="restore"
       android_keyboardInputMode="adjustResize"
     >
