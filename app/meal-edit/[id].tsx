@@ -9,6 +9,8 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useAuth } from "@clerk/clerk-expo";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -428,7 +430,9 @@ export default function MealEditScreen() {
   );
 
   return (
-    <View style={styles.root}>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <BottomSheetModalProvider>
+        <View style={styles.root}>
       <Stack.Screen
         options={{
           headerShown: true,
@@ -521,7 +525,9 @@ export default function MealEditScreen() {
         onSubmitEdit={onSubmitEdit}
         onClose={() => setEditorMode(null)}
       />
-    </View>
+        </View>
+      </BottomSheetModalProvider>
+    </GestureHandlerRootView>
   );
 }
 
