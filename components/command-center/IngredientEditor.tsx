@@ -1,13 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
+import { BottomSheetTextInput, BottomSheetView } from "@gorhom/bottom-sheet";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { MealIngredient } from "@voicefit/contracts/types";
 import { color as t, font } from "@/lib/tokens";
@@ -33,8 +32,10 @@ interface IngredientEditorProps {
 }
 
 /**
- * Bottom sheet (rendered as a modal overlay by the parent) for editing or
- * adding a single ingredient row in the meal review draft. Dual-purpose:
+ * Body of the ingredient add/edit sheet. Rendered as content inside a gorhom
+ * `BottomSheetModal` by the overlay — so the sheet chrome (rounded top, grab
+ * handle, backdrop, swipe-to-dismiss) and keyboard avoidance come from gorhom,
+ * not a hand-rolled RN Modal. Dual-purpose:
  *
  *  - Add: blank fields, calls the LLM to fetch macros for the entered name.
  *  - Edit: pre-fills name + grams. If only grams changed we scale locally
@@ -42,7 +43,7 @@ interface IngredientEditorProps {
  *    /api/interpret/ingredient.
  *
  * Stays open on error with an inline message + Retry. Closes only on success
- * or explicit Cancel.
+ * or explicit Cancel / swipe-down.
  */
 export function IngredientEditor({
   mode,
@@ -58,6 +59,13 @@ export function IngredientEditor({
   );
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // The sheet can be swiped away mid-save; guard async setState so a dismiss
+  // during the network call doesn't update an unmounted component.
+  const isMountedRef = useRef(true);
+  useEffect(() => () => {
+    isMountedRef.current = false;
+  }, []);
 
   // Clear stale errors when the user types again so they don't see an outdated
   // failure from the previous attempt.
@@ -104,9 +112,9 @@ export function IngredientEditor({
         onSubmitEdit(result);
       }
     } catch (error) {
-      setErrorMessage(getErrorMessage(error));
+      if (isMountedRef.current) setErrorMessage(getErrorMessage(error));
     } finally {
-      setIsSaving(false);
+      if (isMountedRef.current) setIsSaving(false);
     }
   };
 
@@ -114,131 +122,77 @@ export function IngredientEditor({
   const title = mode.kind === "add" ? "Add ingredient" : "Edit ingredient";
 
   return (
-    <View style={styles.root}>
-      <Pressable
-        style={styles.backdrop}
-        onPress={() => {
-          if (!isSaving) onCancel();
-        }}
-        testID="cc-ingredient-editor-backdrop"
-        accessibilityRole="button"
-        accessibilityLabel="Dismiss ingredient editor"
-      />
-      <KeyboardAvoidingView
-        behavior="padding"
-        style={styles.kav}
-      >
-        <View
-          style={[
-            styles.sheet,
-            { paddingBottom: insets.bottom + 22 },
-          ]}
+    <BottomSheetView style={[styles.sheet, { paddingBottom: insets.bottom + 22 }]}>
+      <Text style={styles.title}>{title}</Text>
+
+      <View style={styles.fieldRow}>
+        <Text style={styles.label}>NAME</Text>
+        <BottomSheetTextInput
+          style={styles.input}
+          value={name}
+          onChangeText={setName}
+          placeholder="e.g. Paneer"
+          placeholderTextColor={t.textMute}
+          autoFocus
+          autoCapitalize="sentences"
+          autoCorrect
+          editable={!isSaving}
+          testID="cc-ingredient-editor-name"
+        />
+      </View>
+
+      <View style={styles.fieldRow}>
+        <Text style={styles.label}>GRAMS</Text>
+        <BottomSheetTextInput
+          style={[styles.input, !gramsValid ? styles.inputError : null]}
+          value={gramsText}
+          onChangeText={(v) => setGramsText(v.replace(/[^0-9.]/g, ""))}
+          placeholder="Optional"
+          placeholderTextColor={t.textMute}
+          keyboardType="decimal-pad"
+          editable={!isSaving}
+          testID="cc-ingredient-editor-grams"
+        />
+      </View>
+
+      {errorMessage ? (
+        <Text style={styles.errorText} testID="cc-ingredient-editor-error" selectable>
+          {errorMessage}
+        </Text>
+      ) : null}
+
+      <View style={styles.actions}>
+        <Pressable
+          style={styles.cancelButton}
+          onPress={onCancel}
+          disabled={isSaving}
+          testID="cc-ingredient-editor-cancel"
         >
-          <View style={styles.handleRow}>
-            <View style={styles.handle} />
-          </View>
-
-          <Text style={styles.title}>{title}</Text>
-
-          <View style={styles.fieldRow}>
-            <Text style={styles.label}>NAME</Text>
-            <TextInput
-              style={styles.input}
-              value={name}
-              onChangeText={setName}
-              placeholder="e.g. Paneer"
-              placeholderTextColor={t.textMute}
-              autoFocus
-              autoCapitalize="sentences"
-              autoCorrect
-              editable={!isSaving}
-              testID="cc-ingredient-editor-name"
-            />
-          </View>
-
-          <View style={styles.fieldRow}>
-            <Text style={styles.label}>GRAMS</Text>
-            <TextInput
-              style={[styles.input, !gramsValid ? styles.inputError : null]}
-              value={gramsText}
-              onChangeText={(v) => setGramsText(v.replace(/[^0-9.]/g, ""))}
-              placeholder="Optional"
-              placeholderTextColor={t.textMute}
-              keyboardType="decimal-pad"
-              editable={!isSaving}
-              testID="cc-ingredient-editor-grams"
-            />
-          </View>
-
-          {errorMessage ? (
-            <Text style={styles.errorText} testID="cc-ingredient-editor-error" selectable>
-              {errorMessage}
+          <Text style={styles.cancelText}>Cancel</Text>
+        </Pressable>
+        <Pressable
+          style={[styles.submitButton, !canSubmit ? styles.submitButtonDisabled : null]}
+          onPress={() => void handleSubmit()}
+          disabled={!canSubmit}
+          testID="cc-ingredient-editor-submit"
+        >
+          {isSaving ? (
+            <ActivityIndicator color={t.accentInk} />
+          ) : (
+            <Text style={styles.submitText}>
+              {errorMessage ? "Retry" : submitLabel}
             </Text>
-          ) : null}
-
-          <View style={styles.actions}>
-            <Pressable
-              style={styles.cancelButton}
-              onPress={onCancel}
-              disabled={isSaving}
-              testID="cc-ingredient-editor-cancel"
-            >
-              <Text style={styles.cancelText}>Cancel</Text>
-            </Pressable>
-            <Pressable
-              style={[styles.submitButton, !canSubmit ? styles.submitButtonDisabled : null]}
-              onPress={() => void handleSubmit()}
-              disabled={!canSubmit}
-              testID="cc-ingredient-editor-submit"
-            >
-              {isSaving ? (
-                <ActivityIndicator color={t.accentInk} />
-              ) : (
-                <Text style={styles.submitText}>
-                  {errorMessage ? "Retry" : submitLabel}
-                </Text>
-              )}
-            </Pressable>
-          </View>
-        </View>
-      </KeyboardAvoidingView>
-    </View>
+          )}
+        </Pressable>
+      </View>
+    </BottomSheetView>
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: "flex-end",
-  },
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.55)",
-  },
-  kav: {
-    width: "100%",
-  },
   sheet: {
-    backgroundColor: t.bg,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    borderCurve: "continuous",
     paddingHorizontal: 22,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderColor: t.line2,
-  },
-  handleRow: {
-    alignItems: "center",
-    paddingTop: 6,
-    paddingBottom: 14,
-  },
-  handle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    borderCurve: "continuous",
-    backgroundColor: t.line2,
+    paddingTop: 4,
   },
   title: {
     fontFamily: font.sans[600],

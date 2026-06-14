@@ -2,13 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useAuth } from "@clerk/clerk-expo";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -24,7 +24,8 @@ import {
 } from "@/lib/meal-status";
 import { color as t, font, radius as r } from "@/lib/tokens";
 import { haptic } from "@/lib/haptics";
-import { IngredientEditor, type IngredientEditorMode } from "@/components/command-center/IngredientEditor";
+import { type IngredientEditorMode } from "@/components/command-center/IngredientEditor";
+import { IngredientEditorSheet } from "@/components/command-center/IngredientEditorSheet";
 import {
   generateIngredientId,
   recalculateMealTotals,
@@ -413,6 +414,8 @@ export default function MealEditScreen() {
     }
   };
 
+  const insets = useSafeAreaInsets();
+
   const HeaderDone = () => (
     <Pressable
       onPress={handleClose}
@@ -453,72 +456,71 @@ export default function MealEditScreen() {
       ) : null}
 
       {meal ? (
-        <ScrollView
-          style={styles.scroll}
-          contentContainerStyle={styles.scrollContent}
-          contentInsetAdjustmentBehavior="automatic"
-          keyboardDismissMode="on-drag"
-          keyboardShouldPersistTaps="handled"
-        >
-          <StatusNotice status={mealStatus} message={meal.errorMessage} />
+        <>
+          <ScrollView
+            style={styles.scroll}
+            contentContainerStyle={styles.scrollContent}
+            contentInsetAdjustmentBehavior="automatic"
+            keyboardDismissMode="on-drag"
+            keyboardShouldPersistTaps="handled"
+          >
+            <StatusNotice status={mealStatus} message={meal.errorMessage} />
 
-          <View style={styles.summaryCard}>
-            <MealSummaryCard
-              description={meal.description}
-              eatenAt={meal.eatenAt}
-              mealType={editedMealType ?? meal.mealType}
-              displayCalories={displayCalories}
-              isPendingEstimate={isPendingEstimate}
-              macros={displayTotals.macros}
-              onSelectMealType={(type) => {
-                setEditedMealType(type);
-                if (type !== meal.mealType) setIsDirty(true);
-              }}
-            />
+            <View style={styles.summaryCard}>
+              <MealSummaryCard
+                description={meal.description}
+                eatenAt={meal.eatenAt}
+                mealType={editedMealType ?? meal.mealType}
+                displayCalories={displayCalories}
+                isPendingEstimate={isPendingEstimate}
+                macros={displayTotals.macros}
+                onSelectMealType={(type) => {
+                  setEditedMealType(type);
+                  if (type !== meal.mealType) setIsDirty(true);
+                }}
+              />
 
-            <IngredientList
-              ingredients={ingredients}
-              isPendingEstimate={isPendingEstimate}
-              onAdd={() => setEditorMode({ kind: "add" })}
-              onEdit={(ingredient) => setEditorMode({ kind: "edit", ingredient })}
-              onLongPress={handleLongPressIngredient}
+              <IngredientList
+                ingredients={ingredients}
+                isPendingEstimate={isPendingEstimate}
+                onAdd={() => setEditorMode({ kind: "add" })}
+                onEdit={(ingredient) => setEditorMode({ kind: "edit", ingredient })}
+                onLongPress={handleLongPressIngredient}
+              />
+            </View>
+
+            <Text style={styles.hint}>
+              Tap a row to edit · Long-press to delete
+            </Text>
+
+            {errorMessage ? <Text style={styles.errorText} selectable>{errorMessage}</Text> : null}
+          </ScrollView>
+
+          {/* Pinned footer — stays reachable and above the safe area no matter
+              how long the ingredient list grows. NOTE: this screen is a native
+              form-sheet, where useSafeAreaInsets().bottom reports 0 (the sheet
+              runs edge-to-edge but the JS context sees no inset), so guard with
+              a home-indicator minimum or the buttons fall under it. */}
+          <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 34) + 12 }]}>
+            <MealActionsBar
+              primaryLabel={primaryActionLabel}
+              primaryDisabled={primaryActionDisabled}
+              primaryPending={primaryActionPending}
+              deletePending={deleteMutation.isPending}
+              onPrimaryAction={handlePrimaryAction}
+              onDelete={handleDelete}
             />
           </View>
-
-          <Text style={styles.hint}>
-            Tap a row to edit · Long-press to delete
-          </Text>
-
-          {errorMessage ? <Text style={styles.errorText} selectable>{errorMessage}</Text> : null}
-
-          <MealActionsBar
-            primaryLabel={primaryActionLabel}
-            primaryDisabled={primaryActionDisabled}
-            primaryPending={primaryActionPending}
-            deletePending={deleteMutation.isPending}
-            onPrimaryAction={handlePrimaryAction}
-            onDelete={handleDelete}
-          />
-        </ScrollView>
+        </>
       ) : null}
 
-      {editorMode ? (
-        <Modal
-          visible
-          transparent
-          animationType="fade"
-          statusBarTranslucent
-          onRequestClose={() => setEditorMode(null)}
-        >
-          <IngredientEditor
-            mode={editorMode}
-            fetchInterpreted={editorFetch}
-            onSubmitAdd={onSubmitAdd}
-            onSubmitEdit={onSubmitEdit}
-            onCancel={() => setEditorMode(null)}
-          />
-        </Modal>
-      ) : null}
+      <IngredientEditorSheet
+        mode={editorMode}
+        fetchInterpreted={editorFetch}
+        onSubmitAdd={onSubmitAdd}
+        onSubmitEdit={onSubmitEdit}
+        onClose={() => setEditorMode(null)}
+      />
     </View>
   );
 }
@@ -582,8 +584,15 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: 20,
     paddingTop: 18,
-    paddingBottom: 64,
+    paddingBottom: 24,
     gap: 12,
+  },
+  footer: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    backgroundColor: t.bg,
+    borderTopWidth: 1,
+    borderTopColor: t.line,
   },
   summaryCard: {
     backgroundColor: t.surface,
