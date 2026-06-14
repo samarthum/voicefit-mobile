@@ -497,8 +497,11 @@ export default function MealEditScreen() {
           </ScrollView>
 
           {/* Pinned footer — stays reachable and above the safe area no matter
-              how long the ingredient list grows. */}
-          <View style={[styles.footer, { paddingBottom: insets.bottom + 12 }]}>
+              how long the ingredient list grows. NOTE: this screen is a native
+              form-sheet, where useSafeAreaInsets().bottom reports 0 (the sheet
+              runs edge-to-edge but the JS context sees no inset), so guard with
+              a home-indicator minimum or the buttons fall under it. */}
+          <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 34) + 12 }]}>
             <MealActionsBar
               primaryLabel={primaryActionLabel}
               primaryDisabled={primaryActionDisabled}
