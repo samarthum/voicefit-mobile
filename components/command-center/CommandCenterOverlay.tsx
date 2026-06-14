@@ -122,18 +122,41 @@ export function CommandCenterOverlay() {
     [isReview],
   );
 
+  // The editor sheet can always be dismissed by tapping its backdrop.
+  const renderEditorBackdrop = useCallback(
+    (props: BottomSheetBackdropProps) => (
+      <BottomSheetBackdrop
+        {...props}
+        appearsOnIndex={0}
+        disappearsOnIndex={-1}
+        opacity={0.55}
+        pressBehavior="close"
+      />
+    ),
+    [],
+  );
+
   // Ingredient editor sheet state — local to the overlay because nothing else
-  // needs to read it. The editor mounts on top of the meal review sheet so
-  // the user keeps the meal context visible behind a darkened backdrop.
+  // needs to read it. The editor mounts as a second gorhom sheet on top of the
+  // meal review so the user keeps the meal context visible behind a darkened
+  // backdrop.
+  const editorSheetRef = useRef<BottomSheetModal>(null);
   const [ingredientEditor, setIngredientEditor] = useState<IngredientEditorMode | null>(null);
 
   // Auto-dismiss the editor if the review sheet itself goes away (user
-  // discarded, navigated, etc.) so we don't leave a stale modal mounted.
+  // discarded, navigated, etc.) so we don't leave a stale editor mounted.
   useEffect(() => {
     if (commandState !== "cc_review_meal" && ingredientEditor) {
       setIngredientEditor(null);
     }
   }, [commandState, ingredientEditor]);
+
+  // Drive the editor sheet's presentation from local state; onDismiss syncs
+  // back to null for user-initiated swipe / backdrop dismissals.
+  useEffect(() => {
+    if (ingredientEditor) editorSheetRef.current?.present();
+    else editorSheetRef.current?.dismiss();
+  }, [ingredientEditor]);
 
   const openAddIngredientEditor = () => setIngredientEditor({ kind: "add" });
   const openEditIngredientEditor = (ingredient: MealReviewIngredient) =>
@@ -253,16 +276,25 @@ export function CommandCenterOverlay() {
         </Modal>
       ) : null}
 
-      {/* IngredientEditor remains an RN Modal (already keyboard-fixed
-          separately). It mounts above the gorhom sheet during meal review. */}
-      {ingredientEditor && commandState === "cc_review_meal" ? (
-        <Modal
-          visible
-          transparent
-          animationType="fade"
-          statusBarTranslucent
-          onRequestClose={closeIngredientEditor}
-        >
+      {/* Ingredient editor — a second gorhom sheet stacked over the meal
+          review (its own backdrop darkens the review behind it). gorhom owns
+          the chrome + keyboard avoidance; present/dismiss is driven from the
+          `ingredientEditor` state via the effect above. */}
+      <BottomSheetModal
+        ref={editorSheetRef}
+        onDismiss={() => setIngredientEditor(null)}
+        enableDynamicSizing
+        maxDynamicContentSize={maxDynamicContentSize}
+        enablePanDownToClose
+        backdropComponent={renderEditorBackdrop}
+        backgroundStyle={styles.sheetBackground}
+        handleStyle={styles.sheetHandleRow}
+        handleIndicatorStyle={styles.sheetHandle}
+        keyboardBehavior="interactive"
+        keyboardBlurBehavior="restore"
+        android_keyboardInputMode="adjustResize"
+      >
+        {ingredientEditor ? (
           <IngredientEditor
             mode={ingredientEditor}
             fetchInterpreted={(name, grams) =>
@@ -283,8 +315,12 @@ export function CommandCenterOverlay() {
             }}
             onCancel={closeIngredientEditor}
           />
-        </Modal>
-      ) : null}
+        ) : (
+          <BottomSheetView style={styles.sheetEmpty}>
+            <View />
+          </BottomSheetView>
+        )}
+      </BottomSheetModal>
       {toastNode}
     </>
   );
