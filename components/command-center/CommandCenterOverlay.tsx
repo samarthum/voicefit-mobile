@@ -18,7 +18,8 @@ import {
   BottomSheetView,
 } from "@gorhom/bottom-sheet";
 import { useCommandCenterOverlay } from "@/components/command-center/CommandCenterProvider";
-import { IngredientEditor, type IngredientEditorMode } from "@/components/command-center/IngredientEditor";
+import { type IngredientEditorMode } from "@/components/command-center/IngredientEditor";
+import { IngredientEditorSheet } from "@/components/command-center/IngredientEditorSheet";
 import type { MealReviewIngredient } from "@/components/command-center/types";
 import { SheetShell } from "@/components/command-center/states/SheetShell";
 import { IdleState } from "@/components/command-center/states/IdleState";
@@ -122,25 +123,10 @@ export function CommandCenterOverlay() {
     [isReview],
   );
 
-  // The editor sheet can always be dismissed by tapping its backdrop.
-  const renderEditorBackdrop = useCallback(
-    (props: BottomSheetBackdropProps) => (
-      <BottomSheetBackdrop
-        {...props}
-        appearsOnIndex={0}
-        disappearsOnIndex={-1}
-        opacity={0.55}
-        pressBehavior="close"
-      />
-    ),
-    [],
-  );
-
   // Ingredient editor sheet state — local to the overlay because nothing else
   // needs to read it. The editor mounts as a second gorhom sheet on top of the
   // meal review so the user keeps the meal context visible behind a darkened
   // backdrop.
-  const editorSheetRef = useRef<BottomSheetModal>(null);
   const [ingredientEditor, setIngredientEditor] = useState<IngredientEditorMode | null>(null);
 
   // Auto-dismiss the editor if the review sheet itself goes away (user
@@ -150,13 +136,6 @@ export function CommandCenterOverlay() {
       setIngredientEditor(null);
     }
   }, [commandState, ingredientEditor]);
-
-  // Drive the editor sheet's presentation from local state; onDismiss syncs
-  // back to null for user-initiated swipe / backdrop dismissals.
-  useEffect(() => {
-    if (ingredientEditor) editorSheetRef.current?.present();
-    else editorSheetRef.current?.dismiss();
-  }, [ingredientEditor]);
 
   const openAddIngredientEditor = () => setIngredientEditor({ kind: "add" });
   const openEditIngredientEditor = (ingredient: MealReviewIngredient) =>
@@ -276,51 +255,28 @@ export function CommandCenterOverlay() {
         </Modal>
       ) : null}
 
-      {/* Ingredient editor — a second gorhom sheet stacked over the meal
-          review (its own backdrop darkens the review behind it). gorhom owns
-          the chrome + keyboard avoidance; present/dismiss is driven from the
-          `ingredientEditor` state via the effect above. */}
-      <BottomSheetModal
-        ref={editorSheetRef}
-        onDismiss={() => setIngredientEditor(null)}
-        enableDynamicSizing
-        maxDynamicContentSize={maxDynamicContentSize}
-        enablePanDownToClose
-        backdropComponent={renderEditorBackdrop}
-        backgroundStyle={styles.sheetBackground}
-        handleStyle={styles.sheetHandleRow}
-        handleIndicatorStyle={styles.sheetHandle}
-        keyboardBehavior="interactive"
-        keyboardBlurBehavior="restore"
-        android_keyboardInputMode="adjustResize"
-      >
-        {ingredientEditor ? (
-          <IngredientEditor
-            mode={ingredientEditor}
-            fetchInterpreted={(name, grams) =>
-              dispatch({ type: "ingredient.lookup", name, grams }) as Promise<MealIngredient>
-            }
-            onSubmitAdd={(ingredient) => {
-              dispatch({ type: "ingredient.add", ingredient });
-              closeIngredientEditor();
-            }}
-            onSubmitEdit={(replacement) => {
-              if (ingredientEditor.kind !== "edit") return;
-              const id = ingredientEditor.ingredient.id;
-              // grams-only edit returns a MealReviewIngredient (already scaled
-              // locally); rename returns an authoritative MealIngredient from
-              // the LLM. Either works as a replacement input.
-              dispatch({ type: "ingredient.replace", id, replacement });
-              closeIngredientEditor();
-            }}
-            onCancel={closeIngredientEditor}
-          />
-        ) : (
-          <BottomSheetView style={styles.sheetEmpty}>
-            <View />
-          </BottomSheetView>
-        )}
-      </BottomSheetModal>
+      {/* Ingredient editor — a gorhom sheet stacked over the meal review,
+          shared with the meal-edit screen via IngredientEditorSheet. */}
+      <IngredientEditorSheet
+        mode={ingredientEditor}
+        fetchInterpreted={(name, grams) =>
+          dispatch({ type: "ingredient.lookup", name, grams }) as Promise<MealIngredient>
+        }
+        onSubmitAdd={(ingredient) => {
+          dispatch({ type: "ingredient.add", ingredient });
+          closeIngredientEditor();
+        }}
+        onSubmitEdit={(replacement) => {
+          if (ingredientEditor?.kind !== "edit") return;
+          const id = ingredientEditor.ingredient.id;
+          // grams-only edit returns a MealReviewIngredient (already scaled
+          // locally); rename returns an authoritative MealIngredient from the
+          // LLM. Either works as a replacement input.
+          dispatch({ type: "ingredient.replace", id, replacement });
+          closeIngredientEditor();
+        }}
+        onClose={closeIngredientEditor}
+      />
       {toastNode}
     </>
   );
