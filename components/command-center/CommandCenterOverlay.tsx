@@ -12,6 +12,8 @@ import {
 import {
   BottomSheetBackdrop,
   type BottomSheetBackdropProps,
+  BottomSheetFooter,
+  type BottomSheetFooterProps,
   BottomSheetModal,
   BottomSheetView,
 } from "@gorhom/bottom-sheet";
@@ -25,6 +27,7 @@ import { RecordingState } from "@/components/command-center/states/RecordingStat
 import { InterpretingState } from "@/components/command-center/states/InterpretingState";
 import { MealReviewState } from "@/components/command-center/states/MealReviewState";
 import { WorkoutReviewState } from "@/components/command-center/states/WorkoutReviewState";
+import { ReviewActionsFooter } from "@/components/command-center/states/ReviewActionsFooter";
 import { SavingState } from "@/components/command-center/states/SavingState";
 import { ErrorState } from "@/components/command-center/states/ErrorState";
 import { SavedToastState } from "@/components/command-center/states/SavedToastState";
@@ -34,6 +37,11 @@ import { color as t, font } from "@/lib/tokens";
 // Main Overlay Component
 // ---------------------------------------------------------------------------
 
+// Review states present at a fixed tall snap so the ingredient/set list scrolls
+// within bounds and the action footer pins above the safe area. Every other
+// state hugs its content via dynamic sizing.
+const REVIEW_SNAP_POINTS = ["92%"];
+
 export function CommandCenterOverlay() {
   const { snapshot, dispatch } = useCommandCenterOverlay();
   const { height: windowHeight } = useWindowDimensions();
@@ -42,6 +50,7 @@ export function CommandCenterOverlay() {
   const isVisible = commandState !== "cc_collapsed";
   const canCloseViaBackdrop =
     commandState === "cc_expanded_empty" || commandState === "cc_expanded_typing";
+  const isReview = commandState === "cc_review_meal" || commandState === "cc_review_workout";
   const closeCommandCenter = useCallback(() => dispatch({ type: "close" }), [dispatch]);
 
   // gorhom owns presentation now. We drive it imperatively from the command
@@ -100,6 +109,19 @@ export function CommandCenterOverlay() {
     [canCloseViaBackdrop],
   );
 
+  // Pinned DISCARD / Save footer for the review states. Lives in the sheet's
+  // footer layer (not the scrolling body) so the actions never scroll out of
+  // reach and always sit above the keyboard + safe area.
+  const renderFooter = useCallback(
+    (props: BottomSheetFooterProps) =>
+      isReview ? (
+        <BottomSheetFooter {...props}>
+          <ReviewActionsFooter />
+        </BottomSheetFooter>
+      ) : null,
+    [isReview],
+  );
+
   // Ingredient editor sheet state — local to the overlay because nothing else
   // needs to read it. The editor mounts on top of the meal review sheet so
   // the user keeps the meal context visible behind a darkened backdrop.
@@ -136,7 +158,7 @@ export function CommandCenterOverlay() {
   const renderContent = (): ReactNode => {
     if (commandState === "cc_expanded_empty" || commandState === "cc_expanded_typing") {
       return (
-        <SheetShell title="Log anything" onClose={closeCommandCenter}>
+        <SheetShell title="Log anything" onClose={closeCommandCenter} scrollable>
           <IdleState />
         </SheetShell>
       );
@@ -162,7 +184,6 @@ export function CommandCenterOverlay() {
     if (commandState === "cc_review_meal" && reviewDraft?.kind === "meal") {
       return (
         <MealReviewState
-          onClose={closeCommandCenter}
           onAddIngredient={openAddIngredientEditor}
           onEditIngredient={openEditIngredientEditor}
           onLongPressIngredient={handleLongPressIngredient}
@@ -171,7 +192,7 @@ export function CommandCenterOverlay() {
     }
 
     if (commandState === "cc_review_workout" && reviewDraft?.kind === "workout") {
-      return <WorkoutReviewState onClose={closeCommandCenter} />;
+      return <WorkoutReviewState />;
     }
 
     if (
@@ -207,10 +228,12 @@ export function CommandCenterOverlay() {
       <BottomSheetModal
         ref={sheetRef}
         onDismiss={handleSheetDismiss}
-        enableDynamicSizing
+        enableDynamicSizing={!isReview}
         maxDynamicContentSize={maxDynamicContentSize}
+        snapPoints={isReview ? REVIEW_SNAP_POINTS : undefined}
         enablePanDownToClose={canCloseViaBackdrop}
         backdropComponent={renderBackdrop}
+        footerComponent={renderFooter}
         backgroundStyle={styles.sheetBackground}
         handleStyle={styles.sheetHandleRow}
         handleIndicatorStyle={styles.sheetHandle}

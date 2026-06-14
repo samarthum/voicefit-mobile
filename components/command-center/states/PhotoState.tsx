@@ -11,7 +11,7 @@ export function PhotoState({ onClose }: { onClose: () => void }) {
   const photo = snapshot.input.selectedMealPhoto;
 
   return (
-    <SheetShell title="Log meal photo" onClose={onClose}>
+    <SheetShell title="Log meal photo" onClose={onClose} scrollable>
       <View style={styles.photoBody}>
         {photo ? (
           <Image

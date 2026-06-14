@@ -1,7 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Icon } from "@/components/Icon";
 import { haptic } from "@/lib/haptics";
 import { useCommandCenterOverlay } from "@/components/command-center/CommandCenterProvider";
 import { formatMealTypeLabel } from "@/components/command-center/helpers";
@@ -9,12 +8,10 @@ import type { MealReviewIngredient } from "@/components/command-center/types";
 import { color as t, font } from "@/lib/tokens";
 
 export function MealReviewState({
-  onClose,
   onAddIngredient,
   onEditIngredient,
   onLongPressIngredient,
 }: {
-  onClose: () => void;
   onAddIngredient: () => void;
   onEditIngredient: (ingredient: MealReviewIngredient) => void;
   onLongPressIngredient: (ingredient: MealReviewIngredient) => void;
@@ -32,7 +29,7 @@ export function MealReviewState({
 
   return (
     <BottomSheetScrollView
-      contentContainerStyle={[styles.mealReviewContent, { paddingBottom: insets.bottom + 22 }]}
+      contentContainerStyle={[styles.mealReviewContent, { paddingBottom: insets.bottom + 96 }]}
       showsVerticalScrollIndicator={false}
       keyboardDismissMode="on-drag"
     >
@@ -119,23 +116,6 @@ export function MealReviewState({
         ))}
       </View>
 
-      <View style={styles.mealReviewActions}>
-        <Pressable
-          style={styles.mealReviewDiscardButton}
-          onPress={onClose}
-          testID="cc-review-discard"
-        >
-          <Text style={styles.mealReviewDiscardText}>DISCARD</Text>
-        </Pressable>
-        <Pressable
-          style={styles.mealReviewSaveButton}
-          onPress={() => { haptic.success(); void dispatch({ type: "review.save" }); }}
-          testID="cc-review-save"
-        >
-          <Text style={styles.mealReviewSaveText}>Save meal</Text>
-          <Icon name="check" size={16} color={t.accentInk} />
-        </Pressable>
-      </View>
     </BottomSheetScrollView>
   );
 }
@@ -323,47 +303,5 @@ const styles = StyleSheet.create({
     color: t.text,
     width: 42,
     textAlign: "right",
-  },
-  mealReviewActions: {
-    flexDirection: "row",
-    gap: 10,
-    marginTop: 16,
-  },
-  mealReviewDiscardButton: {
-    width: 110,
-    height: 52,
-    backgroundColor: t.surface,
-    borderWidth: 1,
-    borderColor: t.line,
-    borderRadius: 14,
-    borderCurve: "continuous",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  mealReviewDiscardText: {
-    fontFamily: font.sans[600],
-    fontSize: 13,
-    fontWeight: "600",
-    letterSpacing: 0.52,
-    textTransform: "uppercase",
-    color: t.textSoft,
-  },
-  mealReviewSaveButton: {
-    flex: 1,
-    height: 52,
-    backgroundColor: t.accent,
-    borderRadius: 14,
-    borderCurve: "continuous",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-  },
-  mealReviewSaveText: {
-    fontFamily: font.sans[700],
-    fontSize: 14,
-    fontWeight: "700",
-    color: t.accentInk,
-    letterSpacing: 0.28,
   },
 });
