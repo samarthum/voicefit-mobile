@@ -6,6 +6,8 @@ declare module "bun:test" {
     toContainEqual(expected: unknown): void;
     toHaveLength(expected: number): void;
     toBeDefined(): void;
+    toBeNull(): void;
+    toThrow(expected?: unknown): void;
     not: Matchers;
   }
   export function describe(name: string, fn: () => void): void;
