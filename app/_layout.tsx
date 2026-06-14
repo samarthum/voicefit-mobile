@@ -142,7 +142,7 @@ export default function RootLayout() {
                     <Stack.Screen name="(tabs)" />
                     <Stack.Screen
                       name="meal-edit/[id]"
-                      options={{ presentation: "formSheet", sheetGrabberVisible: true, sheetAllowedDetents: [0.7, 1] }}
+                      options={{ presentation: "fullScreenModal" }}
                     />
                     <Stack.Screen name="exercise-picker" options={{ presentation: "modal" }} />
                     <Stack.Screen name="workout-session/[id]" />
