@@ -239,11 +239,12 @@ export function CommandCenterOverlay() {
         backgroundStyle={styles.sheetBackground}
         handleStyle={styles.sheetHandleRow}
         handleIndicatorStyle={styles.sheetHandle}
-        // Review uses a fixed snap, so interactive lift works. The dynamically
-        // sized input states (idle / photo) can't be lifted far enough by
-        // interactive on edge-to-edge Android, so they fill the parent when the
-        // keyboard appears and let the scrollable body keep the input visible.
-        keyboardBehavior={isReview ? "interactive" : "fillParent"}
+        // Only the photo state needs fillParent: its input sits below a tall
+        // image, so the sheet must fill the parent on keyboard to bring the
+        // field above it. Every other state keeps the gentle interactive lift —
+        // idle's input is already near the top, and fillParent there expands
+        // the whole sheet to full height, which is jarring.
+        keyboardBehavior={commandState === "cc_photo_context" ? "fillParent" : "interactive"}
         keyboardBlurBehavior="restore"
         android_keyboardInputMode="adjustResize"
       >
