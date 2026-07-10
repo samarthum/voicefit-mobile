@@ -12,11 +12,14 @@ import {
 import {
   BottomSheetBackdrop,
   type BottomSheetBackdropProps,
+  BottomSheetFooter,
+  type BottomSheetFooterProps,
   BottomSheetModal,
   BottomSheetView,
 } from "@gorhom/bottom-sheet";
 import { useCommandCenterOverlay } from "@/components/command-center/CommandCenterProvider";
-import { IngredientEditor, type IngredientEditorMode } from "@/components/command-center/IngredientEditor";
+import { type IngredientEditorMode } from "@/components/command-center/IngredientEditor";
+import { IngredientEditorSheet } from "@/components/command-center/IngredientEditorSheet";
 import type { MealReviewIngredient } from "@/components/command-center/types";
 import { SheetShell } from "@/components/command-center/states/SheetShell";
 import { IdleState } from "@/components/command-center/states/IdleState";
@@ -25,6 +28,7 @@ import { RecordingState } from "@/components/command-center/states/RecordingStat
 import { InterpretingState } from "@/components/command-center/states/InterpretingState";
 import { MealReviewState } from "@/components/command-center/states/MealReviewState";
 import { WorkoutReviewState } from "@/components/command-center/states/WorkoutReviewState";
+import { ReviewActionsFooter } from "@/components/command-center/states/ReviewActionsFooter";
 import { SavingState } from "@/components/command-center/states/SavingState";
 import { ErrorState } from "@/components/command-center/states/ErrorState";
 import { SavedToastState } from "@/components/command-center/states/SavedToastState";
@@ -34,6 +38,11 @@ import { color as t, font } from "@/lib/tokens";
 // Main Overlay Component
 // ---------------------------------------------------------------------------
 
+// Review states present at a fixed tall snap so the ingredient/set list scrolls
+// within bounds and the action footer pins above the safe area. Every other
+// state hugs its content via dynamic sizing.
+const REVIEW_SNAP_POINTS = ["92%"];
+
 export function CommandCenterOverlay() {
   const { snapshot, dispatch } = useCommandCenterOverlay();
   const { height: windowHeight } = useWindowDimensions();
@@ -42,6 +51,7 @@ export function CommandCenterOverlay() {
   const isVisible = commandState !== "cc_collapsed";
   const canCloseViaBackdrop =
     commandState === "cc_expanded_empty" || commandState === "cc_expanded_typing";
+  const isReview = commandState === "cc_review_meal" || commandState === "cc_review_workout";
   const closeCommandCenter = useCallback(() => dispatch({ type: "close" }), [dispatch]);
 
   // gorhom owns presentation now. We drive it imperatively from the command
@@ -100,13 +110,27 @@ export function CommandCenterOverlay() {
     [canCloseViaBackdrop],
   );
 
+  // Pinned DISCARD / Save footer for the review states. Lives in the sheet's
+  // footer layer (not the scrolling body) so the actions never scroll out of
+  // reach and always sit above the keyboard + safe area.
+  const renderFooter = useCallback(
+    (props: BottomSheetFooterProps) =>
+      isReview ? (
+        <BottomSheetFooter {...props}>
+          <ReviewActionsFooter />
+        </BottomSheetFooter>
+      ) : null,
+    [isReview],
+  );
+
   // Ingredient editor sheet state — local to the overlay because nothing else
-  // needs to read it. The editor mounts on top of the meal review sheet so
-  // the user keeps the meal context visible behind a darkened backdrop.
+  // needs to read it. The editor mounts as a second gorhom sheet on top of the
+  // meal review so the user keeps the meal context visible behind a darkened
+  // backdrop.
   const [ingredientEditor, setIngredientEditor] = useState<IngredientEditorMode | null>(null);
 
   // Auto-dismiss the editor if the review sheet itself goes away (user
-  // discarded, navigated, etc.) so we don't leave a stale modal mounted.
+  // discarded, navigated, etc.) so we don't leave a stale editor mounted.
   useEffect(() => {
     if (commandState !== "cc_review_meal" && ingredientEditor) {
       setIngredientEditor(null);
@@ -136,7 +160,7 @@ export function CommandCenterOverlay() {
   const renderContent = (): ReactNode => {
     if (commandState === "cc_expanded_empty" || commandState === "cc_expanded_typing") {
       return (
-        <SheetShell title="Log anything" onClose={closeCommandCenter}>
+        <SheetShell title="Log anything" onClose={closeCommandCenter} scrollable>
           <IdleState />
         </SheetShell>
       );
@@ -162,7 +186,6 @@ export function CommandCenterOverlay() {
     if (commandState === "cc_review_meal" && reviewDraft?.kind === "meal") {
       return (
         <MealReviewState
-          onClose={closeCommandCenter}
           onAddIngredient={openAddIngredientEditor}
           onEditIngredient={openEditIngredientEditor}
           onLongPressIngredient={handleLongPressIngredient}
@@ -171,7 +194,7 @@ export function CommandCenterOverlay() {
     }
 
     if (commandState === "cc_review_workout" && reviewDraft?.kind === "workout") {
-      return <WorkoutReviewState onClose={closeCommandCenter} />;
+      return <WorkoutReviewState />;
     }
 
     if (
@@ -207,14 +230,21 @@ export function CommandCenterOverlay() {
       <BottomSheetModal
         ref={sheetRef}
         onDismiss={handleSheetDismiss}
-        enableDynamicSizing
+        enableDynamicSizing={!isReview}
         maxDynamicContentSize={maxDynamicContentSize}
+        snapPoints={isReview ? REVIEW_SNAP_POINTS : undefined}
         enablePanDownToClose={canCloseViaBackdrop}
         backdropComponent={renderBackdrop}
+        footerComponent={renderFooter}
         backgroundStyle={styles.sheetBackground}
         handleStyle={styles.sheetHandleRow}
         handleIndicatorStyle={styles.sheetHandle}
-        keyboardBehavior="interactive"
+        // Only the photo state needs fillParent: its input sits below a tall
+        // image, so the sheet must fill the parent on keyboard to bring the
+        // field above it. Every other state keeps the gentle interactive lift —
+        // idle's input is already near the top, and fillParent there expands
+        // the whole sheet to full height, which is jarring.
+        keyboardBehavior={commandState === "cc_photo_context" ? "fillParent" : "interactive"}
         keyboardBlurBehavior="restore"
         android_keyboardInputMode="adjustResize"
       >
@@ -230,38 +260,28 @@ export function CommandCenterOverlay() {
         </Modal>
       ) : null}
 
-      {/* IngredientEditor remains an RN Modal (already keyboard-fixed
-          separately). It mounts above the gorhom sheet during meal review. */}
-      {ingredientEditor && commandState === "cc_review_meal" ? (
-        <Modal
-          visible
-          transparent
-          animationType="fade"
-          statusBarTranslucent
-          onRequestClose={closeIngredientEditor}
-        >
-          <IngredientEditor
-            mode={ingredientEditor}
-            fetchInterpreted={(name, grams) =>
-              dispatch({ type: "ingredient.lookup", name, grams }) as Promise<MealIngredient>
-            }
-            onSubmitAdd={(ingredient) => {
-              dispatch({ type: "ingredient.add", ingredient });
-              closeIngredientEditor();
-            }}
-            onSubmitEdit={(replacement) => {
-              if (ingredientEditor.kind !== "edit") return;
-              const id = ingredientEditor.ingredient.id;
-              // grams-only edit returns a MealReviewIngredient (already scaled
-              // locally); rename returns an authoritative MealIngredient from
-              // the LLM. Either works as a replacement input.
-              dispatch({ type: "ingredient.replace", id, replacement });
-              closeIngredientEditor();
-            }}
-            onCancel={closeIngredientEditor}
-          />
-        </Modal>
-      ) : null}
+      {/* Ingredient editor — a gorhom sheet stacked over the meal review,
+          shared with the meal-edit screen via IngredientEditorSheet. */}
+      <IngredientEditorSheet
+        mode={ingredientEditor}
+        fetchInterpreted={(name, grams) =>
+          dispatch({ type: "ingredient.lookup", name, grams }) as Promise<MealIngredient>
+        }
+        onSubmitAdd={(ingredient) => {
+          dispatch({ type: "ingredient.add", ingredient });
+          closeIngredientEditor();
+        }}
+        onSubmitEdit={(replacement) => {
+          if (ingredientEditor?.kind !== "edit") return;
+          const id = ingredientEditor.ingredient.id;
+          // grams-only edit returns a MealReviewIngredient (already scaled
+          // locally); rename returns an authoritative MealIngredient from the
+          // LLM. Either works as a replacement input.
+          dispatch({ type: "ingredient.replace", id, replacement });
+          closeIngredientEditor();
+        }}
+        onClose={closeIngredientEditor}
+      />
       {toastNode}
     </>
   );

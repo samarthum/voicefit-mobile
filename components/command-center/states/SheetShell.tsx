@@ -5,7 +5,7 @@
  */
 import type { ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { BottomSheetView } from "@gorhom/bottom-sheet";
+import { BottomSheetScrollView, BottomSheetView } from "@gorhom/bottom-sheet";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from "@/components/Icon";
 import { color as t, font } from "@/lib/tokens";
@@ -16,35 +16,59 @@ export function SheetShell({
   children,
   showCloseButton = true,
   closeButtonTestID = "cc-close",
+  scrollable = false,
 }: {
   title?: string | null;
   onClose: () => void;
   children: ReactNode;
   showCloseButton?: boolean;
   closeButtonTestID?: string;
+  /**
+   * Render the body inside a `BottomSheetScrollView` instead of a static
+   * `BottomSheetView`. Use for states that contain a `BottomSheetTextInput`
+   * (idle, photo context): the scroll view lets gorhom scroll the focused
+   * field above the keyboard, which a static view cannot do.
+   */
+  scrollable?: boolean;
 }) {
   const insets = useSafeAreaInsets();
 
+  const titleRow = title ? (
+    <View style={sheetShellStyles.sheetTitleRow}>
+      <Text style={sheetShellStyles.sheetTitleText}>{title}</Text>
+      {showCloseButton ? (
+        <Pressable
+          style={sheetShellStyles.sheetCloseCircle}
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel="Close"
+          testID={closeButtonTestID}
+        >
+          <Icon name="close" size={14} color={t.textSoft} />
+        </Pressable>
+      ) : (
+        <View style={sheetShellStyles.sheetCloseCircle} />
+      )}
+    </View>
+  ) : null;
+
+  if (scrollable) {
+    return (
+      <BottomSheetScrollView
+        contentContainerStyle={[sheetShellStyles.sheetContent, { paddingBottom: insets.bottom + 22 }]}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+        showsVerticalScrollIndicator={false}
+      >
+        {titleRow}
+        {children}
+      </BottomSheetScrollView>
+    );
+  }
+
   return (
     <BottomSheetView style={[sheetShellStyles.sheetContent, { paddingBottom: insets.bottom + 22 }]}>
-      {title ? (
-        <View style={sheetShellStyles.sheetTitleRow}>
-          <Text style={sheetShellStyles.sheetTitleText}>{title}</Text>
-          {showCloseButton ? (
-            <Pressable
-              style={sheetShellStyles.sheetCloseCircle}
-              onPress={onClose}
-              accessibilityRole="button"
-              accessibilityLabel="Close"
-              testID={closeButtonTestID}
-            >
-              <Icon name="close" size={14} color={t.textSoft} />
-            </Pressable>
-          ) : (
-            <View style={sheetShellStyles.sheetCloseCircle} />
-          )}
-        </View>
-      ) : null}
+      {titleRow}
       {children}
     </BottomSheetView>
   );
