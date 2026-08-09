@@ -1,5 +1,5 @@
 import "@/polyfills";
-import { ClerkProvider } from "@clerk/clerk-expo";
+import { ClerkProvider, useAuth } from "@clerk/clerk-expo";
 import { focusManager } from "@tanstack/react-query";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { queryClient, persistOptions } from "@/lib/query-client";
@@ -69,6 +69,20 @@ const ebStyles = StyleSheet.create({
   buttonText: { color: color.accentInk, fontSize: 16, fontWeight: "700" },
 });
 
+// Refreshes the session token (network round trip when expired) in the
+// background at boot, in parallel with font loading and cache restore, so the
+// first screen's queries don't wait on getToken() on their critical path.
+function SessionTokenWarmUp() {
+  const { isLoaded, isSignedIn, getToken } = useAuth();
+
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
+    void getToken().catch(() => undefined);
+  }, [isLoaded, isSignedIn, getToken]);
+
+  return null;
+}
+
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
     InterTight_300Light,
@@ -111,6 +125,7 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <KeyboardProvider>
         <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
+          <SessionTokenWarmUp />
           <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
             <SafeAreaProvider>
               {/* CommandCenterProvider must sit ABOVE BottomSheetModalProvider:

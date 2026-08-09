@@ -9,7 +9,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "@clerk/clerk-expo";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useIsRestoring } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import type { DashboardData } from "@voicefit/contracts/types";
 import { apiRequest } from "@/lib/api-client";
@@ -159,6 +159,7 @@ export default function DashboardScreen() {
   const cc = useCommandCenter();
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const isWebPreview = isWebPreviewMode();
+  const isRestoring = useIsRestoring();
   const [isManualRefreshing, setIsManualRefreshing] = useState(false);
 
   const today = toLocalDateString(new Date());
@@ -177,7 +178,18 @@ export default function DashboardScreen() {
   }, []);
 
   const dashboardQuery = useQuery<DashboardHomeData>({
-    queryKey: ["dashboard", "home", timezone, selectedDate],
+    // Today is keyed WITHOUT the date so a cold start on a new day rehydrates
+    // yesterday's snapshot under the same key and renders instantly
+    // (stale-while-revalidate) instead of missing the persisted cache and
+    // waiting on a full network round trip. Past days keep date-scoped keys.
+    queryKey:
+      selectedDate === today
+        ? ["dashboard", "home", timezone]
+        : ["dashboard", "home", timezone, selectedDate],
+    // Hold off until the persisted cache has been restored: otherwise the
+    // query fires a network fetch before hydration lands (wasting the round
+    // trip and showing a skeleton even when yesterday's data was on disk).
+    enabled: !isRestoring,
     queryFn: async () => {
       if (isWebPreview) {
         return mockDashboardData(selectedDate);

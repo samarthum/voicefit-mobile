@@ -1,4 +1,5 @@
 import { QueryClient } from "@tanstack/react-query";
+import type { Query } from "@tanstack/react-query";
 import { createAsyncStoragePersister } from "@tanstack/query-async-storage-persister";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -22,6 +23,20 @@ export const queryClient = new QueryClient({
   },
 });
 
+// Only these queries are worth persisting across cold starts. Excluded queries
+// (coach chat history, health-store reads, screen-scoped lists) are either
+// re-fetched cheaply from the server, re-read from the device, or grow the
+// AsyncStorage blob so much that rehydration on Android dominates cold start.
+const PERSIST_WHITELIST = [
+  "dashboard",
+  "meals",
+  "workout-sessions",
+  "workout-session-detail",
+  "daily-metrics",
+  "conversation",
+  "top-meals",
+] as const;
+
 export const PERSIST_KEY = "voicefit-rq-cache";
 
 // Persist the React Query cache to disk so a cold start (first sign-in of the
@@ -39,5 +54,13 @@ export const persistOptions = {
   maxAge: CACHE_MAX_AGE,
   // Bump this to discard persisted caches when the cached shape changes
   // between releases.
-  buster: "v1",
+  buster: "v2",
+  dehydrateOptions: {
+    shouldDehydrateQuery: (query: Query) => {
+      const key = query.queryKey[0];
+      return (
+        typeof key === "string" && (PERSIST_WHITELIST as readonly string[]).includes(key)
+      );
+    },
+  },
 };
