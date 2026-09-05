@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 import { useFocusEffect } from "expo-router";
-import { monotonicNow, recordTiming } from "@/lib/performance-log";
+import { diagnosticsEnabled, monotonicNow, recordTiming } from "@/lib/performance-log";
 
 // Measures focus → data-ready in React, not native paint/animation completion.
 export function useScreenTiming(screen: "dashboard" | "meals" | "workout-sessions" | "workout-detail" | "settings" | "coach", ready: boolean, failed = false) {
@@ -13,7 +13,7 @@ export function useScreenTiming(screen: "dashboard" | "meals" | "workout-session
     started.current = null;
   }, [screen]);
   useFocusEffect(useCallback(() => {
-    if (typeof __DEV__ === "undefined" || !__DEV__) return;
+    if (!diagnosticsEnabled()) return;
     started.current = monotonicNow();
     finish();
     return () => { started.current = null; };

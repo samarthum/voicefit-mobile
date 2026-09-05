@@ -1,3 +1,4 @@
+import { diagnosticsEnabled } from "@/lib/performance-log";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -604,6 +605,12 @@ export default function SettingsScreen() {
           <Text style={styles.dangerButtonText}>Sign Out</Text>
         </Pressable>
 
+        {diagnosticsEnabled() ? (
+          <Pressable accessibilityRole="button" style={styles.settingRow} onPress={() => router.push("/diagnostics")}>
+            <Text style={styles.settingLabel}>Load timings</Text>
+            <Icon name="chevronRight" size={18} color={token.textMute} />
+          </Pressable>
+        ) : null}
         <Text style={styles.version}>VoiceFit Mobile · v0.1</Text>
       </ScrollView>
 

@@ -25,6 +25,16 @@
         "buildType": "app-bundle"
       },
       "ios": {}
+    },
+    "phone-test": {
+      "extends": "preview",
+      "environment": "preview",
+      "env": {
+        "EXPO_PUBLIC_DIAGNOSTICS": "1"
+      },
+      "android": {
+        "buildType": "apk"
+      }
     }
   },
   "submit": {

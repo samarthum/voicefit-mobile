@@ -1,8 +1,8 @@
-// Development-only timings. Never retain payloads, query strings, IDs, tokens,
+// Opt-in, local-only diagnostic timings. Never retain payloads, query strings, IDs, tokens,
 // error messages, or response contents.
 export type TimingRecord = {
   sequence: number;
-  kind: "api" | "coach-first-text" | "coach-complete" | "screen-ready";
+  kind: "api" | "coach-first-text" | "coach-complete" | "screen-ready" | "auth-ready" | "auth-token" | "startup-ready";
   route: string;
   method: string;
   outcome: "success" | "error" | "timeout" | "cancelled";
@@ -27,8 +27,22 @@ export function timingRoute(path: string) {
   } catch { return "/unknown"; }
 }
 export const monotonicNow = () => globalThis.performance?.now() ?? Date.now();
+export const diagnosticsEnabled = () =>
+  (typeof __DEV__ !== "undefined" && __DEV__) || process.env.EXPO_PUBLIC_DIAGNOSTICS === "1";
+export const appTimingStarted = monotonicNow();
+export async function measureToken<T>(route: string, getToken: () => Promise<T>): Promise<T> {
+  const start = monotonicNow();
+  try {
+    const result = await getToken();
+    recordTiming({ kind: "auth-token", route, method: "TOKEN", outcome: result ? "success" : "error", durationMs: monotonicNow() - start });
+    return result;
+  } catch (error) {
+    recordTiming({ kind: "auth-token", route, method: "TOKEN", outcome: "error", durationMs: monotonicNow() - start });
+    throw error;
+  }
+}
 export function recordTiming(record: Omit<TimingRecord, "sequence">) {
-  if (typeof __DEV__ === "undefined" || !__DEV__) return;
+  if (!diagnosticsEnabled()) return;
   const entry: TimingRecord = {
     kind: record.kind,
     method: record.method,
@@ -42,6 +56,6 @@ export function recordTiming(record: Omit<TimingRecord, "sequence">) {
   };
   records.push(entry);
   if (records.length > 200) records.shift();
-  console.info("[VoiceFit timing]", JSON.stringify(entry));
+  if (typeof __DEV__ !== "undefined" && __DEV__) console.info("[VoiceFit timing]", JSON.stringify(entry));
 }
 export const getTimings = () => records.slice();

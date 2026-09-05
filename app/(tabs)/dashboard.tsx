@@ -1,3 +1,4 @@
+import { appTimingStarted, measureToken, monotonicNow, recordTiming } from "@/lib/performance-log";
 import { useScreenTiming } from "@/hooks/use-screen-timing";
 import { useLocalDay } from "@/hooks/use-local-day";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -200,7 +201,7 @@ export default function DashboardScreen() {
       if (isWebPreview) {
         return mockDashboardData(selectedDate);
       }
-      const token = await getToken();
+      const token = await measureToken("/api/dashboard", getToken);
       if (!token) throw new Error("Not signed in");
       return apiRequest<DashboardHomeData>(
         `/api/dashboard?${new URLSearchParams({ timezone, date: selectedDate, scope: "home" })}`,
@@ -217,6 +218,12 @@ export default function DashboardScreen() {
   });
 
   useScreenTiming("dashboard", !!dashboardQuery.data, dashboardQuery.isError);
+  const startupRecorded = useRef(false);
+  useEffect(() => {
+    if (!dashboardQuery.data || startupRecorded.current) return;
+    startupRecorded.current = true;
+    recordTiming({ kind: "startup-ready", route: "/screens/dashboard", method: "STARTUP", outcome: "success", durationMs: monotonicNow() - appTimingStarted });
+  }, [dashboardQuery.data]);
   const dashboard = dashboardQuery.data;
   const weeklyFull = dashboard?.weeklyTrends ?? [];
   const weeklyCurrent = weeklyFull.slice(-7);

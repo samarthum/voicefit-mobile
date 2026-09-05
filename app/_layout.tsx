@@ -1,3 +1,4 @@
+import { appTimingStarted, measureToken, monotonicNow, recordTiming } from "@/lib/performance-log";
 import "@/polyfills";
 import { ClerkProvider, useAuth } from "@clerk/clerk-expo";
 import { focusManager } from "@tanstack/react-query";
@@ -9,7 +10,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ActivityIndicator, AppState, Pressable, StyleSheet, Text, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { useFonts } from "expo-font";
@@ -71,9 +72,14 @@ const ebStyles = StyleSheet.create({
 function SessionTokenWarmUp() {
   const { isLoaded, isSignedIn, getToken } = useAuth();
 
+  const recorded = useRef(false);
   useEffect(() => {
+    if (isLoaded && !recorded.current) {
+      recorded.current = true;
+      recordTiming({ kind: "auth-ready", route: "/screens/dashboard", method: "STARTUP", outcome: "success", durationMs: monotonicNow() - appTimingStarted });
+    }
     if (!isLoaded || !isSignedIn) return;
-    void getToken().catch(() => undefined);
+    void measureToken("/screens/dashboard", getToken).catch(() => undefined);
   }, [isLoaded, isSignedIn, getToken]);
 
   return null;

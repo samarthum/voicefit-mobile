@@ -41,3 +41,30 @@ test("coach timing wrapper preserves the stream and records no message text", as
     expect(JSON.stringify(getTimings().slice(before)).includes("private")).toBe(false);
   } finally { globalThis.__DEV__ = oldDev; console.info = oldInfo; }
 });
+
+test("release diagnostics are opt-in and preserve token results without recording them", async () => {
+  const { measureToken } = await import("../performance-log");
+  const oldDev = globalThis.__DEV__;
+  const oldFlag = process.env.EXPO_PUBLIC_DIAGNOSTICS;
+  globalThis.__DEV__ = false;
+  try {
+    delete process.env.EXPO_PUBLIC_DIAGNOSTICS;
+    const before = getTimings().length;
+    expect(await measureToken("/api/dashboard", async () => "private-token")).toBe("private-token");
+    expect(getTimings().length).toBe(before);
+    process.env.EXPO_PUBLIC_DIAGNOSTICS = "1";
+    expect(await measureToken("/api/dashboard", async () => "private-token")).toBe("private-token");
+    expect(getTimings().at(-1)?.kind).toBe("auth-token");
+    expect(getTimings().at(-1)?.outcome).toBe("success");
+    expect(JSON.stringify(getTimings()).includes("private-token")).toBe(false);
+    const failure = new Error("private failure detail");
+    const caught = await measureToken("/api/dashboard", async () => { throw failure; }).catch((error) => error);
+    expect(caught).toBe(failure);
+    expect(getTimings().at(-1)?.outcome).toBe("error");
+    expect(JSON.stringify(getTimings()).includes("private failure detail")).toBe(false);
+  } finally {
+    globalThis.__DEV__ = oldDev;
+    if (oldFlag === undefined) delete process.env.EXPO_PUBLIC_DIAGNOSTICS;
+    else process.env.EXPO_PUBLIC_DIAGNOSTICS = oldFlag;
+  }
+});
