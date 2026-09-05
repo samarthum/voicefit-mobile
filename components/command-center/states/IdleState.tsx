@@ -11,8 +11,8 @@ export function IdleState() {
   const sendDisabled = !input.text.trim();
   const isWorkout = screenContext.screen === "workout";
   const placeholder = isWorkout
-    ? 'Try "did 3 sets of squats at 80…"'
-    : 'Try "had a chicken caesar and a diet coke for lunch"…';
+    ? 'Try "3 sets of squats, 8 reps at 80 kg"'
+    : 'Try "chicken salad and a diet coke for lunch"';
 
   return (
     <View style={styles.idleBody}>
@@ -31,7 +31,7 @@ export function IdleState() {
 
       <View style={styles.idleActionsRow}>
         <Pressable
-          style={styles.idleSquareBtn}
+          style={({ pressed }) => [styles.idleSquareBtn, pressed && styles.pressed]}
           onPress={() => void dispatch({ type: "photo.menu.open" })}
           accessibilityRole="button"
           accessibilityLabel="Add meal photo"
@@ -41,7 +41,7 @@ export function IdleState() {
         </Pressable>
 
         <Pressable
-          style={styles.idleMicWrap}
+          style={({ pressed }) => [styles.idleMicWrap, pressed && styles.pressed]}
           onPress={() => void dispatch({ type: "voice.start" })}
           accessibilityRole="button"
           accessibilityLabel="Start voice input"
@@ -55,18 +55,19 @@ export function IdleState() {
         </Pressable>
 
         <Pressable
-          style={[styles.idleSquareBtn, sendDisabled && styles.idleSquareBtnDisabled]}
+          style={({ pressed }) => [styles.idleSquareBtn, !sendDisabled && styles.idleSendActive, sendDisabled && styles.idleSquareBtnDisabled, pressed && styles.pressed]}
           disabled={sendDisabled}
+          accessibilityState={{ disabled: sendDisabled }}
           onPress={() => void dispatch({ type: "text.submit" })}
           accessibilityRole="button"
           accessibilityLabel="Submit entry"
           testID="cc-send"
         >
-          <Icon name="sparkSend" size={16} color={t.text} />
+          <Icon name="sparkSend" size={20} color={sendDisabled ? t.textMute : t.accentInk} />
         </Pressable>
       </View>
 
-      <Text style={styles.idleCaption}>TAP TO SPEAK · OR TYPE</Text>
+      <Text style={styles.idleCaption}>Type above or tap the microphone</Text>
 
       {isWorkout ? (
         <View style={styles.frequentSection}>
@@ -74,10 +75,12 @@ export function IdleState() {
           {EXERCISE_CATALOG.slice(0, 5).map((exercise, index) => (
             <Pressable
               key={exercise.name}
-              style={styles.frequentRow}
+              style={({ pressed }) => [styles.frequentRow, pressed && styles.pressed]}
+              accessibilityRole="button"
               onPress={() => {
                 dispatch({ type: "text.change", text: `3 sets of ${exercise.name}` });
               }}
+              accessibilityLabel={`Use ${exercise.name} as a starting point`}
               testID={`cc-exercise-${index}`}
             >
               <View style={styles.frequentText}>
@@ -98,10 +101,12 @@ export function IdleState() {
           {quickAddItems.slice(0, 3).map((item, index) => (
             <Pressable
               key={item.id}
-              style={styles.frequentRow}
+              style={({ pressed }) => [styles.frequentRow, pressed && styles.pressed]}
+              accessibilityRole="button"
               onPress={() => {
                 void dispatch({ type: "quick-add.save", item });
               }}
+              accessibilityLabel={`Log ${item.description} again`}
               testID={`cc-quick-add-${index}`}
             >
               <View style={styles.frequentText}>
@@ -120,6 +125,8 @@ export function IdleState() {
 }
 
 const styles = StyleSheet.create({
+  pressed: { opacity: 0.65 },
+  idleSendActive: { backgroundColor: t.accent, borderColor: t.accent },
   idleBody: { paddingHorizontal: 22 },
   idleInputCard: {
     backgroundColor: t.surface,
@@ -136,6 +143,7 @@ const styles = StyleSheet.create({
     color: t.text,
     lineHeight: 21,
     minHeight: 68,
+    maxHeight: 160,
     padding: 0,
     textAlignVertical: "top",
   },
@@ -143,7 +151,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingTop: 24,
+    paddingTop: 16,
     paddingHorizontal: 4,
     paddingBottom: 6,
   },
@@ -190,9 +198,9 @@ const styles = StyleSheet.create({
   },
   idleCaption: {
     fontFamily: font.sans[500],
-    fontSize: 11,
-    color: t.textMute,
-    letterSpacing: 1.76,
+    fontSize: 13,
+    color: t.textSoft,
+    lineHeight: 19,
     textAlign: "center",
     marginTop: 4,
   },

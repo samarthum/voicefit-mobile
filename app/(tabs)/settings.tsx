@@ -384,6 +384,7 @@ export default function SettingsScreen() {
                 <Text style={styles.inputLabel}>Calorie Goal</Text>
                 <TextInput
                   style={styles.goalInput}
+                  accessibilityLabel="Daily calorie goal, kcal"
                   value={formatGoal(calorieGoal)}
                   onChangeText={(value) => {
                     hasEditedRef.current = true;
@@ -398,6 +399,7 @@ export default function SettingsScreen() {
                 <Text style={styles.inputLabel}>Step Goal</Text>
                 <TextInput
                   style={styles.goalInput}
+                  accessibilityLabel="Daily step goal"
                   value={formatGoal(stepGoal)}
                   onChangeText={(value) => {
                     hasEditedRef.current = true;
@@ -412,6 +414,7 @@ export default function SettingsScreen() {
                 <Text style={styles.inputLabel}>Protein Goal</Text>
                 <TextInput
                   style={styles.goalInput}
+                  accessibilityLabel="Daily protein goal, grams"
                   value={formatGoal(proteinGoal)}
                   onChangeText={(value) => {
                     hasEditedRef.current = true;
@@ -426,6 +429,7 @@ export default function SettingsScreen() {
                 <Text style={styles.inputLabel}>Weight Goal</Text>
                 <TextInput
                   style={styles.goalInput}
+                  accessibilityLabel="Target weight, kilograms"
                   value={weightGoal}
                   onChangeText={(value) => {
                     hasEditedRef.current = true;
@@ -450,6 +454,8 @@ export default function SettingsScreen() {
           style={[styles.saveButton, isSaving ? styles.buttonDisabled : null]}
           onPress={() => void saveSettings()}
           disabled={isSaving || (!isWebPreview && !data)}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: isSaving || (!isWebPreview && !data), busy: isSaving }}
         >
           <Text style={styles.saveButtonText}>{isSaving ? "Saving..." : "Save Goals"}</Text>
         </Pressable>
@@ -719,8 +725,9 @@ const styles = StyleSheet.create({
     color: token.text,
   },
   goalInput: {
-    width: 120,
-    paddingVertical: 4,
+    width: 104,
+    minHeight: 44,
+    paddingVertical: 8,
     fontFamily: font.mono[500],
     fontSize: 17,
     fontWeight: "500",
@@ -757,7 +764,8 @@ const styles = StyleSheet.create({
     borderRadius: r.sm,
     borderCurve: "continuous",
     backgroundColor: token.accent,
-    height: 48,
+    minHeight: 48,
+    paddingVertical: 12,
     alignItems: "center",
     justifyContent: "center",
   },

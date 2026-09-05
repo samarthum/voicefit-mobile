@@ -38,7 +38,7 @@ export function SheetShell({
       <Text style={sheetShellStyles.sheetTitleText}>{title}</Text>
       {showCloseButton ? (
         <Pressable
-          style={sheetShellStyles.sheetCloseCircle}
+          style={({ pressed }) => [sheetShellStyles.sheetCloseCircle, pressed && { opacity: 0.65 }]}
           onPress={onClose}
           accessibilityRole="button"
           accessibilityLabel="Close"
@@ -84,6 +84,8 @@ export const sheetShellStyles = StyleSheet.create({
     justifyContent: "space-between",
   },
   sheetTitleText: {
+    flex: 1,
+    marginRight: 12,
     fontFamily: font.sans[600],
     fontSize: 20,
     fontWeight: "600",
@@ -91,6 +93,7 @@ export const sheetShellStyles = StyleSheet.create({
     color: t.text,
   },
   sheetCloseCircle: {
+    flexShrink: 0,
     width: 44,
     height: 44,
     borderRadius: 999,

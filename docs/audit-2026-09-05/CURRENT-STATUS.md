@@ -51,3 +51,5 @@ Local launch files, generated output and the account screenshot were deliberatel
 ## UI polish follow-up
 
 See [UI-POLISH.md](./UI-POLISH.md) for the mobile spacing, header and empty-state pass. TypeScript and 77 tests pass. The completed-session menu icon now renders; native menu interaction still needs verification.
+
+Second UI pass covers logging, Meals date navigation, Coach controls and Settings fields. See UI-POLISH.md for details and pending native checks. iOS export, TypeScript and all 77 tests pass.

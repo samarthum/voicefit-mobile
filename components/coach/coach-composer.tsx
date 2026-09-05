@@ -30,7 +30,7 @@ type CoachComposerProps = {
 };
 
 export function CoachComposer({
-  placeholder = "Ask your coach...",
+  placeholder = "Ask your coach…",
 }: CoachComposerProps) {
   const aui = useAui();
   const insets = useSafeAreaInsets();
@@ -115,6 +115,7 @@ export function CoachComposer({
         <TextInput
           ref={inputRef}
           style={styles.input}
+          accessibilityLabel="Message your coach"
           defaultValue={text}
           onChangeText={handleChangeText}
           placeholder={placeholder}
@@ -132,9 +133,10 @@ export function CoachComposer({
           ]}
           onPress={onMicPress}
           disabled={isTranscribing}
+          accessibilityState={{ disabled: isTranscribing, busy: isTranscribing }}
           accessibilityRole="button"
           accessibilityLabel={
-            isRecordingMic ? "Stop voice input" : "Start voice input"
+            isTranscribing ? "Transcribing voice input" : isRecordingMic ? "Stop voice input" : "Start voice input"
           }
         >
           {isTranscribing ? (
@@ -158,7 +160,7 @@ export function CoachComposer({
             accessibilityRole="button"
             accessibilityLabel="Send coach message"
           >
-            <Icon name="send" size={17} color={token.accentInk} />
+            <Icon name="send" size={17} color={canSend ? token.accentInk : token.textMute} />
           </ComposerPrimitive.Send>
         </AuiIf>
         {/* While the coach is responding, the send pill becomes a stop button. */}
@@ -199,6 +201,7 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
+    minHeight: 44,
     maxHeight: 120,
     paddingVertical: 8,
     paddingHorizontal: 0,
@@ -209,8 +212,8 @@ const styles = StyleSheet.create({
     letterSpacing: -0.07,
   },
   micButton: {
-    width: 36,
-    height: 36,
+    width: 44,
+    height: 44,
     borderRadius: rad.pill,
     // NUI-2: pill shape — skip borderCurve per spec
     alignItems: "center",
@@ -220,8 +223,8 @@ const styles = StyleSheet.create({
     backgroundColor: token.accentTintBg,
   },
   sendButton: {
-    width: 36,
-    height: 36,
+    width: 44,
+    height: 44,
     borderRadius: rad.pill,
     // NUI-2: pill shape — skip borderCurve per spec
     backgroundColor: token.accent,

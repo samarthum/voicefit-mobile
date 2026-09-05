@@ -295,10 +295,14 @@ export default function MealsScreen() {
           </View>
         </View>
 
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-          <Pressable accessibilityRole="button" accessibilityLabel="Previous week" onPress={() => moveWeek(-1)} style={{ padding: 12 }}><Text style={{ color: token.accent }}>← Earlier</Text></Pressable>
-          <Text style={{ color: token.textSoft }}>{formatHeaderDate(effectiveDate)}</Text>
-          <Pressable accessibilityRole="button" accessibilityLabel="Next week" disabled={weekEnd >= today} onPress={() => moveWeek(1)} style={{ padding: 12, opacity: weekEnd >= today ? 0.4 : 1 }}><Text style={{ color: token.accent }}>Later →</Text></Pressable>
+        <View style={styles.weekNavigation}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Previous week" onPress={() => moveWeek(-1)} style={({ pressed }) => [styles.weekButton, pressed && { opacity: 0.65 }]}>
+            <Icon name="chevronLeft" size={18} color={token.accent} />
+          </Pressable>
+          <Text style={styles.weekDate}>{formatHeaderDate(effectiveDate)}</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Next week" accessibilityState={{ disabled: weekEnd >= today }} disabled={weekEnd >= today} onPress={() => moveWeek(1)} style={({ pressed }) => [styles.weekButton, { opacity: weekEnd >= today ? 0.35 : pressed ? 0.65 : 1 }]}>
+            <Icon name="chevronRight" size={18} color={token.accent} />
+          </Pressable>
         </View>
         <View style={styles.filterRow}>
           {dayOptions.map((day) => {
@@ -425,6 +429,9 @@ export default function MealsScreen() {
 }
 
 const styles = StyleSheet.create({
+  weekNavigation: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 8 },
+  weekButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: 22, backgroundColor: token.surface, borderWidth: 1, borderColor: token.line },
+  weekDate: { flex: 1, textAlign: "center", fontFamily: font.sans[500], fontSize: 14, color: token.textSoft },
   root: {
     flex: 1,
     backgroundColor: token.bg,
