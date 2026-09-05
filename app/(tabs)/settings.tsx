@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  InputAccessoryView,
+  Keyboard,
   Modal,
   Platform,
   Pressable,
@@ -366,7 +368,7 @@ export default function SettingsScreen() {
           <View style={styles.avatar}>
             <Text style={styles.avatarText}>{profile.initials}</Text>
           </View>
-          <View>
+          <View style={styles.profileCopy}>
             <Text style={styles.profileName} selectable>{profile.name}</Text>
             <Text style={styles.profileEmail} selectable>{profile.email}</Text>
           </View>
@@ -384,6 +386,7 @@ export default function SettingsScreen() {
                 <Text style={styles.inputLabel}>Calorie Goal</Text>
                 <TextInput
                   style={styles.goalInput}
+                  inputAccessoryViewID={Platform.OS === "ios" ? "goal-keyboard" : undefined}
                   accessibilityLabel="Daily calorie goal, kcal"
                   value={formatGoal(calorieGoal)}
                   onChangeText={(value) => {
@@ -399,6 +402,7 @@ export default function SettingsScreen() {
                 <Text style={styles.inputLabel}>Step Goal</Text>
                 <TextInput
                   style={styles.goalInput}
+                  inputAccessoryViewID={Platform.OS === "ios" ? "goal-keyboard" : undefined}
                   accessibilityLabel="Daily step goal"
                   value={formatGoal(stepGoal)}
                   onChangeText={(value) => {
@@ -414,6 +418,7 @@ export default function SettingsScreen() {
                 <Text style={styles.inputLabel}>Protein Goal</Text>
                 <TextInput
                   style={styles.goalInput}
+                  inputAccessoryViewID={Platform.OS === "ios" ? "goal-keyboard" : undefined}
                   accessibilityLabel="Daily protein goal, grams"
                   value={formatGoal(proteinGoal)}
                   onChangeText={(value) => {
@@ -429,6 +434,7 @@ export default function SettingsScreen() {
                 <Text style={styles.inputLabel}>Weight Goal</Text>
                 <TextInput
                   style={styles.goalInput}
+                  inputAccessoryViewID={Platform.OS === "ios" ? "goal-keyboard" : undefined}
                   accessibilityLabel="Target weight, kilograms"
                   value={weightGoal}
                   onChangeText={(value) => {
@@ -601,8 +607,17 @@ export default function SettingsScreen() {
         <Text style={styles.version}>VoiceFit Mobile · v0.1</Text>
       </ScrollView>
 
+      {Platform.OS === "ios" ? (
+        <InputAccessoryView nativeID="goal-keyboard">
+          <View style={styles.keyboardToolbar}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Done editing goals" onPress={() => Keyboard.dismiss()} style={styles.keyboardDone}>
+              <Text style={styles.keyboardDoneText}>Done</Text>
+            </Pressable>
+          </View>
+        </InputAccessoryView>
+      ) : null}
       <FloatingCommandBar
-        hint="Log a meal, lift, or weight…"
+        hint="Log a meal, workout, or weight…"
         onPress={() => cc.open()}
         onMicPress={() => cc.startRecording()}
         overTabBar
@@ -612,6 +627,9 @@ export default function SettingsScreen() {
 }
 
 const styles = StyleSheet.create({
+  keyboardToolbar: { backgroundColor: token.surface, borderTopWidth: 1, borderTopColor: token.line, alignItems: "flex-end", paddingHorizontal: 12 },
+  keyboardDone: { minHeight: 44, paddingHorizontal: 16, justifyContent: "center" },
+  keyboardDoneText: { fontFamily: font.sans[600], fontSize: 16, color: token.accent },
   root: {
     flex: 1,
     backgroundColor: token.bg,
@@ -655,6 +673,7 @@ const styles = StyleSheet.create({
     borderColor: token.line,
   },
   avatar: {
+    flexShrink: 0,
     width: 56,
     height: 56,
     borderRadius: r.pill,
@@ -669,6 +688,7 @@ const styles = StyleSheet.create({
     color: token.accentInk,
     letterSpacing: -0.18,
   },
+  profileCopy: { flex: 1, minWidth: 0 },
   profileName: {
     fontFamily: font.sans[600],
     fontSize: 16,
@@ -736,7 +756,8 @@ const styles = StyleSheet.create({
     color: token.text,
   },
   inputUnit: {
-    width: 44,
+    minWidth: 44,
+    flexShrink: 0,
     fontFamily: font.sans[400],
     fontSize: 11,
     color: token.textMute,

@@ -24,3 +24,16 @@ Validation: 77 existing tests pass; TypeScript, whitespace checks and iOS Hermes
 ## Simulator reconnection and keyboard correction
 
 Resetting the computer-use session restored screenshots, AX and coordinate input. Verified the updated logging sheet and enabled submit state with a disposable draft, then cleared the draft without submitting. Reproduced the heading/close row clipping above the sheet when the keyboard opened. Changed keyboard behavior to fillParent so expansion respects the top inset. Screenshot verified title, close, input and submit remain visible with the keyboard; coordinate close worked. Other second-pass screen checks remain outstanding.
+
+## Final focused simulator pass
+
+Verified on signed-in iPhone 17 Pro / iOS 26.2:
+- Meals visual layout, previous-week navigation, next-week return, and back navigation.
+- Coach composer at normal size and with a 12-line unsent draft: bounded scrollable input and controls above the keyboard. Draft cleared; no message sent.
+- Settings normal layout and numeric keyboard. Added an iOS Done accessory, verified that it dismisses the keyboard and reveals Save Goals. No goals changed or saved.
+- Completed workout header menu opens. Rename dialog appears above keyboard and cancels without writing. Delete was deliberately not executed against real records.
+- Accessibility-medium Settings revealed profile overflow and wrapped unit text. Added a constrained flexible profile column and non-shrinking unit labels; after app restart, screenshot verified wrapped profile stays inside card and steps remains intact.
+
+Restored simulator text size to original large and opened dashboard. TypeScript, 77 tests and whitespace checks pass. Screenshots remain out of Git because they contain account information.
+
+Limits: extended drag/scroll verification became unavailable again (noWindowsAvailable). Separate small-iPhone native checks, maximum accessibility sizes across all screens, active-session header and physical-device checks remain unverified. This is a completed focused pass, not certification of all devices or every flow.
