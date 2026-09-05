@@ -238,12 +238,9 @@ export function CommandCenterOverlay() {
         backgroundStyle={styles.sheetBackground}
         handleStyle={styles.sheetHandleRow}
         handleIndicatorStyle={styles.sheetHandle}
-        // Only the photo state needs fillParent: its input sits below a tall
-        // image, so the sheet must fill the parent on keyboard to bring the
-        // field above it. Every other state keeps the gentle interactive lift —
-        // idle's input is already near the top, and fillParent there expands
-        // the whole sheet to full height, which is jarring.
-        keyboardBehavior={commandState === "cc_photo_context" ? "fillParent" : "interactive"}
+        // Expand within the top safe-area boundary when the keyboard opens.
+        // Interactive lift clips the title/close row on the fixed 92% sheet.
+        keyboardBehavior="fillParent"
         keyboardBlurBehavior="restore"
         android_keyboardInputMode="adjustResize"
       >

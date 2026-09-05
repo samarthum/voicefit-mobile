@@ -20,3 +20,7 @@ Validation: TypeScript and whitespace checks pass; all 77 existing tests pass. S
 - Settings: labelled goal inputs including units, larger input touch height, more space for labels, and a save button that can grow with its text.
 
 Validation: 77 existing tests pass; TypeScript, whitespace checks and iOS Hermes export pass. Native visual and keyboard checks for this second pass remain outstanding: the computer-use service could not access Simulator at the start of the pass. These checks do not establish keyboard smoothness or large-text rendering on a device. No backend or account-data changes.
+
+## Simulator reconnection and keyboard correction
+
+Resetting the computer-use session restored screenshots, AX and coordinate input. Verified the updated logging sheet and enabled submit state with a disposable draft, then cleared the draft without submitting. Reproduced the heading/close row clipping above the sheet when the keyboard opened. Changed keyboard behavior to fillParent so expansion respects the top inset. Screenshot verified title, close, input and submit remain visible with the keyboard; coordinate close worked. Other second-pass screen checks remain outstanding.
