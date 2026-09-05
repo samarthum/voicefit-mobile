@@ -12,9 +12,9 @@ export const color = {
 
   text: "#0F1419",
   textSoft: "#5A6471",
-  textMute: "#9AA0AB",
+  textMute: "#687280",
 
-  accent: "#5E8C7A",
+  accent: "#477461",
   accentDim: "#3F6957",
   accentInk: "#FFFFFF",
   accentTintBg: "rgba(94,140,122,0.08)",

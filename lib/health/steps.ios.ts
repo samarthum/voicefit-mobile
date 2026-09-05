@@ -1,4 +1,5 @@
 import { Linking } from "react-native";
+import Constants, { ExecutionEnvironment } from "expo-constants";
 import { localDayRange, type HealthStepsAccess } from "./shared";
 
 /**
@@ -16,6 +17,11 @@ type HealthKitModule = typeof import("@kingstinct/react-native-healthkit");
 let modulePromise: Promise<HealthKitModule | null> | null = null;
 
 function getHealthKit(): Promise<HealthKitModule | null> {
+  // Metro reports missing native modules before the import rejection is caught.
+  // Avoid evaluating HealthKit at all in Expo Go.
+  if (Constants.executionEnvironment === ExecutionEnvironment.StoreClient) {
+    return Promise.resolve(null);
+  }
   if (!modulePromise) {
     modulePromise = import("@kingstinct/react-native-healthkit").catch(() => null);
   }

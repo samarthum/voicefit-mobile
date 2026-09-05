@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useScreenTiming } from "@/hooks/use-screen-timing";
+import { useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -9,10 +10,11 @@ import {
   View,
 } from "react-native";
 import { useAuth } from "@clerk/clerk-expo";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Stack, useRouter } from "expo-router";
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { FloatingCommandBar } from "@/components/FloatingCommandBar";
 import { useCommandCenter, toLocalDateString } from "@/components/command-center";
+import { initialMealDate } from "@/lib/meal-history";
 import { apiRequest } from "@/lib/api-client";
 import { isWebPreviewMode } from "@/lib/web-preview-mode";
 import {
@@ -90,8 +92,8 @@ const SAMPLE_MEALS: MealItem[] = [
   },
 ];
 
-function getLastSevenDaysEndingToday() {
-  const today = new Date();
+function getLastSevenDaysEndingToday(endDate: string) {
+  const today = new Date(`${endDate}T12:00:00`);
   const items: { date: string; dayNum: string; dayLabel: string }[] = [];
   for (let i = 6; i >= 0; i -= 1) {
     const d = new Date(today);
@@ -166,28 +168,50 @@ export default function MealsScreen() {
   const isWebPreview = isWebPreviewMode();
 
   const today = toLocalDateString(new Date());
-  const dayOptions = useMemo(() => getLastSevenDaysEndingToday(), [today]);
+  const params = useLocalSearchParams<{ date?: string }>();
+  const [selectedDate, setSelectedDate] = useState(
+    initialMealDate(params.date, today),
+  );
+  const [weekEnd, setWeekEnd] = useState(today);
+  const dayOptions = useMemo(() => getLastSevenDaysEndingToday(weekEnd), [weekEnd]);
+  const moveWeek = (direction: number) => {
+    const date = new Date(`${weekEnd}T12:00:00`);
+    date.setDate(date.getDate() + direction * 7);
+    const end = toLocalDateString(date);
+    setWeekEnd(end);
+    setSelectedDate(end);
+  };
 
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
-
-  const mealsQuery = useQuery({
-    queryKey: ["meals", "recent"],
+  const mealsQuery = useInfiniteQuery({
+    queryKey: ["meals", "by-day", selectedDate],
+    initialPageParam: 0,
     enabled: !isWebPreview && !!isSignedIn,
-    queryFn: async () => {
+    queryFn: async ({ pageParam }) => {
       const t = await getToken();
       if (!t) throw new Error("Not signed in");
-      return apiRequest<MealsListResponse>("/api/meals?limit=50&offset=0", { token: t });
+      // The API filters UTC calendar dates. Fetch the UTC dates surrounding
+      // this local day, then apply the exact local-day filter below.
+      const start = new Date(`${selectedDate}T00:00:00`);
+      const end = new Date(`${selectedDate}T23:59:59.999`);
+      const query = new URLSearchParams({ limit: "50", offset: String(pageParam), startDate: start.toISOString().slice(0, 10), endDate: end.toISOString().slice(0, 10) });
+      return apiRequest<MealsListResponse>(`/api/meals?${query}`, { token: t });
+    },
+    getNextPageParam: (lastPage, pages) => {
+      const loaded = pages.reduce((sum, page) => sum + page.meals.length, 0);
+      return lastPage.meals.length > 0 && loaded < lastPage.total ? loaded : undefined;
     },
     refetchInterval: (query) => {
       const data = query.state.data;
-      const hasPending = data?.meals?.some(
+      const hasPending = data?.pages.some((page) => page.meals.some(
         (m) => m.interpretationStatus === "interpreting",
-      );
+      ));
       return hasPending ? 2000 : false;
     },
   });
 
-  const allMeals = isWebPreview ? SAMPLE_MEALS : mealsQuery.data?.meals ?? [];
+  const allMeals = isWebPreview ? SAMPLE_MEALS : mealsQuery.data?.pages.flatMap((page) => page.meals) ?? [];
+
+  useScreenTiming("meals", !!mealsQuery.data, mealsQuery.isError);
 
   const deleteMutation = useMutation({
     mutationFn: async (mealId: string) => {
@@ -212,24 +236,7 @@ export default function MealsScreen() {
     },
   });
 
-  useEffect(() => {
-    if (selectedDate !== null) return;
-    if (!isWebPreview && mealsQuery.isLoading) return;
-    const datesWithMeals = new Set(
-      allMeals.map((m) => toLocalDateString(new Date(m.eatenAt))),
-    );
-    if (datesWithMeals.has(today)) {
-      setSelectedDate(today);
-      return;
-    }
-    const fallback = dayOptions
-      .map((d) => d.date)
-      .reverse()
-      .find((d) => d !== today && datesWithMeals.has(d));
-    setSelectedDate(fallback ?? today);
-  }, [selectedDate, isWebPreview, mealsQuery.isLoading, allMeals, today, dayOptions]);
-
-  const effectiveDate = selectedDate ?? today;
+  const effectiveDate = selectedDate;
 
   const meals = useMemo(
     () => allMeals.filter((m) => toLocalDateString(new Date(m.eatenAt)) === effectiveDate),
@@ -288,12 +295,20 @@ export default function MealsScreen() {
           </View>
         </View>
 
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Previous week" onPress={() => moveWeek(-1)} style={{ padding: 12 }}><Text style={{ color: token.accent }}>← Earlier</Text></Pressable>
+          <Text style={{ color: token.textSoft }}>{formatHeaderDate(effectiveDate)}</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Next week" disabled={weekEnd >= today} onPress={() => moveWeek(1)} style={{ padding: 12, opacity: weekEnd >= today ? 0.4 : 1 }}><Text style={{ color: token.accent }}>Later →</Text></Pressable>
+        </View>
         <View style={styles.filterRow}>
           {dayOptions.map((day) => {
             const active = effectiveDate === day.date;
             return (
               <Pressable
                 key={day.date}
+                accessibilityRole="button"
+                accessibilityLabel={new Date(`${day.date}T12:00:00`).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
+                accessibilityState={{ selected: active }}
                 style={[styles.dayItem, active && styles.dayItemActive]}
                 onPress={() => setSelectedDate(day.date)}
               >
@@ -322,11 +337,11 @@ export default function MealsScreen() {
           </View>
         ) : null}
 
-        {!meals.length && !mealsQuery.isLoading && !mealsQuery.isError ? (
+        {!meals.length && !mealsQuery.isLoading && !mealsQuery.isError && !mealsQuery.hasNextPage ? (
           <View style={styles.emptyCard}>
             <Text style={styles.emptyTitle}>No meals yet</Text>
             <Text style={styles.emptyBody}>
-              Hold the mic below to log a meal. It’ll appear here so you can edit or delete it.
+              Tap the mic below to log a meal for today. You can review or edit it in today’s meals.
             </Text>
           </View>
         ) : null}
@@ -392,10 +407,16 @@ export default function MealsScreen() {
             </View>
           </View>
         ))}
+        {mealsQuery.hasNextPage ? (
+          <Pressable accessibilityRole="button" disabled={mealsQuery.isFetchingNextPage} style={styles.retryButton} onPress={() => void mealsQuery.fetchNextPage()}>
+            <Text style={styles.retryButtonText}>{mealsQuery.isFetchingNextPage ? "Loading…" : "Load more meals"}</Text>
+          </Pressable>
+        ) : null}
       </ScrollView>
 
       <FloatingCommandBar
-        hint='"Had pasta for lunch…"'
+        hint='Log a meal for today…'
+        safeAreaBottom
         onPress={() => cc.open()}
         onMicPress={() => cc.startRecording()}
       />

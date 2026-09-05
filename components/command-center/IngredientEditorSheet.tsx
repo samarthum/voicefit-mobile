@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useWindowDimensions, View } from "react-native";
 import {
   BottomSheetBackdrop,
@@ -36,6 +37,7 @@ export function IngredientEditorSheet({
   onSubmitEdit,
   onClose,
 }: IngredientEditorSheetProps) {
+  const insets = useSafeAreaInsets();
   const sheetRef = useRef<BottomSheetModal>(null);
   const { height } = useWindowDimensions();
 
@@ -60,6 +62,9 @@ export function IngredientEditorSheet({
   return (
     <BottomSheetModal
       ref={sheetRef}
+      topInset={insets.top}
+      accessible={false}
+      accessibilityRole="none"
       onDismiss={onClose}
       enableDynamicSizing
       maxDynamicContentSize={height * 0.92}

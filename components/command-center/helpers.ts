@@ -249,23 +249,29 @@ export function scaleIngredientByGrams(
 // Workout helpers
 // ---------------------------------------------------------------------------
 
-function parseWorkoutSetsFromTranscript(transcript: string) {
-  const kgFirst = [...transcript.matchAll(/(\d+(?:\.\d+)?)\s*(?:kg|kgs?|kilograms?)\s*(?:for|x|×)\s*(\d+)/gi)];
-  const repsFirst = [...transcript.matchAll(/(\d+)\s*(?:reps?)?\s*(?:at|@)\s*(\d+(?:\.\d+)?)\s*(?:kg|kgs?|kilograms?)?/gi)];
-  const setsOf = [...transcript.matchAll(/(\d+)\s*(?:sets?\s*(?:of|x|×))\s*(\d+)\s*(?:(?:at|@)\s*(\d+(?:\.\d+)?))?/gi)];
-
-  const results: Array<{ weightKg: string; reps: string }> = [];
-  for (const m of kgFirst) results.push({ weightKg: m[1], reps: m[2] });
-  for (const m of repsFirst) results.push({ weightKg: m[2], reps: m[1] });
-  for (const m of setsOf) {
-    const setCount = Number(m[1]);
-    const reps = m[2];
-    const weight = m[3] ?? "";
-    for (let i = 0; i < Math.min(setCount, 8); i++) results.push({ weightKg: weight, reps });
+export function parseWorkoutSetsFromTranscript(transcript: string) {
+  // Match whole multi-set phrases first. Their nested "8 reps at 10 kg"
+  // must not be counted again as an additional single set.
+  const groups: Array<{ start: number; end: number; count: number; weightKg: string; reps: string }> = [];
+  const patterns = [
+    { regex: /(\d+)\s*sets?\s*(?:of|x|×)\s*(\d+)\s*(?:reps?\b\s*)?(?:(?:at|@)\s*(\d+(?:\.\d+)?)\s*(?:kgs?|kilograms?)?)?/gi, count: 1, reps: 2, weight: 3 },
+    { regex: /(\d+(?:\.\d+)?)\s*(?:kgs?|kilograms?)\s*(?:for|x|×)\s*(\d+)/gi, count: 0, reps: 2, weight: 1 },
+    { regex: /(\d+)\s*(?:reps?)?\s*(?:at|@)\s*(\d+(?:\.\d+)?)\s*(?:kgs?|kilograms?)?/gi, count: 0, reps: 1, weight: 2 },
+  ];
+  for (const pattern of patterns) {
+    for (const match of transcript.matchAll(pattern.regex)) {
+      const start = match.index!;
+      const end = start + match[0].length;
+      if (groups.some((group) => start < group.end && end > group.start)) continue;
+      groups.push({ start, end, count: pattern.count ? Number(match[pattern.count]) : 1, reps: match[pattern.reps], weightKg: match[pattern.weight] ?? "" });
+    }
   }
+  const results = groups.sort((a, b) => a.start - b.start).flatMap((group) =>
+    Array.from({ length: Math.min(group.count, 100) }, () => ({ weightKg: group.weightKg, reps: group.reps })),
+  );
 
   if (!results.length) return [];
-  return results.slice(0, 8).map((r, index) => ({
+  return results.slice(0, 100).map((r, index) => ({
     id: `set-${index + 1}`,
     setNumber: index + 1,
     weightKg: r.weightKg,
@@ -373,7 +379,7 @@ export function inferCalories(transcript: string) {
 // ---------------------------------------------------------------------------
 
 export function buildQuickAddItems(recentMeals: RecentMeal[] | undefined): QuickAddItem[] {
-  if (!recentMeals?.length) return DEFAULT_QUICK_ADD;
+  if (!recentMeals?.length) return [];
   const items = recentMeals
     .filter((meal) => meal.calories != null)
     .slice(0, 5)
@@ -383,7 +389,7 @@ export function buildQuickAddItems(recentMeals: RecentMeal[] | undefined): Quick
       calories: meal.calories ?? 0,
       mealType: meal.mealType,
     }));
-  return items.length ? items : DEFAULT_QUICK_ADD;
+  return items;
 }
 
 // ---------------------------------------------------------------------------

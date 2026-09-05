@@ -49,6 +49,21 @@ function EyeGlyph({ secure }: { secure: boolean }) {
   );
 }
 
+function HeaderClose() {
+  const router = useRouter();
+    return (
+      <Pressable
+        onPress={() => router.back()}
+        accessibilityRole="button"
+        accessibilityLabel="Close"
+        style={{ paddingHorizontal: 4 }}
+      >
+        <Icon name="close" size={22} color={token.text} />
+      </Pressable>
+    );
+  }
+
+
 export default function SignUpEmailScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ mode?: string | string[] }>();
@@ -126,26 +141,14 @@ export default function SignUpEmailScreen() {
     }
   };
 
-  function HeaderClose() {
-    return (
-      <Pressable
-        onPress={() => router.back()}
-        accessibilityRole="button"
-        accessibilityLabel="Close"
-        style={{ paddingHorizontal: 4 }}
-      >
-        <Icon name="close" size={22} color={token.text} />
-      </Pressable>
-    );
-  }
 
   return (
     <>
       <Stack.Screen
         options={{
           headerShown: true,
-          title: "Sign up",
-          headerLeft: () => <HeaderClose />,
+          title: mode === "signin" ? "Sign in" : "Sign up",
+          headerLeft: HeaderClose,
         }}
       />
       <KeyboardAvoidingView style={{ flex: 1, backgroundColor: token.bg }}>

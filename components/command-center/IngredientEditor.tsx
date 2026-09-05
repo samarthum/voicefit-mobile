@@ -6,7 +6,8 @@ import {
   Text,
   View,
 } from "react-native";
-import { BottomSheetTextInput, BottomSheetView } from "@gorhom/bottom-sheet";
+import { BottomSheetView } from "@gorhom/bottom-sheet";
+import { BottomSheetTextInput } from "@/components/command-center/SheetTextInput";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { MealIngredient } from "@voicefit/contracts/types";
 import { color as t, font } from "@/lib/tokens";

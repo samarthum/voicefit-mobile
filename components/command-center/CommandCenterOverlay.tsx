@@ -1,12 +1,11 @@
 import type { ReactNode } from "react";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MealIngredient } from "@voicefit/contracts/types";
 import {
   Alert,
-  Modal,
   StyleSheet,
   Text,
-  useWindowDimensions,
   View,
 } from "react-native";
 import {
@@ -38,14 +37,13 @@ import { color as t, font } from "@/lib/tokens";
 // Main Overlay Component
 // ---------------------------------------------------------------------------
 
-// Review states present at a fixed tall snap so the ingredient/set list scrolls
-// within bounds and the action footer pins above the safe area. Every other
-// state hugs its content via dynamic sizing.
+// Keep one stable height through entry, processing, review and saving. Dynamic
+// content sizing otherwise animates several competing snaps during submission.
 const REVIEW_SNAP_POINTS = ["92%"];
 
 export function CommandCenterOverlay() {
+  const insets = useSafeAreaInsets();
   const { snapshot, dispatch } = useCommandCenterOverlay();
-  const { height: windowHeight } = useWindowDimensions();
 
   const { state: commandState, review: reviewDraft, error, toast } = snapshot;
   const isVisible = commandState !== "cc_collapsed";
@@ -56,11 +54,13 @@ export function CommandCenterOverlay() {
 
   // gorhom owns presentation now. We drive it imperatively from the command
   // state machine: present the sheet for every "open" state except cc_saved
-  // (which renders its own RN-Modal toast), dismiss it otherwise. The
+  // (which renders a nonmodal toast after dismissal), dismiss it otherwise. The
   // `programmaticDismissRef` flag lets `onDismiss` distinguish OUR dismiss()
   // calls (state transitions) from a user swipe/backdrop dismiss — only the
   // latter should reset the command state back to collapsed.
   const sheetRef = useRef<BottomSheetModal>(null);
+  const lastSheetContent = useRef<ReactNode>(null);
+  const [sheetDismissed, setSheetDismissed] = useState(true);
   const programmaticDismissRef = useRef(false);
   // Tracks whether we've actually presented the sheet so we never dismiss()
   // before the first present(). Without this, the effect's else-branch runs on
@@ -73,6 +73,7 @@ export function CommandCenterOverlay() {
 
   useEffect(() => {
     if (shouldPresentSheet) {
+      setSheetDismissed(false);
       hasPresentedRef.current = true;
       sheetRef.current?.present();
     } else if (hasPresentedRef.current) {
@@ -83,6 +84,7 @@ export function CommandCenterOverlay() {
   }, [shouldPresentSheet]);
 
   const handleSheetDismiss = useCallback(() => {
+    setSheetDismissed(true);
     // Programmatic dismiss (state transition) — already handled by the reducer.
     if (programmaticDismissRef.current) {
       programmaticDismissRef.current = false;
@@ -91,11 +93,6 @@ export function CommandCenterOverlay() {
     // User-initiated swipe/backdrop dismiss — keep app state in sync.
     closeCommandCenter();
   }, [closeCommandCenter]);
-
-  // Dynamic sizing capped near the old `maxHeight: "92%"` so short states
-  // (idle/listening/interpreting/saving/error) hug their content while tall
-  // review states scroll inside the cap.
-  const maxDynamicContentSize = windowHeight * 0.92;
 
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
@@ -229,10 +226,12 @@ export function CommandCenterOverlay() {
     <>
       <BottomSheetModal
         ref={sheetRef}
+        topInset={insets.top}
+        accessible={false}
+        accessibilityRole="none"
         onDismiss={handleSheetDismiss}
-        enableDynamicSizing={!isReview}
-        maxDynamicContentSize={maxDynamicContentSize}
-        snapPoints={isReview ? REVIEW_SNAP_POINTS : undefined}
+        enableDynamicSizing={false}
+        snapPoints={REVIEW_SNAP_POINTS}
         enablePanDownToClose={canCloseViaBackdrop}
         backdropComponent={renderBackdrop}
         footerComponent={renderFooter}
@@ -248,17 +247,10 @@ export function CommandCenterOverlay() {
         keyboardBlurBehavior="restore"
         android_keyboardInputMode="adjustResize"
       >
-        {renderContent()}
+        {shouldPresentSheet ? (lastSheetContent.current = renderContent()) : lastSheetContent.current}
       </BottomSheetModal>
 
-      {/* The SavedToastState keeps its own RN Modal — it shows AFTER the bottom
-          sheet dismisses, so there's no z-order conflict, and converting it
-          is out of scope. */}
-      {commandState === "cc_saved" ? (
-        <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={closeCommandCenter}>
-          <SavedToastState />
-        </Modal>
-      ) : null}
+      {commandState === "cc_saved" && sheetDismissed ? <SavedToastState /> : null}
 
       {/* Ingredient editor — a gorhom sheet stacked over the meal review,
           shared with the meal-edit screen via IngredientEditorSheet. */}
@@ -282,7 +274,7 @@ export function CommandCenterOverlay() {
         }}
         onClose={closeIngredientEditor}
       />
-      {toastNode}
+      {commandState !== "cc_saved" ? toastNode : null}
     </>
   );
 }

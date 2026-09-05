@@ -1,3 +1,4 @@
+import { monotonicNow, recordTiming } from "@/lib/performance-log";
 import type { ApiResponse } from "@voicefit/contracts/types";
 
 const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL;
@@ -35,7 +36,8 @@ async function parseApiResponse<T>(response: Response): Promise<T> {
   let json: ApiResponse<T>;
   try {
     json = (await response.json()) as ApiResponse<T>;
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") throw error;
     throw new Error(response.ok ? "Invalid response payload" : "Request failed");
   }
 
@@ -56,9 +58,20 @@ export async function apiRequest<T>(
   path: string,
   options: RequestInit & { token?: string; timeoutMs?: number } = {}
 ): Promise<T> {
-  const { token, headers, body, timeoutMs, ...rest } = options;
+  const { token, headers, body, timeoutMs, signal, ...rest } = options;
+  const started = monotonicNow();
+  let receivedAt: number | undefined;
+  let status: number | undefined;
+  let outcome: "success" | "error" | "timeout" | "cancelled" = "error";
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs ?? DEFAULT_TIMEOUT_MS);
+  let timedOut = false;
+  const onAbort = () => controller.abort();
+  if (signal?.aborted) controller.abort();
+  else signal?.addEventListener("abort", onAbort, { once: true });
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs ?? DEFAULT_TIMEOUT_MS);
   try {
     const response = await fetch(normalizeUrl(path), {
       ...rest,
@@ -66,14 +79,28 @@ export async function apiRequest<T>(
       headers: buildHeaders(body, token, headers),
       signal: controller.signal,
     });
-    return parseApiResponse<T>(response);
+    receivedAt = monotonicNow();
+    status = response.status;
+    const data = await parseApiResponse<T>(response);
+    outcome = "success";
+    return data;
   } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") {
+    outcome = signal?.aborted ? "cancelled" : timedOut ? "timeout" : "error";
+    if (timedOut && !signal?.aborted) {
       throw new Error("Request timed out");
     }
     throw error;
   } finally {
+    const finished = monotonicNow();
+    recordTiming({
+      kind: "api", route: path, method: (rest.method ?? "GET").toUpperCase(), outcome,
+      durationMs: finished - started,
+      headersMs: receivedAt === undefined ? undefined : receivedAt - started,
+      bodyMs: receivedAt === undefined ? undefined : finished - receivedAt,
+      status,
+    });
     clearTimeout(timeout);
+    signal?.removeEventListener("abort", onAbort);
   }
 }
 
@@ -82,24 +109,9 @@ export async function apiFormRequest<T>(
   formData: FormData,
   options: Omit<RequestInit, "body"> & { token?: string; timeoutMs?: number } = {}
 ): Promise<T> {
-  const { token, headers, timeoutMs, ...rest } = options;
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs ?? DEFAULT_TIMEOUT_MS);
-  try {
-    const response = await fetch(normalizeUrl(path), {
-      ...rest,
-      method: rest.method ?? "POST",
-      body: formData,
-      headers: buildHeaders(formData, token, headers),
-      signal: controller.signal,
-    });
-    return parseApiResponse<T>(response);
-  } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new Error("Request timed out");
-    }
-    throw error;
-  } finally {
-    clearTimeout(timeout);
-  }
+  return apiRequest<T>(path, {
+    ...options,
+    method: options.method ?? "POST",
+    body: formData,
+  });
 }

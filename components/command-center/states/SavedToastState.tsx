@@ -40,11 +40,11 @@ export function SavedToastState() {
   }
 
   return (
-    <View style={styles.savedToastRoot} pointerEvents="box-none">
-      <View style={styles.savedToastDim} pointerEvents="none" />
+    <View style={styles.savedToastRoot} pointerEvents="none">
       <View
         style={[styles.savedToastCard, { bottom: insets.bottom + 120 }]}
         testID="cc-saved-toast"
+        accessibilityLiveRegion="polite"
       >
         <View style={styles.savedToastTopRow}>
           <View style={styles.savedToastCheckCircle}>

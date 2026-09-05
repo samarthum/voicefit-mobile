@@ -26,6 +26,9 @@ export function DayPicker({ dayOptions, selectedDate, loggedDates, onSelectDate 
         return (
           <Pressable
             key={day.date}
+            accessibilityRole="button"
+            accessibilityLabel={new Date(`${day.date}T12:00:00`).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
+            accessibilityState={{ selected: active }}
             style={[styles.dayItem, active && styles.dayItemActive]}
             testID={`home-day-${day.date}`}
             onPress={() => {

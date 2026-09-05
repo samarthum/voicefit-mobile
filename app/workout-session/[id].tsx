@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useScreenTiming } from "@/hooks/use-screen-timing";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -342,6 +343,35 @@ function buildLiveSession(session: WorkoutSessionDetail, currentTime: number = D
   };
 }
 
+// Keep header renderers stable: replacing them during a navigation update
+// causes Stack.Screen to set options again and can enter a render loop.
+function WorkoutScreenHeader({ title, showMenu, showFinish, saving, onMenu, onFinish }: {
+  title: string; showMenu: boolean; showFinish: boolean; saving: boolean;
+  onMenu: () => void; onFinish: () => Promise<void>;
+}) {
+  const actions = useRef({ onMenu, onFinish });
+  useEffect(() => { actions.current = { onMenu, onFinish }; }, [onMenu, onFinish]);
+  const options = useMemo(() => ({
+    headerShown: true,
+    title,
+    headerRight: () => (
+      <View style={styles.headerActions}>
+        {showMenu ? (
+          <Pressable style={styles.iconButton} onPress={() => actions.current.onMenu()} hitSlop={8} accessibilityRole="button" accessibilityLabel="Session options">
+            <Icon name="ellipsisVertical" size={18} color={token.textMute} />
+          </Pressable>
+        ) : null}
+        {showFinish ? (
+          <Pressable style={[styles.finishButton, styles.finishButtonActive]} onPress={() => void actions.current.onFinish()} disabled={saving} accessibilityRole="button" accessibilityLabel="Finish workout" accessibilityState={{ disabled: saving }}>
+            <Text style={styles.finishButtonText}>{saving ? "Finishing…" : "Finish"}</Text>
+          </Pressable>
+        ) : null}
+      </View>
+    ),
+  }), [title, showMenu, showFinish, saving]);
+  return <Stack.Screen options={options} />;
+}
+
 export default function WorkoutSessionScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -392,6 +422,8 @@ export default function WorkoutSessionScreen() {
       return apiRequest<WorkoutSessionDetail>(`/api/workout-sessions/${sessionId}`, { token });
     },
   });
+
+  useScreenTiming("workout-detail", !!sessionQuery.data || isPreviewId, sessionQuery.isError);
 
   // Tick every second for active session duration display
   useEffect(() => {
@@ -618,13 +650,11 @@ export default function WorkoutSessionScreen() {
         body: JSON.stringify({ endedAt: new Date().toISOString() }),
       });
     },
-    onSuccess: async () => {
+    onSuccess: (updated) => {
       haptic.success();
-      await Promise.all([
-        sessionQuery.refetch(),
-        queryClient.invalidateQueries({ queryKey: ["workout-sessions"] }),
-        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
-      ]);
+      queryClient.setQueryData<WorkoutSessionDetail>(["workout-session-detail", sessionId], (old) => old ? { ...old, endedAt: updated.endedAt } : old);
+      void queryClient.invalidateQueries({ queryKey: ["workout-sessions"] });
+      void queryClient.invalidateQueries({ queryKey: ["dashboard"] });
     },
     onError: (error) => {
       setLiveError(error instanceof Error ? error.message : "Failed to finish session.");
@@ -665,11 +695,11 @@ export default function WorkoutSessionScreen() {
         body: JSON.stringify({ title }),
       });
     },
-    onSuccess: async () => {
-      await Promise.all([
-        sessionQuery.refetch(),
-        queryClient.invalidateQueries({ queryKey: ["workout-sessions"] }),
-      ]);
+    onSuccess: (updated) => {
+      queryClient.setQueryData<WorkoutSessionDetail>(["workout-session-detail", sessionId], (old) => old ? { ...old, title: updated.title } : old);
+      setRenameModalVisible(false);
+      Keyboard.dismiss();
+      void queryClient.invalidateQueries({ queryKey: ["workout-sessions"] });
     },
     onError: (error) => {
       Alert.alert("Error", error instanceof Error ? error.message : "Failed to rename session.");
@@ -765,7 +795,7 @@ export default function WorkoutSessionScreen() {
                 {
                   text: "Delete",
                   style: "destructive",
-                  onPress: () => void deleteSessionMutation.mutateAsync(),
+                  onPress: () => deleteSessionMutation.mutate(),
                 },
               ]
             );
@@ -822,10 +852,8 @@ export default function WorkoutSessionScreen() {
 
   const handleRenameConfirm = () => {
     const trimmed = renameText.trim();
-    if (!trimmed) return;
-    setRenameModalVisible(false);
-    Keyboard.dismiss();
-    void renameSessionMutation.mutateAsync(trimmed);
+    if (!trimmed || renameSessionMutation.isPending) return;
+    renameSessionMutation.mutate(trimmed);
   };
 
   const openExerciseNoteEditor = (exerciseName: string) => {
@@ -940,7 +968,7 @@ export default function WorkoutSessionScreen() {
       setPreviewFinished(true);
       return;
     }
-    await finishMutation.mutateAsync();
+    if (!finishMutation.isPending) finishMutation.mutate();
   };
 
   const handleAddSet = async (card: ExerciseCardData) => {
@@ -1033,35 +1061,13 @@ export default function WorkoutSessionScreen() {
 
   return (
     <View style={styles.root}>
-      <Stack.Screen
-        options={{
-          headerShown: true,
-          title: session?.title ?? "Workout",
-          headerRight: () => (
-            <View style={styles.headerActions}>
-              {!isPreviewId && !isWebPreview && session ? (
-                <Pressable
-                  style={styles.iconButton}
-                  onPress={handleSessionMenu}
-                  hitSlop={8}
-                  accessibilityRole="button"
-                  accessibilityLabel="Session options"
-                >
-                  <Icon name="ellipsisVertical" size={18} color={token.textMute} />
-                </Pressable>
-              ) : null}
-              {!session?.finished ? (
-                <Pressable
-                  style={[styles.finishButton, styles.finishButtonActive]}
-                  onPress={() => void handleFinish()}
-                  disabled={finishMutation.isPending}
-                >
-                  <Text style={styles.finishButtonText}>Finish</Text>
-                </Pressable>
-              ) : null}
-            </View>
-          ),
-        }}
+      <WorkoutScreenHeader
+        title={session?.title ?? "Workout"}
+        showMenu={!isPreviewId && !isWebPreview && !!session}
+        showFinish={!!session && !session.finished}
+        saving={finishMutation.isPending}
+        onMenu={handleSessionMenu}
+        onFinish={handleFinish}
       />
       <KeyboardAwareScrollView
         style={styles.scroll}

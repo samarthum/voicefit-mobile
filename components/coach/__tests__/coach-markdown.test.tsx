@@ -1,3 +1,4 @@
+import { color } from "../../../lib/tokens";
 import { describe, expect, mock, test } from "bun:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -94,7 +95,7 @@ describe("CoachMarkdown tables", () => {
     const html = render(COMPARISON_TABLE);
     const dashCell = html
       .split("<x-text")
-      .find((chunk) => chunk.includes("#9AA0AB"));
+      .find((chunk) => chunk.includes(color.textMute));
     expect(dashCell).toBeDefined();
     expect(dashCell).toContain("—");
   });

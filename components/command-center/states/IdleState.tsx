@@ -1,5 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
+import { BottomSheetTextInput } from "@/components/command-center/SheetTextInput";
 import { Icon } from "@/components/Icon";
 import { useCommandCenterOverlay } from "@/components/command-center/CommandCenterProvider";
 import { EXERCISE_CATALOG } from "@/lib/exercise-catalog";
@@ -25,6 +25,7 @@ export function IdleState() {
           onChangeText={(text) => dispatch({ type: "text.change", text })}
           multiline
           testID="cc-input-text"
+          accessibilityLabel="Describe your entry"
         />
       </View>
 
@@ -65,11 +66,11 @@ export function IdleState() {
         </Pressable>
       </View>
 
-      <Text style={styles.idleCaption}>HOLD TO SPEAK · OR TYPE</Text>
+      <Text style={styles.idleCaption}>TAP TO SPEAK · OR TYPE</Text>
 
       {isWorkout ? (
         <View style={styles.frequentSection}>
-          <Text style={styles.frequentLabel}>FREQUENT</Text>
+          <Text style={styles.frequentLabel}>EXERCISE IDEAS</Text>
           {EXERCISE_CATALOG.slice(0, 5).map((exercise, index) => (
             <Pressable
               key={exercise.name}
@@ -91,9 +92,9 @@ export function IdleState() {
             </Pressable>
           ))}
         </View>
-      ) : (
+      ) : quickAddItems.length > 0 ? (
         <View style={styles.frequentSection}>
-          <Text style={styles.frequentLabel}>FREQUENT</Text>
+          <Text style={styles.frequentLabel}>RECENT MEALS</Text>
           {quickAddItems.slice(0, 3).map((item, index) => (
             <Pressable
               key={item.id}
@@ -113,7 +114,7 @@ export function IdleState() {
             </Pressable>
           ))}
         </View>
-      )}
+      ) : null}
     </View>
   );
 }

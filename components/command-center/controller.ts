@@ -109,13 +109,14 @@ export interface CommandCenterStatePort {
 }
 
 export interface CommandCenterBackendPort {
-  interpretEntry: (transcript: string, source: EntrySource) => Promise<InterpretEntryResponse>;
+  interpretEntry: (transcript: string, source: EntrySource, signal?: AbortSignal) => Promise<InterpretEntryResponse>;
   createPendingMealFromText: (transcript: string, source: EntrySource) => Promise<void>;
   createPendingMealFromPhoto: (photo: PhotoAttachment, context: string) => Promise<void>;
-  transcribeAudio: (audio: { uri: string; name: string; type: string }) => Promise<string>;
+  transcribeAudio: (audio: { uri: string; name: string; type: string }, signal?: AbortSignal) => Promise<string>;
   createMeal: (input: MealSaveInput) => Promise<void>;
   ensureQuickSession: () => Promise<string>;
   createWorkoutSet: (input: WorkoutSetSaveInput) => Promise<void>;
+  createWorkoutBatch: (input: { requestId: string; sets: WorkoutSetSaveInput[] }) => Promise<void>;
   upsertDailyMetrics: (input: DailyMetricsSaveInput) => Promise<void>;
   createConversation: (input: ConversationSaveInput) => Promise<void>;
   fetchInterpretedIngredient: (name: string, grams?: number) => Promise<MealIngredient>;
@@ -132,6 +133,7 @@ export interface CommandCenterCachePort {
 
 export interface CommandCenterClockPort {
   now: () => Date;
+  createRequestId: () => string;
 }
 
 export interface CommandCenterPreviewPort {
@@ -223,8 +225,45 @@ function quickAddToMealInput(item: QuickAddItem, now: Date): MealSaveInput {
   };
 }
 
-export function createCommandCenterController(ports: CommandCenterPorts): CommandCenterController {
+export interface CommandCenterOperationState {
+  generation: number;
+  saving: boolean;
+  abort?: AbortController;
+  workoutBatch?: { requestId: string; sets: WorkoutSetSaveInput[] };
+}
+
+export function createCommandCenterController(
+  ports: CommandCenterPorts,
+  operation: CommandCenterOperationState = { generation: 0, saving: false },
+): CommandCenterController {
+  // Shared across provider renders. Cancellation stops reads, never claims to
+  // undo a write that the server may already have accepted.
+  const cancelInterpretation = () => {
+    operation.generation += 1;
+    operation.abort?.abort();
+    operation.abort = undefined;
+  };
+  const beginInterpretation = () => {
+    cancelInterpretation();
+    operation.abort = new AbortController();
+    return { generation: operation.generation, signal: operation.abort.signal };
+  };
+  const isCurrent = (generation: number) => generation === operation.generation;
+  const savePendingMeal = async (transcript: string, source: EntrySource) => {
+    if (operation.saving) return;
+    operation.saving = true;
+    ports.state.setCommandState("cc_saving");
+    try {
+      await ports.backend.createPendingMealFromText(transcript, source);
+      ports.feedback.finishWithSaved("Logging your meal…");
+    } finally {
+      operation.saving = false;
+    }
+  };
   const openCommandCenter = () => {
+    if (operation.saving) return;
+    cancelInterpretation();
+    operation.workoutBatch = undefined;
     ports.state.setCommandText("");
     ports.state.setVoiceTranscript("");
     ports.state.setRecordingSeconds(0);
@@ -236,6 +275,8 @@ export function createCommandCenterController(ports: CommandCenterPorts): Comman
   };
 
   const closeCommandCenter = () => {
+    if (operation.saving) return;
+    cancelInterpretation();
     ports.state.closeCommandCenter();
   };
 
@@ -338,6 +379,8 @@ export function createCommandCenterController(ports: CommandCenterPorts): Comman
   };
 
   const runSaveAction = async (action: SaveAction) => {
+    if (operation.saving) return;
+    operation.saving = true;
     ports.state.setPendingSaveAction(action);
     ports.state.clearCommandError();
     ports.state.setCommandState(action.kind === "quick_add" ? "cc_quick_add_saving" : "cc_saving");
@@ -425,6 +468,8 @@ export function createCommandCenterController(ports: CommandCenterPorts): Comman
         action.kind === "quick_add" ? "quick_add_failure" : "auto_save_failure",
         getErrorMessage(error),
       );
+    } finally {
+      operation.saving = false;
     }
   };
 
@@ -434,7 +479,7 @@ export function createCommandCenterController(ports: CommandCenterPorts): Comman
     source: EntrySource,
   ) => {
     if (interpreted.intent === "meal") {
-      await ports.backend.createPendingMealFromText(transcript, source);
+      await savePendingMeal(transcript, source);
     } else if (interpreted.intent === "workout_set") {
       ports.state.setReviewDraft(buildWorkoutReviewDraft(interpreted, transcript, source));
       ports.state.setCommandState("cc_review_workout");
@@ -444,6 +489,8 @@ export function createCommandCenterController(ports: CommandCenterPorts): Comman
   };
 
   const submitTypedText = async () => {
+    if (operation.saving) return;
+    const { generation, signal } = beginInterpretation();
     const trimmed = ports.state.getCommandText().trim();
     if (!trimmed) return;
 
@@ -452,18 +499,22 @@ export function createCommandCenterController(ports: CommandCenterPorts): Comman
 
     try {
       if (isLikelyMealEntry(trimmed)) {
-        await ports.backend.createPendingMealFromText(trimmed, "text");
+        await savePendingMeal(trimmed, "text");
         return;
       }
 
-      const interpreted = await ports.backend.interpretEntry(trimmed, "text");
+      const interpreted = await ports.backend.interpretEntry(trimmed, "text", signal);
+      if (!isCurrent(generation)) return;
       await routeInterpretedEntry(interpreted, trimmed, "text");
     } catch (error) {
+      if (!isCurrent(generation)) return;
       ports.state.setCommandError("typed_interpret_failure", getErrorMessage(error));
     }
   };
 
   const interpretVoiceTranscript = async (text: string) => {
+    if (operation.saving) return;
+    const { generation, signal } = beginInterpretation();
     const transcript = text.trim();
     if (!transcript) {
       ports.state.setCommandError("voice_interpret_failure", "Transcript cannot be empty.");
@@ -476,20 +527,24 @@ export function createCommandCenterController(ports: CommandCenterPorts): Comman
 
     try {
       if (isLikelyMealEntry(transcript)) {
-        await ports.backend.createPendingMealFromText(transcript, "voice");
+        await savePendingMeal(transcript, "voice");
         return;
       }
 
-      const interpreted = await ports.backend.interpretEntry(transcript, "voice");
+      const interpreted = await ports.backend.interpretEntry(transcript, "voice", signal);
+      if (!isCurrent(generation)) return;
       await routeInterpretedEntry(interpreted, transcript, "voice");
     } catch (error) {
+      if (!isCurrent(generation)) return;
       ports.state.setCommandError("voice_interpret_failure", getErrorMessage(error));
     } finally {
-      ports.state.setIsInterpretingVoice(false);
+      if (isCurrent(generation)) ports.state.setIsInterpretingVoice(false);
     }
   };
 
   const startRecording = async () => {
+    if (operation.saving) return;
+    const { generation, signal } = beginInterpretation();
     ports.state.clearCommandError();
     ports.state.setVoiceTranscript("");
 
@@ -505,26 +560,36 @@ export function createCommandCenterController(ports: CommandCenterPorts): Comman
       }
 
       const permissionGranted = await ports.media.requestMicrophonePermission();
+      if (!isCurrent(generation)) return;
       if (!permissionGranted) {
         ports.state.setCommandError("mic_permission_denied");
         return;
       }
 
       const recording = await ports.media.startVoiceRecording(ports.state.setRecordingSeconds);
+      if (!isCurrent(generation)) {
+        recording.clearDurationUpdates();
+        await recording.stopAndUnload();
+        return;
+      }
       ports.state.setActiveRecording(recording);
       ports.state.setRecordingSeconds(0);
       ports.state.setCommandState("cc_recording");
     } catch (error) {
+      if (!isCurrent(generation)) return;
       ports.state.setCommandError("voice_interpret_failure", getErrorMessage(error));
     }
   };
 
   const stopRecording = async () => {
+    if (operation.saving) return;
+    const { generation, signal } = beginInterpretation();
     if (ports.preview.isEnabled()) {
       const previewTranscript = "I had a chicken salad with rice for lunch, about 500 calories";
       ports.state.setCommandState("cc_transcribing_voice");
       if (ports.preview.hasFlag("hold_transcribing")) return;
       await ports.preview.delay(700);
+      if (!isCurrent(generation)) return;
       ports.state.setVoiceTranscript(previewTranscript);
       if (ports.preview.hasFlag("hold_interpreting")) {
         ports.state.setCommandState("cc_interpreting_voice");
@@ -551,37 +616,44 @@ export function createCommandCenterController(ports: CommandCenterPorts): Comman
         throw new Error("Recording is too short. Please record at least 1 second.");
       }
 
+      if (!isCurrent(generation)) return;
       const transcript = await ports.backend.transcribeAudio({
         uri,
         name: `voicefit-${ports.clock.now().getTime()}.m4a`,
         type: "audio/m4a",
-      });
+      }, signal);
+      if (!isCurrent(generation)) return;
       const cleaned = transcript.trim();
       if (!cleaned) throw new Error("Transcript was empty. Please try again.");
       ports.state.setVoiceTranscript(cleaned);
       await interpretVoiceTranscript(cleaned);
     } catch (error) {
+      if (!isCurrent(generation)) return;
       ports.state.setCommandError("voice_interpret_failure", getErrorMessage(error));
     }
   };
 
   const launchPhotoPicker = async (mode: PhotoPickerMode) => {
+    if (operation.saving) return;
+    const { generation, signal } = beginInterpretation();
     ports.state.clearCommandError();
 
     try {
       const permissionGranted = await ports.media.requestPhotoPermission(mode);
+      if (!isCurrent(generation)) return;
       if (!permissionGranted) {
         ports.state.setCommandError("photo_permission_denied");
         return;
       }
 
       const photo = await ports.media.pickMealPhoto(mode);
-      if (!photo) return;
+      if (!isCurrent(generation) || !photo) return;
 
       ports.state.setSelectedMealPhoto(photo);
       ports.state.setCommandText("");
       ports.state.setCommandState("cc_photo_context");
     } catch (error) {
+      if (!isCurrent(generation)) return;
       ports.state.setCommandError("photo_interpret_failure", getErrorMessage(error));
     }
   };
@@ -597,24 +669,31 @@ export function createCommandCenterController(ports: CommandCenterPorts): Comman
   };
 
   const submitPhotoMeal = async () => {
+    if (operation.saving) return;
     const photo = ports.state.getSelectedMealPhoto();
     if (!photo) return;
 
-    ports.state.setCommandState("cc_submitting_photo");
+    operation.saving = true;
+    ports.state.setCommandState("cc_saving");
     ports.state.clearCommandError();
 
     try {
       await ports.backend.createPendingMealFromPhoto(photo, ports.state.getCommandText());
+      ports.feedback.finishWithSaved("Looking at your photo…");
     } catch (error) {
       ports.state.setCommandError("photo_interpret_failure", getErrorMessage(error));
+    } finally {
+      operation.saving = false;
     }
   };
 
   const saveReviewedEntry = async () => {
+    if (operation.saving) return;
     const reviewDraft = ports.state.getReviewDraft();
     if (!reviewDraft) return;
 
     if (reviewDraft.kind === "workout") {
+      operation.saving = true;
       const filledSets = reviewDraft.sets.filter((set) =>
         set.weightKg.trim() || set.reps.trim() || set.notes.trim(),
       );
@@ -631,28 +710,33 @@ export function createCommandCenterController(ports: CommandCenterPorts): Comman
           return;
         }
 
-        const sessionId = ports.state.getScreenContext().sessionId ?? await ports.backend.ensureQuickSession();
-        const now = ports.clock.now();
-        await Promise.all(
-          setsToSave.map((set) =>
-            ports.backend.createWorkoutSet({
+        if (!operation.workoutBatch) {
+          const sessionId = ports.state.getScreenContext().sessionId ?? await ports.backend.ensureQuickSession();
+          const now = ports.clock.now();
+          operation.workoutBatch = {
+            requestId: ports.clock.createRequestId(),
+            sets: setsToSave.map((set) => ({
               sessionId,
               exerciseName: reviewDraft.interpreted.payload.exerciseName,
               exerciseType: reviewDraft.interpreted.payload.exerciseType,
               reps: parsePositiveNumber(set.reps),
               weightKg: parsePositiveNumber(set.weightKg),
-              durationMinutes: null,
+              durationMinutes: reviewDraft.interpreted.payload.durationMinutes,
               notes: set.notes.trim() || reviewDraft.interpreted.payload.notes,
               performedAt: now.toISOString(),
               transcriptRaw: reviewDraft.transcript,
-            }),
-          ),
-        );
+            })),
+          };
+        }
+        await ports.backend.createWorkoutBatch(operation.workoutBatch);
+        operation.workoutBatch = undefined;
         await ports.cache.refreshAfterSave();
         ports.state.setCommandToast(`Saved ${setsToSave.length} set${setsToSave.length > 1 ? "s" : ""}`);
         ports.state.closeCommandCenter();
       } catch (error) {
         ports.state.setCommandError("auto_save_failure", getErrorMessage(error));
+      } finally {
+        operation.saving = false;
       }
       return;
     }
@@ -708,6 +792,10 @@ export function createCommandCenterController(ports: CommandCenterPorts): Comman
       return;
     }
 
+    if (subtype === "auto_save_failure" && ports.state.getReviewDraft()?.kind === "workout") {
+      await saveReviewedEntry();
+      return;
+    }
     const pendingSave = ports.state.getPendingSaveAction();
     if ((subtype === "auto_save_failure" || subtype === "quick_add_failure") && pendingSave) {
       await runSaveAction(pendingSave);
@@ -803,6 +891,8 @@ export function createCommandCenterController(ports: CommandCenterPorts): Comman
       case "text.set":
         return ports.state.setCommandText(event.text);
       case "text.edit":
+        if (operation.saving) return;
+        cancelInterpretation();
         return ports.state.setCommandState("cc_expanded_typing");
       case "text.submit":
         return submitTypedText();
@@ -815,6 +905,8 @@ export function createCommandCenterController(ports: CommandCenterPorts): Comman
       case "photo.menu.open":
         return openPhotoMenu();
       case "photo.context.edit":
+        if (operation.saving) return;
+        cancelInterpretation();
         return ports.state.setCommandState("cc_photo_context");
       case "photo.submit":
         return submitPhotoMeal();

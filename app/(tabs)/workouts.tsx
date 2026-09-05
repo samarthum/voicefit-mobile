@@ -163,6 +163,8 @@ export default function WorkoutsScreen() {
     },
   });
 
+  useScreenTiming("workout-sessions", !!sessionsQuery.data || isWebPreview, sessionsQuery.isError);
+
   const createSessionMutation = useMutation({
     mutationFn: async () => {
       const token = await getToken();
@@ -173,16 +175,16 @@ export default function WorkoutsScreen() {
         body: JSON.stringify({ title: "New Session" }),
       });
     },
-    onSuccess: async (session) => {
+    onSuccess: (session) => {
       haptic.success();
       setCreateFeedback("Workout session created.");
       if (createToastTimerRef.current) clearTimeout(createToastTimerRef.current);
       createToastTimerRef.current = setTimeout(() => setCreateFeedback(null), 2200);
-      await queryClient.invalidateQueries({ queryKey: ["workout-sessions"] });
       router.push({
         pathname: "/workout-session/[id]",
         params: { id: session.id },
       });
+      void queryClient.invalidateQueries({ queryKey: ["workout-sessions"] });
     },
     onError: (error) => {
       Alert.alert(
@@ -479,7 +481,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 8,
     // Clear the floating command bar docked above the native tab bar.
-    paddingBottom: 210,
+    paddingBottom: 24,
   },
   header: {
     flexDirection: "row",
@@ -833,3 +835,4 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 });
+import { useScreenTiming } from "@/hooks/use-screen-timing";

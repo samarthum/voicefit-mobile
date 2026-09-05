@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useScreenTiming } from "@/hooks/use-screen-timing";
+import { useLocalDay } from "@/hooks/use-local-day";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Pressable,
   RefreshControl,
@@ -162,10 +164,18 @@ export default function DashboardScreen() {
   const isRestoring = useIsRestoring();
   const [isManualRefreshing, setIsManualRefreshing] = useState(false);
 
-  const today = toLocalDateString(new Date());
+  const today = useLocalDay();
   const dayOptions = useMemo(() => getLastSevenDaysEndingToday(), [today]);
 
   const [selectedDate, setSelectedDate] = useState(today);
+  const previousToday = useRef(today);
+  useEffect(() => {
+    const previous = previousToday.current;
+    previousToday.current = today;
+    if (previous !== today) {
+      setSelectedDate((selected) => selected === previous ? today : selected);
+    }
+  }, [today]);
   const [trendTab, setTrendTab] = useState<TrendMetric>("calories");
   const [chartWidth, setChartWidth] = useState(320);
   const [isOffline, setIsOffline] = useState(false);
@@ -178,14 +188,7 @@ export default function DashboardScreen() {
   }, []);
 
   const dashboardQuery = useQuery<DashboardHomeData>({
-    // Today is keyed WITHOUT the date so a cold start on a new day rehydrates
-    // yesterday's snapshot under the same key and renders instantly
-    // (stale-while-revalidate) instead of missing the persisted cache and
-    // waiting on a full network round trip. Past days keep date-scoped keys.
-    queryKey:
-      selectedDate === today
-        ? ["dashboard", "home", timezone]
-        : ["dashboard", "home", timezone, selectedDate],
+    queryKey: ["dashboard", "home", timezone, selectedDate],
     // Hold off until the persisted cache has been restored: otherwise the
     // query fires a network fetch before hydration lands (wasting the round
     // trip and showing a skeleton even when yesterday's data was on disk).
@@ -210,6 +213,7 @@ export default function DashboardScreen() {
     },
   });
 
+  useScreenTiming("dashboard", !!dashboardQuery.data, dashboardQuery.isError);
   const dashboard = dashboardQuery.data;
   const weeklyFull = dashboard?.weeklyTrends ?? [];
   const weeklyCurrent = weeklyFull.slice(-7);
@@ -267,14 +271,16 @@ export default function DashboardScreen() {
   const todayFat: number | null = todayMacros?.fat ?? null;
   const todayProteinGoal = dashboard?.today.proteinGoal ?? 140;
 
+  const selectedDayLabel = selectedDate === today
+    ? "Today"
+    : parseDateKey(selectedDate).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+
   const coachSummary = useMemo(() => {
     if (!dashboard) return "";
-    const remaining = todayCaloriesGoal - todayCaloriesConsumed;
-    if (remaining > 200) return `${remaining.toLocaleString()} kcal left — plenty of room for dinner.`;
-    if (remaining > 0) return `${remaining.toLocaleString()} kcal left — a light bite tops you up.`;
-    if (remaining > -200) return "You're right on goal — nice steady day.";
-    return `${Math.abs(remaining).toLocaleString()} kcal over — coach can suggest a leaner day tomorrow.`;
-  }, [dashboard, todayCaloriesGoal, todayCaloriesConsumed]);
+    return selectedDate === today
+      ? "Explore your meals, workouts, and recent patterns."
+      : `Ask about your activity on ${selectedDayLabel}.`;
+  }, [dashboard, selectedDate, today, selectedDayLabel]);
 
   const trendChart = useMemo(
     () => buildLinePaths(normalizedTrendValues, chartWidth - 8, 160, trendTab, todayCaloriesGoal),
@@ -411,7 +417,7 @@ export default function DashboardScreen() {
               testID="home-hero-trends"
             >
               <View style={styles.heroCardHeader}>
-                <Text style={styles.heroEyebrow}>Move · today</Text>
+                <Text style={styles.heroEyebrow}>Nutrition · {selectedDayLabel}</Text>
                 {isDashboardInitialLoading ? (
                   <LoadingBlock width={92} height={14} radius={6} />
                 ) : (
@@ -433,9 +439,9 @@ export default function DashboardScreen() {
                   ) : (
                     <Text style={styles.heroSummary}>
                       <Text style={styles.heroSummaryAccent} selectable>
-                        {Math.max(todayCaloriesGoal - todayCaloriesConsumed, 0).toLocaleString()} kcal
+                        {Math.abs(todayCaloriesGoal - todayCaloriesConsumed).toLocaleString()} kcal
                       </Text>{" "}
-                      left to hit your goal.
+                      {todayCaloriesConsumed > todayCaloriesGoal ? "above your goal." : "remaining."}
                     </Text>
                   )}
                   {isDashboardInitialLoading ? (
@@ -491,7 +497,7 @@ export default function DashboardScreen() {
                 <View style={styles.metricTopRow}>
                   <Text style={styles.metricLabel}>Weight</Text>
                   {weightDelta != null && weightDelta !== 0 ? (
-                    <Text style={[styles.weightDelta, weightDelta <= 0 ? styles.weightDeltaGood : styles.weightDeltaBad]}>
+                    <Text style={[styles.weightDelta]}>
                       {weightDelta <= 0 ? "↓" : "↑"} {Math.abs(weightDelta).toFixed(1)}
                     </Text>
                   ) : null}
@@ -512,7 +518,7 @@ export default function DashboardScreen() {
                   </View>
                 ) : (
                   <View style={styles.weightSparklineWrap}>
-                    <WeightSparkline />
+                    <WeightSparkline values={weeklyCurrent.map((day) => day.weight)} />
                   </View>
                 )}
               </Pressable>
@@ -534,8 +540,8 @@ export default function DashboardScreen() {
             </Pressable>
 
             <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionTitle}>Today's log</Text>
-              <Pressable onPress={() => { haptic.tap(); router.push("/meals"); }} testID="home-recent-meals-see-all">
+              <Text style={styles.sectionTitle}>{selectedDate === today ? "Today’s meals" : `Meals · ${selectedDayLabel}`}</Text>
+              <Pressable hitSlop={12} accessibilityRole="button" accessibilityLabel="See all meals for selected day" onPress={() => { haptic.tap(); router.push({ pathname: "/meals", params: { date: selectedDate } }); }} testID="home-recent-meals-see-all">
                 <Text style={styles.sectionLink}>See all</Text>
               </Pressable>
             </View>
@@ -610,9 +616,8 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: 20,
     paddingTop: 10,
-    // Clear the floating command bar, which now docks above the native tab bar
-    // (tab-bar height + bar height + breathing room).
-    paddingBottom: 210,
+    // The logging bar has its own layout space below the scroll view.
+    paddingBottom: 24,
     backgroundColor: COLORS.bg,
   },
   headerRowTop: {
@@ -622,8 +627,8 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   addButton: {
-    width: 36,
-    height: 36,
+    width: 44,
+    height: 44,
     borderRadius: r.pill,
     backgroundColor: token.surface,
     borderWidth: 1,

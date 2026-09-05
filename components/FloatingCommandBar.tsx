@@ -55,7 +55,7 @@ export function FloatingCommandBar({
     : bottomOffset + (safeAreaBottom ? insets.bottom : 0);
   return (
     <View
-      style={[styles.wrap, { bottom }]}
+      style={overTabBar ? [styles.docked, { marginBottom: bottom }] : [styles.wrap, { bottom }]}
       pointerEvents="box-none"
     >
       <View style={styles.bar}>
@@ -85,6 +85,10 @@ export function FloatingCommandBar({
 }
 
 const styles = StyleSheet.create({
+  docked: {
+    marginHorizontal: 12,
+    marginTop: 8,
+  },
   wrap: {
     position: "absolute",
     left: 12,
@@ -105,6 +109,7 @@ const styles = StyleSheet.create({
   },
   left: {
     flex: 1,
+    minHeight: 56,
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
@@ -117,8 +122,8 @@ const styles = StyleSheet.create({
     letterSpacing: -0.07,
   },
   micButton: {
-    width: 42,
-    height: 42,
+    width: 44,
+    height: 44,
     borderRadius: radius.pill,
     backgroundColor: color.accent,
     alignItems: "center",

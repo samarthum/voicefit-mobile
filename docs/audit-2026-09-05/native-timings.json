@@ -1,0 +1,198 @@
+{
+  "environment": "iOS 26.2 simulator, iPhone 17 Pro, Expo Go development build, signed-in real backend",
+  "sampleCountNote": "Individual observed samples, not a statistical benchmark. Values recorded inside the app, excluding automation-tool delay.",
+  "samples": [
+    {
+      "kind": "api",
+      "method": "GET",
+      "route": "/api/coach/profile",
+      "durationMs": 333,
+      "headersMs": 331,
+      "bodyMs": 2,
+      "status": 200
+    },
+    {
+      "kind": "api",
+      "method": "GET",
+      "route": "/api/dashboard",
+      "durationMs": 407,
+      "headersMs": 375,
+      "bodyMs": 32,
+      "status": 200
+    },
+    {
+      "kind": "api",
+      "method": "GET",
+      "route": "/api/user/settings",
+      "durationMs": 461,
+      "headersMs": 417,
+      "bodyMs": 44,
+      "status": 200
+    },
+    {
+      "kind": "api",
+      "method": "GET",
+      "route": "/api/workout-sessions",
+      "durationMs": 463,
+      "headersMs": 461,
+      "bodyMs": 1,
+      "status": 200
+    },
+    {
+      "kind": "api",
+      "method": "GET",
+      "route": "/api/coach/messages",
+      "durationMs": 248,
+      "headersMs": 247,
+      "bodyMs": 0,
+      "status": 200
+    },
+    {
+      "kind": "coach-first-text",
+      "method": "POST",
+      "route": "/api/coach/chat",
+      "durationMs": 3673
+    },
+    {
+      "kind": "coach-complete",
+      "method": "POST",
+      "route": "/api/coach/chat",
+      "durationMs": 3745
+    },
+    {
+      "kind": "api",
+      "method": "GET",
+      "route": "/api/coach/profile",
+      "durationMs": 243,
+      "headersMs": 243,
+      "bodyMs": 1,
+      "status": 200
+    }
+  ],
+  "restartNavigationSamples": [
+    {
+      "kind": "api",
+      "route": "/api/coach/profile",
+      "durationMs": 281
+    },
+    {
+      "kind": "api",
+      "route": "/api/coach/messages",
+      "durationMs": 330
+    },
+    {
+      "kind": "screen-ready",
+      "route": "/screens/coach",
+      "durationMs": 414
+    },
+    {
+      "kind": "screen-ready",
+      "route": "/screens/dashboard",
+      "durationMs": 0,
+      "note": "Cached data ready at focus; not native paint time"
+    },
+    {
+      "kind": "api",
+      "route": "/api/user/settings",
+      "durationMs": 222
+    },
+    {
+      "kind": "api",
+      "route": "/api/dashboard",
+      "durationMs": 274
+    },
+    {
+      "kind": "api",
+      "route": "/api/workout-sessions",
+      "durationMs": 323
+    },
+    {
+      "kind": "api",
+      "route": "/api/meals",
+      "durationMs": 262
+    },
+    {
+      "kind": "screen-ready",
+      "route": "/screens/meals",
+      "durationMs": 300
+    }
+  ],
+  "workoutSaveSamples": [
+    {
+      "kind": "api",
+      "route": "/api/workout-sessions",
+      "method": "POST",
+      "durationMs": 543,
+      "status": 201
+    },
+    {
+      "kind": "api",
+      "route": "/api/workout-sessions",
+      "method": "GET",
+      "durationMs": 730,
+      "status": 200
+    },
+    {
+      "kind": "api",
+      "route": "/api/interpret/entry",
+      "method": "POST",
+      "durationMs": 7430,
+      "status": 200
+    },
+    {
+      "kind": "api",
+      "route": "/api/interpret/entry",
+      "method": "POST",
+      "durationMs": 7527,
+      "status": 200
+    },
+    {
+      "kind": "api",
+      "route": "/api/workout-sets/batch",
+      "method": "POST",
+      "durationMs": 616,
+      "status": 201
+    },
+    {
+      "kind": "api",
+      "route": "/api/workout-sessions/:id",
+      "method": "GET",
+      "durationMs": 409,
+      "status": 200
+    }
+  ],
+  "mealTransitionSamples": [
+    {
+      "sample": "before",
+      "kind": "api",
+      "method": "POST",
+      "route": "/api/meals/interpret",
+      "durationMs": 1744,
+      "status": 202
+    },
+    {
+      "sample": "before",
+      "kind": "api",
+      "method": "GET",
+      "route": "/api/dashboard",
+      "durationMs": 273,
+      "status": 200
+    },
+    {
+      "sample": "after",
+      "kind": "api",
+      "method": "POST",
+      "route": "/api/meals/interpret",
+      "durationMs": 381,
+      "status": 202
+    },
+    {
+      "sample": "after",
+      "kind": "api",
+      "method": "GET",
+      "route": "/api/dashboard",
+      "durationMs": 361,
+      "status": 200
+    }
+  ]
+}

@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import { Icon } from "@/components/Icon";
 import { haptic } from "@/lib/haptics";
 import { SheetShell } from "@/components/command-center/states/SheetShell";
@@ -16,10 +15,10 @@ function getInterpretingCopy(
   recordingSeconds: number,
 ): InterpretingCopy {
   if (state === "cc_submitting_photo") {
-    return { label: "Saving your photo…", elapsed: "0.7s" };
+    return { label: "Saving your photo…", elapsed: "" };
   }
   if (state === "cc_submitting_typed") {
-    return { label: "Processing your entry…", elapsed: "0.7s" };
+    return { label: "Processing your entry…", elapsed: "" };
   }
   if (state === "cc_transcribing_voice") {
     return {
@@ -60,14 +59,10 @@ export function InterpretingState() {
   const isTyped = state === "cc_submitting_typed";
   const isPhoto = state === "cc_submitting_photo";
   const transcript = isTyped || isPhoto ? input.text : input.voiceTranscript;
-  const setTranscript = (text: string) => {
-    dispatch(isTyped || isPhoto ? { type: "text.set", text } : { type: "voice.transcript.change", text });
-  };
   const copy = getInterpretingCopy(
     state as "cc_submitting_typed" | "cc_submitting_photo" | "cc_transcribing_voice" | "cc_interpreting_voice",
     input.recordingSeconds,
   );
-  const [isEditingTranscript, setIsEditingTranscript] = useState(false);
 
   const headerCloseTestID =
     state === "cc_transcribing_voice"
@@ -85,7 +80,8 @@ export function InterpretingState() {
       dispatch({ type: "text.edit" });
       return;
     }
-    setIsEditingTranscript(true);
+    dispatch({ type: "text.set", text: transcript });
+    dispatch({ type: "text.edit" });
   };
 
   const displayText = transcript.trim() ? `"${transcript.trim()}"` : isPhoto ? "Photo selected" : "";
@@ -117,30 +113,9 @@ export function InterpretingState() {
           </View>
         </View>
 
-        {isEditingTranscript && !isTyped ? (
-          <View>
-            <BottomSheetTextInput
-              style={styles.interpretingTranscriptInput}
-              value={transcript}
-              onChangeText={setTranscript}
-              multiline
-              placeholder="Transcript"
-              placeholderTextColor={t.textMute}
-              testID="cc-voice-transcript"
-              autoFocus
-            />
-            <Pressable
-              style={styles.interpretingDoneButton}
-              onPress={() => setIsEditingTranscript(false)}
-            >
-              <Text style={styles.interpretingDoneText}>Done</Text>
-            </Pressable>
-          </View>
-        ) : (
-          <Pressable onPress={onEditPress}>
-            <Text style={styles.interpretingTranscript} selectable>{displayText}</Text>
-          </Pressable>
-        )}
+        <Pressable onPress={onEditPress}>
+          <Text style={styles.interpretingTranscript} selectable>{displayText}</Text>
+        </Pressable>
 
         <View style={styles.interpretingStatusPill}>
           <InterpretingDots />

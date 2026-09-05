@@ -140,7 +140,7 @@ export default function ExercisePickerScreen() {
         options={{
           headerShown: true,
           title: "Add exercise",
-          headerLeft: () => <HeaderClose />,
+          headerLeft: HeaderClose,
         }}
       />
       <ScrollView

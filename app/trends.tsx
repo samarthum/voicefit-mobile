@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import {
+  ActivityIndicator,
   LayoutChangeEvent,
   Pressable,
   ScrollView,
@@ -13,12 +14,8 @@ import { useQuery } from "@tanstack/react-query";
 import type { DashboardData, TopMealsResponse } from "@voicefit/contracts/types";
 import Svg, {
   Circle as SvgCircle,
-  Defs,
   Line,
-  LinearGradient,
   Path,
-  Polyline,
-  Stop,
 } from "react-native-svg";
 import { apiRequest } from "@/lib/api-client";
 import { FloatingCommandBar } from "@/components/FloatingCommandBar";
@@ -35,12 +32,6 @@ const TAB_LABELS: Record<TrendMetric, string> = {
   weight: "Weight",
 };
 const TABS: TrendMetric[] = ["calories", "steps", "weight"];
-
-const METRIC_GOALS: Record<TrendMetric, number | null> = {
-  calories: 2100,
-  steps: 10000,
-  weight: 70,
-};
 
 const CHART_HEIGHT = 140;
 const GRID_LINES = [0, 35, 70, 105, 140] as const;
@@ -203,65 +194,54 @@ export default function TrendsScreen() {
     return ((avgCurrent - avgPrior) / avgPrior) * 100;
   }, [avgCurrent, avgPrior]);
 
-  // For calories/weight: lower vs prior is good; for steps: higher is good.
-  const changeIsGood = useMemo(() => {
-    if (change == null) return false;
-    if (tab === "steps") return change >= 0;
-    return change <= 0;
-  }, [change, tab]);
+  const displaySeries = useMemo(
+    () => weeklyCurrent.map((point) => safeNumber(metricValueFromPoint(point, tab))),
+    [weeklyCurrent, tab],
+  );
 
-  // Pad the displayed series so we always render 7 columns (zeros where missing).
-  const displaySeries = useMemo(() => {
-    const out: number[] = [];
-    let last = 0;
-    for (const point of weeklyCurrent) {
-      const v = safeNumber(metricValueFromPoint(point, tab));
-      if (v == null) {
-        out.push(last);
-      } else {
-        out.push(v);
-        last = v;
-      }
-    }
-    while (out.length < 7) out.push(0);
-    return out.slice(-7);
-  }, [weeklyCurrent, tab]);
-
-  const goal = METRIC_GOALS[tab];
+  const settingsQuery = useQuery<{ weightGoalKg: number | null }>({
+    queryKey: ["user-settings"],
+    enabled: !isWebPreview,
+    queryFn: async () => {
+      const token = await getToken();
+      if (!token) throw new Error("Not signed in");
+      return apiRequest("/api/user/settings", { token });
+    },
+  });
+  const goal = tab === "calories" ? dashboard?.today.calories.goal ?? null
+    : tab === "steps" ? dashboard?.today.steps.goal ?? null
+    : settingsQuery.data?.weightGoalKg ?? null;
 
   // SVG chart math: map series to 320×140 viewBox to match the reference design.
   const chartCoords = useMemo(() => {
     const vbW = 320;
     const vbH = CHART_HEIGHT;
-    const min = Math.min(...displaySeries, goal ?? Infinity);
-    const max = Math.max(...displaySeries, goal ?? -Infinity);
+    const measured = displaySeries.filter((value): value is number => value != null);
+    const min = measured.length ? Math.min(...measured, goal ?? Infinity) : 0;
+    const max = measured.length ? Math.max(...measured, goal ?? -Infinity) : 1;
     const range = max - min || 1;
     const padTop = 8;
     const padBottom = 8;
-
-    const ys = displaySeries.map((v) => {
-      const norm = (v - min) / range;
-      return vbH - padBottom - norm * (vbH - padTop - padBottom);
+    let connected = false;
+    const points: { x: number; y: number }[] = [];
+    const segments = displaySeries.map((value, index) => {
+      if (value == null) { connected = false; return ""; }
+      const x = displaySeries.length === 1 ? vbW / 2 : index * vbW / (displaySeries.length - 1);
+      const y = max === min ? vbH / 2 : vbH - padBottom - (value - min) / range * (vbH - padTop - padBottom);
+      points.push({ x, y });
+      const command = connected ? "L" : "M";
+      connected = true;
+      return `${command}${x.toFixed(2)} ${y.toFixed(2)}`;
     });
-    const xs = displaySeries.map((_, i) => {
-      if (displaySeries.length === 1) return vbW / 2;
-      return (i * vbW) / (displaySeries.length - 1);
-    });
-
-    const points = xs.map((x, i) => ({ x, y: ys[i] ?? vbH - padBottom }));
-    const polyline = points.map((p) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(" ");
-    const closedPath =
-      points.length > 0
-        ? `M${polyline.replaceAll(" ", " L")} L${vbW},${vbH} L0,${vbH} Z`
-        : "";
+    const polyline = segments.filter(Boolean).join(" ");
 
     let goalY: number | null = null;
-    if (goal != null) {
+    if (goal != null && measured.length) {
       const norm = (goal - min) / range;
       goalY = vbH - padBottom - norm * (vbH - padTop - padBottom);
     }
 
-    return { vbW, vbH, points, polyline, closedPath, goalY };
+    return { vbW, vbH, points, polyline, goalY };
   }, [displaySeries, goal]);
 
   const dayLabels = useMemo(() => lastSevenDayLabels(), []);
@@ -324,7 +304,16 @@ export default function TrendsScreen() {
           })}
         </View>
 
-        <View style={styles.bigCard}>
+        {!dashboard ? (
+          <View style={styles.bigCard}>
+            {dashboardQuery.isError ? (
+              <>
+                <Text style={styles.emptyText}>Couldn’t load trends. Your data hasn’t changed.</Text>
+                <Pressable accessibilityRole="button" style={{ padding: 16 }} onPress={() => void dashboardQuery.refetch()}><Text style={{ color: token.accent }}>Try again</Text></Pressable>
+              </>
+            ) : <ActivityIndicator color={token.accent} accessibilityLabel="Loading trends" />}
+          </View>
+        ) : <View style={styles.bigCard}>
           <View style={styles.bigCardTopRow}>
             <View style={styles.bigCardLeft}>
               <Text style={styles.smallLabel}>7-day average</Text>
@@ -338,7 +327,7 @@ export default function TrendsScreen() {
                 selectable
                 style={[
                   styles.changeText,
-                  { color: change == null ? token.textMute : changeIsGood ? token.accent : token.textMute },
+                  { color: token.textSoft },
                 ]}
               >
                 {change == null
@@ -356,12 +345,6 @@ export default function TrendsScreen() {
               viewBox={`0 0 ${chartCoords.vbW} ${chartCoords.vbH}`}
               preserveAspectRatio="none"
             >
-              <Defs>
-                <LinearGradient id="chartFill" x1="0" y1="0" x2="0" y2="1">
-                  <Stop offset="0%" stopColor={token.accent} stopOpacity={0.4} />
-                  <Stop offset="100%" stopColor={token.accent} stopOpacity={0} />
-                </LinearGradient>
-              </Defs>
               {GRID_LINES.map((y) => (
                 <Line
                   key={y}
@@ -379,17 +362,14 @@ export default function TrendsScreen() {
                   y1={chartCoords.goalY}
                   x2={chartCoords.vbW}
                   y2={chartCoords.goalY}
-                  stroke="rgba(199,251,65,0.5)"
+                  stroke={token.accent}
                   strokeWidth={1}
                   strokeDasharray="3 3"
                 />
               ) : null}
-              {chartCoords.closedPath ? (
-                <Path d={chartCoords.closedPath} fill="url(#chartFill)" />
-              ) : null}
               {chartCoords.polyline ? (
-                <Polyline
-                  points={chartCoords.polyline}
+                <Path
+                  d={chartCoords.polyline}
                   fill="none"
                   stroke={token.accent}
                   strokeWidth={2}
@@ -423,7 +403,7 @@ export default function TrendsScreen() {
               <Text style={styles.goalLabel}>{goalLabel}</Text>
             </View>
           ) : null}
-        </View>
+        </View>}
 
         <View style={styles.sectionHeaderRow}>
           <Text style={styles.sectionTitle}>Top meals this week</Text>
@@ -433,7 +413,9 @@ export default function TrendsScreen() {
         </View>
 
         <View style={styles.topMealsCard}>
-          {topMeals.length === 0 ? (
+          {topMealsQuery.isError ? (
+            <Pressable accessibilityRole="button" onPress={() => void topMealsQuery.refetch()}><Text style={styles.emptyText}>Couldn’t load top meals. Tap to retry.</Text></Pressable>
+          ) : topMealsQuery.isLoading ? <ActivityIndicator color={token.accent} /> : topMeals.length === 0 ? (
             <Text style={styles.emptyText}>
               No meals this week yet — log some to see your top.
             </Text>
@@ -466,6 +448,7 @@ export default function TrendsScreen() {
       </ScrollView>
 
       <FloatingCommandBar
+        safeAreaBottom
         hint="Log a meal, lift, or weight…"
         onPress={() => cc.open()}
         onMicPress={() => cc.startRecording()}

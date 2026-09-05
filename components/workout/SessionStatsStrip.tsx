@@ -15,8 +15,8 @@ export function SessionStatsStrip({ duration, volume, sets }: Props) {
         <Text style={styles.statLabel}>Duration</Text>
       </View>
       <View style={styles.statCell}>
-        <Text selectable style={styles.statValue}>{volume}</Text>
-        <Text style={styles.statLabel}>Volume</Text>
+        <Text selectable accessibilityLabel={`Volume ${volume}`} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={styles.statValue}>{volume.replace(/\s*kg$/, "")}</Text>
+        <Text style={styles.statLabel}>Volume (kg)</Text>
       </View>
       <View style={styles.statCell}>
         <Text selectable style={styles.statValue}>{sets}</Text>
@@ -54,9 +54,9 @@ const styles = StyleSheet.create({
   statLabel: {
     marginBottom: 4,
     fontFamily: font.sans[600],
-    fontSize: 9.5,
+    fontSize: 10.5,
     fontWeight: "600",
-    letterSpacing: 1.52,
+    letterSpacing: 0.6,
     textTransform: "uppercase",
     color: token.textMute,
   },

@@ -91,8 +91,8 @@ export const sheetShellStyles = StyleSheet.create({
     color: t.text,
   },
   sheetCloseCircle: {
-    width: 30,
-    height: 30,
+    width: 44,
+    height: 44,
     borderRadius: 999,
     backgroundColor: t.surface,
     alignItems: "center",

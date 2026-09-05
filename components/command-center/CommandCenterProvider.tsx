@@ -1,10 +1,13 @@
 import { createContext, use, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useFocusEffect } from "expo-router";
 import { Alert, Keyboard, Linking } from "react-native";
 import { useAudioRecorder, RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync } from "expo-audio";
 import * as ImagePicker from "expo-image-picker";
+import { randomUUID } from "expo-crypto";
+import { insertAcknowledgedMeal, type PendingMeal, type PendingMealDashboard } from "@/lib/pending-meal-cache";
 import { haptic } from "@/lib/haptics";
 import { useAuth } from "@clerk/clerk-expo";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { DashboardData, InterpretEntryResponse, MealIngredient } from "@voicefit/contracts/types";
 import { apiFormRequest, apiRequest } from "@/lib/api-client";
 import { isWebPreviewMode } from "@/lib/web-preview-mode";
@@ -27,6 +30,7 @@ import type {
 import {
   createCommandCenterController,
   type CommandCenterVoiceRecording,
+  type CommandCenterOperationState,
   type PhotoPickerMode,
 } from "@/components/command-center/controller";
 import {
@@ -36,6 +40,7 @@ import {
   inferCalories,
   inferMealDescription,
   inferMealType,
+  toLocalDateString,
 } from "@/components/command-center/helpers";
 
 // ---------------------------------------------------------------------------
@@ -62,12 +67,12 @@ export function useCommandCenter(context?: CommandCenterContext): CommandCenterP
   const sessionId = context?.sessionId;
   const screen = context?.screen;
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     if (!hasContext || !setScreenContext || !clearScreenContext) return;
 
     setScreenContext({ sessionId, screen });
     return () => clearScreenContext();
-  }, [clearScreenContext, hasContext, screen, sessionId, setScreenContext]);
+  }, [clearScreenContext, hasContext, screen, sessionId, setScreenContext]));
 
   if (!ctx) throw new Error("useCommandCenter must be used within CommandCenterProvider");
   return ctx;
@@ -103,7 +108,7 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
   // nested/async functions (rules of hooks).
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
 
-  const { getToken } = useAuth();
+  const { getToken, isSignedIn } = useAuth();
   const queryClient = useQueryClient();
   const isWebPreview = isWebPreviewMode();
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -127,12 +132,20 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mealPollTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
-  // ---- Quick add items from React Query cache ----
-  const quickAddItems = useMemo(() => {
-    const dashboardKey = queryClient.getQueryCache().findAll({ queryKey: ["dashboard"] })[0]?.queryKey ?? ["dashboard"];
-    const cached = queryClient.getQueryData<{ recentMeals?: RecentMeal[] }>(dashboardKey);
-    return buildQuickAddItems(cached?.recentMeals);
-  }, [queryClient, commandState]); // re-derive when CC opens
+  const recentMealsQuery = useQuery<RecentMeal[]>({
+    queryKey: ["meals", "quick-add"],
+    staleTime: 0,
+    enabled: !!isSignedIn && !isWebPreview && commandState !== "cc_collapsed",
+    queryFn: async () => {
+      const token = await getToken();
+      if (!token) throw new Error("Not signed in");
+      return apiRequest<RecentMeal[]>("/api/meals/recent?limit=5", { token });
+    },
+  });
+  const quickAddItems = useMemo(
+    () => buildQuickAddItems(recentMealsQuery.data),
+    [recentMealsQuery.data],
+  );
 
   // ---- Effects ----
   useEffect(() => {
@@ -180,7 +193,7 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
   }, []);
 
   const refreshAfterSave = useCallback(async () => {
-    await Promise.all([
+    void Promise.all([
       queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
       queryClient.invalidateQueries({ queryKey: ["workout-sessions"] }),
       queryClient.invalidateQueries({ queryKey: ["workout-session-detail"] }),
@@ -193,7 +206,7 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
   const refreshAfterPendingMeal = useCallback(async () => {
     mealPollTimersRef.current.forEach(clearTimeout);
     mealPollTimersRef.current = [];
-    await Promise.all([
+    void Promise.all([
       queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
       queryClient.invalidateQueries({ queryKey: ["meals"] }),
     ]);
@@ -206,6 +219,7 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
     }
     Keyboard.dismiss();
     setCommandState("cc_collapsed");
+    setCommandToast(null);
     setCommandErrorSubtype(null);
     setCommandErrorDetail(null);
     setIsInterpretingVoice(false);
@@ -214,24 +228,32 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
     setLastSavedKcalLeft(null);
   }, [recording]);
 
-  // Holds the saved toast visible for ~2.2s after a successful write so the
-  // user can read the meal/kcal-left summary before the sheet closes.
+  // Success starts sheet dismissal; the overlay shows this message afterward.
   const finishWithSaved = useCallback((toast: string, kcalLeft: number | null = null) => {
+    Keyboard.dismiss();
     setCommandToast(toast);
     setLastSavedKcalLeft(kcalLeft);
     setCommandState("cc_saved");
-    setTimeout(() => closeCommandCenter(), 2200);
-  }, [closeCommandCenter]);
+  }, []);
+
+  useEffect(() => {
+    if (commandState !== "cc_saved") return;
+    const timer = setTimeout(closeCommandCenter, 2200);
+    return () => clearTimeout(timer);
+  }, [commandState, closeCommandCenter]);
 
   // Snapshots dashboard cache to compute `kcal left today` after a meal save.
   // Reads pre-save consumed kcal so the math is stable even before the
   // invalidated dashboard query refetches.
   const computeKcalLeftAfterMeal = useCallback((justSavedKcal: number): number | null => {
     const dashboardCaches = queryClient.getQueriesData<DashboardData>({ queryKey: ["dashboard"] });
-    const cached = dashboardCaches.find(([, data]) => data != null)?.[1];
+    const today = toLocalDateString(new Date());
+    const cached = dashboardCaches.find(([key, data]) =>
+      key[1] === "home" && key[2] === timezone && key[3] === today && data != null,
+    )?.[1];
     if (!cached) return null;
     return Math.max(0, cached.today.calories.goal - cached.today.calories.consumed - justSavedKcal);
-  }, [queryClient]);
+  }, [queryClient, timezone]);
 
   const getPhotoFileName = useCallback((uri: string, fileName?: string | null) => {
     if (fileName?.trim()) return fileName.trim();
@@ -268,13 +290,12 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
     if (isWebPreview) {
       await new Promise((resolve) => setTimeout(resolve, 650));
       await refreshAfterPendingMeal();
-      finishWithSaved("Logging your meal…");
       return;
     }
 
     const token = await getAuthToken();
 
-    await apiRequest("/api/meals/interpret", {
+    const meal = await apiRequest<PendingMeal>("/api/meals/interpret", {
       method: "POST",
       token,
       body: JSON.stringify({
@@ -286,15 +307,14 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
       }),
       timeoutMs: 60_000,
     });
+    queryClient.setQueryData<PendingMealDashboard>(["dashboard", "home", timezone, toLocalDateString(new Date(meal.eatenAt))], (data) => insertAcknowledgedMeal(data, meal));
     await refreshAfterPendingMeal();
-    finishWithSaved("Logging your meal…");
-  }, [isWebPreview, getAuthToken, timezone, refreshAfterPendingMeal, finishWithSaved]);
+  }, [isWebPreview, getAuthToken, timezone, refreshAfterPendingMeal, queryClient]);
 
   const createPendingMealFromPhoto = useCallback(async (photo: PhotoAttachment, context: string) => {
     if (isWebPreview) {
       await new Promise((resolve) => setTimeout(resolve, 650));
       await refreshAfterPendingMeal();
-      finishWithSaved("Looking at your photo…");
       return;
     }
 
@@ -310,16 +330,16 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
       formData.append("transcript", context.trim());
     }
 
-    await apiFormRequest("/api/meals/interpret", formData, {
+    const meal = await apiFormRequest<PendingMeal>("/api/meals/interpret", formData, {
       method: "POST",
       token,
       timeoutMs: 60_000,
     });
+    queryClient.setQueryData<PendingMealDashboard>(["dashboard", "home", timezone, toLocalDateString(new Date(meal.eatenAt))], (data) => insertAcknowledgedMeal(data, meal));
     await refreshAfterPendingMeal();
-    finishWithSaved("Looking at your photo…");
-  }, [isWebPreview, getAuthToken, timezone, refreshAfterPendingMeal, finishWithSaved]);
+  }, [isWebPreview, getAuthToken, timezone, refreshAfterPendingMeal, queryClient]);
 
-  const interpretEntry = useCallback(async (transcript: string, source: EntrySource): Promise<InterpretEntryResponse> => {
+  const interpretEntry = useCallback(async (transcript: string, source: EntrySource, signal?: AbortSignal): Promise<InterpretEntryResponse> => {
     if (isWebPreview) {
       if (hasWebPreviewFlag("typed_fail") && source === "text") throw new Error("Mock typed interpret failure.");
       if (hasWebPreviewFlag("voice_fail") && source === "voice") throw new Error("Mock voice interpret failure.");
@@ -375,6 +395,7 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
 
     const token = await getAuthToken();
     return apiRequest<InterpretEntryResponse>("/api/interpret/entry", {
+      signal,
       method: "POST",
       token,
       body: JSON.stringify({ transcript, source, timezone }),
@@ -383,6 +404,12 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
       timeoutMs: 60_000,
     });
   }, [isWebPreview, getAuthToken, timezone]);
+
+  const operationRef = useRef<CommandCenterOperationState>({ generation: 0, saving: false });
+  useEffect(() => () => {
+    operationRef.current.generation += 1;
+    operationRef.current.abort?.abort();
+  }, []);
 
   const commandCenterController = useMemo(() => createCommandCenterController({
     state: {
@@ -429,11 +456,11 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
       interpretEntry,
       createPendingMealFromText,
       createPendingMealFromPhoto,
-      transcribeAudio: async (audio) => {
+      transcribeAudio: async (audio, signal) => {
         const token = await getAuthToken();
         const formData = new FormData();
         formData.append("audio", audio as unknown as Blob);
-        const { transcript } = await apiFormRequest<{ transcript: string }>("/api/transcribe", formData, { token });
+        const { transcript } = await apiFormRequest<{ transcript: string }>("/api/transcribe", formData, { token, signal });
         return transcript;
       },
       createMeal: async (input) => {
@@ -447,6 +474,10 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
       ensureQuickSession: async () => {
         const token = await getAuthToken();
         return ensureQuickSession(token);
+      },
+      createWorkoutBatch: async (input) => {
+        const token = await getAuthToken();
+        await apiRequest("/api/workout-sets/batch", { method: "POST", token, body: JSON.stringify(input) });
       },
       createWorkoutSet: async (input) => {
         const token = await getAuthToken();
@@ -483,6 +514,7 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
     },
     clock: {
       now: () => new Date(),
+      createRequestId: randomUUID,
     },
     preview: {
       isEnabled: () => isWebPreview,
@@ -555,7 +587,7 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
         ]);
       }),
     },
-  }), [
+  }, operationRef.current), [
     commandText,
     commandState,
     voiceTranscript,

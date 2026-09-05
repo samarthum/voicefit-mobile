@@ -2,30 +2,26 @@ import "@/polyfills";
 import { ClerkProvider, useAuth } from "@clerk/clerk-expo";
 import { focusManager } from "@tanstack/react-query";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
-import { queryClient, persistOptions } from "@/lib/query-client";
+import { createUserQueryCache } from "@/lib/query-client";
 import * as SecureStore from "expo-secure-store";
 import { Stack } from "expo-router";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
-import { useEffect } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { ActivityIndicator, AppState, Pressable, StyleSheet, Text, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { useFonts } from "expo-font";
-import {
-  InterTight_300Light,
-  InterTight_400Regular,
-  InterTight_500Medium,
-  InterTight_600SemiBold,
-  InterTight_700Bold,
-  InterTight_800ExtraBold,
-} from "@expo-google-fonts/inter-tight";
-import {
-  GeistMono_400Regular,
-  GeistMono_500Medium,
-  GeistMono_600SemiBold,
-} from "@expo-google-fonts/geist-mono";
+import { InterTight_300Light } from "@expo-google-fonts/inter-tight/300Light";
+import { InterTight_400Regular } from "@expo-google-fonts/inter-tight/400Regular";
+import { InterTight_500Medium } from "@expo-google-fonts/inter-tight/500Medium";
+import { InterTight_600SemiBold } from "@expo-google-fonts/inter-tight/600SemiBold";
+import { InterTight_700Bold } from "@expo-google-fonts/inter-tight/700Bold";
+import { InterTight_800ExtraBold } from "@expo-google-fonts/inter-tight/800ExtraBold";
+import { GeistMono_400Regular } from "@expo-google-fonts/geist-mono/400Regular";
+import { GeistMono_500Medium } from "@expo-google-fonts/geist-mono/500Medium";
+import { GeistMono_600SemiBold } from "@expo-google-fonts/geist-mono/600SemiBold";
 import { CommandCenterProvider, CommandCenterOverlay } from "@/components/command-center";
 import { TopLoadingBar } from "@/components/pulse";
 import { color } from "@/lib/tokens";
@@ -83,8 +79,23 @@ function SessionTokenWarmUp() {
   return null;
 }
 
+function UserQueryProvider({ userId, children }: { userId: string | null; children: ReactNode }) {
+  const [{ queryClient, persistOptions }] = useState(() => createUserQueryCache(userId));
+  useEffect(() => () => {
+    void queryClient.cancelQueries();
+    queryClient.clear();
+  }, [queryClient]);
+  return <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>{children}</PersistQueryClientProvider>;
+}
+
+function AuthQueryProvider({ children }: { children: ReactNode }) {
+  const { isLoaded, userId } = useAuth();
+  if (!isLoaded) return <View style={ebStyles.root}><ActivityIndicator color={color.accent} /></View>;
+  return <UserQueryProvider key={userId ?? "signed-out"} userId={userId ?? null}>{children}</UserQueryProvider>;
+}
+
 export default function RootLayout() {
-  const [fontsLoaded] = useFonts({
+  const [fontsLoaded, fontError] = useFonts({
     InterTight_300Light,
     InterTight_400Regular,
     InterTight_500Medium,
@@ -113,6 +124,8 @@ export default function RootLayout() {
     );
   }
 
+  if (fontError) throw fontError;
+
   if (!fontsLoaded) {
     return (
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: color.bg }}>
@@ -126,7 +139,7 @@ export default function RootLayout() {
       <KeyboardProvider>
         <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
           <SessionTokenWarmUp />
-          <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
+          <AuthQueryProvider>
             <SafeAreaProvider>
               {/* CommandCenterProvider must sit ABOVE BottomSheetModalProvider:
                   gorhom renders sheet content through @gorhom/portal into a host
@@ -145,6 +158,8 @@ export default function RootLayout() {
                   <Stack
                     screenOptions={{
                       headerShown: false,
+                      headerBackButtonDisplayMode: "minimal",
+                      headerBackTitle: "Back",
                       contentStyle: { backgroundColor: color.bg },
                       // Screens that opt into native headers get a flat,
                       // canvas-colored bar (no Android elevation shadow).
@@ -178,7 +193,7 @@ export default function RootLayout() {
                 </BottomSheetModalProvider>
               </CommandCenterProvider>
             </SafeAreaProvider>
-          </PersistQueryClientProvider>
+          </AuthQueryProvider>
         </ClerkProvider>
       </KeyboardProvider>
     </GestureHandlerRootView>

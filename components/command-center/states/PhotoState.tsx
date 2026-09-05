@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Image } from "expo-image";
-import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
+import { BottomSheetTextInput } from "@/components/command-center/SheetTextInput";
 import { Icon } from "@/components/Icon";
 import { SheetShell } from "@/components/command-center/states/SheetShell";
 import { useCommandCenterOverlay } from "@/components/command-center/CommandCenterProvider";

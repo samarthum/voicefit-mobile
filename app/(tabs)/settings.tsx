@@ -22,7 +22,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { FloatingCommandBar } from "@/components/FloatingCommandBar";
 import { useCommandCenter } from "@/components/command-center";
 import { apiRequest } from "@/lib/api-client";
-import { asyncStoragePersister } from "@/lib/query-client";
+import { clearPersistedUserCache } from "@/lib/query-client";
 import { color as token, font, radius as r } from "@/lib/tokens";
 import { isWebPreviewMode } from "@/lib/web-preview-mode";
 import { Icon } from "@/components/Icon";
@@ -139,7 +139,7 @@ function SettingsRow({
 export default function SettingsScreen() {
   const cc = useCommandCenter();
   const router = useRouter();
-  const { signOut, getToken, isSignedIn } = useAuth();
+  const { signOut, getToken, isSignedIn, userId } = useAuth();
   const { user } = useUser();
   const queryClient = useQueryClient();
   const isWebPreview = isWebPreviewMode();
@@ -230,6 +230,7 @@ export default function SettingsScreen() {
   });
 
   const effectiveData = data ?? PREVIEW_SETTINGS;
+  useScreenTiming("settings", !!data || isWebPreview, !!error);
 
   useEffect(() => {
     if (hasEditedRef.current) return;
@@ -268,6 +269,7 @@ export default function SettingsScreen() {
   }, [isWebPreview, user]);
 
   const saveSettings = async () => {
+    if (!isWebPreview && !data) return;
     const nextCalorieGoal = Number(calorieGoal.replace(/,/g, "").trim());
     const nextStepGoal = Number(stepGoal.replace(/,/g, "").trim());
     const nextProteinGoal = Number(proteinGoal.replace(/,/g, "").trim());
@@ -339,7 +341,7 @@ export default function SettingsScreen() {
             }
           : existing,
       );
-      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      void queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       hasEditedRef.current = false;
       haptic.success();
       setSaveSuccess("Goals updated.");
@@ -447,7 +449,7 @@ export default function SettingsScreen() {
         <Pressable
           style={[styles.saveButton, isSaving ? styles.buttonDisabled : null]}
           onPress={() => void saveSettings()}
-          disabled={isSaving}
+          disabled={isSaving || (!isWebPreview && !data)}
         >
           <Text style={styles.saveButtonText}>{isSaving ? "Saving..." : "Save Goals"}</Text>
         </Pressable>
@@ -581,7 +583,7 @@ export default function SettingsScreen() {
                 // account signed in on this device never sees the previous
                 // user's rehydrated dashboard.
                 queryClient.clear();
-                void asyncStoragePersister.removeClient();
+                void clearPersistedUserCache(userId);
                 void signOut();
               },
             },
@@ -615,7 +617,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 8,
     // Clear the floating command bar docked above the native tab bar.
-    paddingBottom: 210,
+    paddingBottom: 24,
   },
   pageEyebrow: {
     fontFamily: font.sans[600],
@@ -832,3 +834,4 @@ const styles = StyleSheet.create({
     color: token.textMute,
   },
 });
+import { useScreenTiming } from "@/hooks/use-screen-timing";

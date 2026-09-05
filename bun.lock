@@ -29,6 +29,7 @@
         "expo-auth-session": "~7.0.10",
         "expo-build-properties": "~1.0.9",
         "expo-constants": "~18.0.13",
+        "expo-crypto": "~15.0.8",
         "expo-font": "~14.0.12",
         "expo-haptics": "~15.0.8",
         "expo-image": "~3.0.11",
@@ -628,7 +629,7 @@
 
     "@vercel/oidc": ["@vercel/oidc@3.2.0", "", {}, "sha512-UycprH3T6n3jH0k44NHMa7pnFHGu/N05MjojYr+Mc6I7obkoLIJujSWwin1pCvdy/eOxrI/l3uDLQsmcrOb4ug=="],
 
-    "@voicefit/contracts": ["@voicefit/contracts@./vendor/voicefit-contracts-0.0.9.tgz", { "dependencies": { "zod": "^4.3.5" }, "peerDependencies": { "ai": "^6.0.0" } }, "sha512-q43Fa1bbqe3tx1Q82pvoBvLdW4Lc8teGbpD8aMM7ltx8RFKVeDd/fwFqpRaMnJE0YuF4yzTnuNYgkFl9Bg0VmA=="],
+    "@voicefit/contracts": ["@voicefit/contracts@./vendor/voicefit-contracts-0.0.9.tgz", { "dependencies": { "zod": "^4.3.5" }, "peerDependencies": { "ai": "^6.0.0" } }],
 
     "@wallet-standard/app": ["@wallet-standard/app@1.1.0", "", { "dependencies": { "@wallet-standard/base": "^1.1.0" } }, "sha512-3CijvrO9utx598kjr45hTbbeeykQrQfKmSnxeWOgU25TOEpvcipD/bYDQWIqUv1Oc6KK4YStokSMu/FBNecGUQ=="],
 

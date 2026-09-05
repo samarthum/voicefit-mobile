@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -15,6 +15,7 @@ import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useAuth } from "@clerk/clerk-expo";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { MealIngredient } from "@voicefit/contracts/types";
+import { saveMealEdits } from "@/lib/api/meal-edit";
 import { apiRequest } from "@/lib/api-client";
 import { fetchInterpretedIngredient } from "@/lib/api/ingredient";
 import {
@@ -165,6 +166,7 @@ export default function MealEditScreen() {
   const [editedMealType, setEditedMealType] = useState<MealType | null>(null);
   const [seeded, setSeeded] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
+  const [ingredientsDirty, setIngredientsDirty] = useState(false);
   const [editorMode, setEditorMode] = useState<IngredientEditorMode | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -204,56 +206,19 @@ export default function MealEditScreen() {
   const updateMealMetadata = async (
     token: string,
     body: MealUpdatePayload,
-    options: { ignoreStatusOnlyFailure?: boolean } = {},
-  ) => {
-    const fallback = { ...body };
-    delete fallback.interpretationStatus;
-    const hasFallback = Object.keys(fallback).length > 0;
-
-    try {
-      return await apiRequest<MealDetail>(`/api/meals/${id}`, {
-        method: "PUT",
-        token,
-        body: JSON.stringify(body),
-      });
-    } catch (error) {
-      if (body.interpretationStatus && hasFallback) {
-        return apiRequest<MealDetail>(`/api/meals/${id}`, {
-          method: "PUT",
-          token,
-          body: JSON.stringify(fallback),
-        });
-      }
-      if (body.interpretationStatus && options.ignoreStatusOnlyFailure) {
-        return null;
-      }
-      throw error;
-    }
-  };
+  ) => apiRequest<MealDetail>(`/api/meals/${id}`, {
+    method: "PUT", token, body: JSON.stringify(body),
+  });
 
   const saveMutation = useMutation({
     mutationFn: async () => {
       const token = await getToken();
       if (!token) throw new Error("Not signed in");
 
-      const requests: Promise<unknown>[] = [
-        apiRequest<MealDetail>(`/api/meals/${id}/ingredients`, {
-          method: "PUT",
-          token,
-          body: JSON.stringify({ ingredients: toServerIngredients(ingredients) }),
-        }),
-      ];
-
-      // mealType lives on the meal scalar, not the ingredient list — sent via
-      // the generic update endpoint when changed.
-      const originalMealType = mealQuery.data?.mealType ?? null;
-      const metadataPayload: MealUpdatePayload = { interpretationStatus: "reviewed" };
-      if (editedMealType && editedMealType !== originalMealType) {
-        metadataPayload.mealType = editedMealType;
-      }
-      requests.push(updateMealMetadata(token, metadataPayload, { ignoreStatusOnlyFailure: true }));
-
-      await Promise.all(requests);
+      await saveMealEdits(id, token, {
+        ingredients: ingredientsDirty ? toServerIngredients(ingredients) : undefined,
+        mealType: editedMealType && editedMealType !== mealQuery.data?.mealType ? editedMealType : undefined,
+      });
     },
     onSuccess: async () => {
       haptic.success();
@@ -312,7 +277,7 @@ export default function MealEditScreen() {
     },
   });
 
-  const handleClose = () => {
+  const handleClose = useCallback(() => {
     if (isDirty && !saveMutation.isPending) {
       Alert.alert(
         "Discard changes?",
@@ -325,13 +290,13 @@ export default function MealEditScreen() {
       return;
     }
     router.back();
-  };
+  }, [isDirty, saveMutation.isPending, router]);
 
   const handleDelete = () => {
     haptic.warning();
     Alert.alert("Delete meal", "This will permanently delete the meal.", [
       { text: "Cancel", style: "cancel" },
-      { text: "Delete", style: "destructive", onPress: () => void deleteMutation.mutateAsync() },
+      { text: "Delete", style: "destructive", onPress: () => deleteMutation.mutate() },
     ]);
   };
 
@@ -344,6 +309,7 @@ export default function MealEditScreen() {
         onPress: () => {
           setIngredients((prev) => prev.filter((ing) => ing.id !== ingredient.id));
           setIsDirty(true);
+          setIngredientsDirty(true);
         },
       },
     ]);
@@ -368,6 +334,7 @@ export default function MealEditScreen() {
       },
     ]);
     setIsDirty(true);
+    setIngredientsDirty(true);
     setEditorMode(null);
   };
 
@@ -390,12 +357,13 @@ export default function MealEditScreen() {
       ),
     );
     setIsDirty(true);
+    setIngredientsDirty(true);
     setEditorMode(null);
   };
 
   const meal = mealQuery.data;
   const mealStatus = meal ? normalizeMealStatus(meal.interpretationStatus, meal.calories) : "reviewed";
-  const displayTotals = meal && ingredients.length === 0 && !isDirty
+  const displayTotals = meal && !ingredientsDirty
     ? scalarTotals(meal)
     : ingredientTotals;
   const displayCalories = formatNullableCalories(displayTotals.calories);
@@ -408,17 +376,17 @@ export default function MealEditScreen() {
 
   const handlePrimaryAction = () => {
     if (isDirty) {
-      void saveMutation.mutateAsync();
+      saveMutation.mutate();
       return;
     }
     if (canConfirmReview) {
-      void confirmReviewMutation.mutateAsync();
+      confirmReviewMutation.mutate();
     }
   };
 
   const insets = useSafeAreaInsets();
 
-  const HeaderDone = () => (
+  const renderHeaderDone = useCallback(() => (
     <Pressable
       onPress={handleClose}
       hitSlop={12}
@@ -427,18 +395,20 @@ export default function MealEditScreen() {
     >
       <Text style={styles.headerDoneText}>Done</Text>
     </Pressable>
-  );
+  ), [handleClose]);
+
+  const screenOptions = useMemo(() => ({
+    headerShown: true,
+    title: "Edit meal",
+    headerRight: renderHeaderDone,
+  }), [renderHeaderDone]);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <BottomSheetModalProvider>
         <View style={styles.root}>
       <Stack.Screen
-        options={{
-          headerShown: true,
-          title: "Edit meal",
-          headerRight: () => <HeaderDone />,
-        }}
+        options={screenOptions}
       />
 
       {mealQuery.isLoading ? (

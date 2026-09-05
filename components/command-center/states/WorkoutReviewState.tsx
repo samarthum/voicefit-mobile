@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { BottomSheetScrollView, BottomSheetTextInput } from "@gorhom/bottom-sheet";
+import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
+import { BottomSheetTextInput } from "@/components/command-center/SheetTextInput";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useCommandCenterOverlay } from "@/components/command-center/CommandCenterProvider";
 import { confidenceLabel } from "@/components/command-center/helpers";
@@ -72,6 +73,7 @@ export function WorkoutReviewState() {
               keyboardType="decimal-pad"
               placeholder="—"
               placeholderTextColor={t.textMute}
+              accessibilityLabel={`Set ${index + 1} weight in kilograms`}
               testID={`cc-review-workout-kg-${index}`}
             />
             <BottomSheetTextInput
@@ -83,6 +85,7 @@ export function WorkoutReviewState() {
               keyboardType="number-pad"
               placeholder="—"
               placeholderTextColor={t.textMute}
+              accessibilityLabel={`Set ${index + 1} repetitions`}
               testID={`cc-review-workout-reps-${index}`}
             />
             <BottomSheetTextInput
@@ -91,12 +94,14 @@ export function WorkoutReviewState() {
               onChangeText={(v) => dispatch({ type: "workout-set.update", index, patch: { notes: v } })}
               placeholder="—"
               placeholderTextColor={t.textMute}
+              accessibilityLabel={`Set ${index + 1} notes`}
               testID={`cc-review-workout-notes-${index}`}
             />
           </View>
         ))}
 
         <Pressable
+        accessibilityRole="button"
           style={styles.workoutAddSetButton}
           onPress={() => dispatch({ type: "workout-set.add" })}
           testID="cc-review-add-set"

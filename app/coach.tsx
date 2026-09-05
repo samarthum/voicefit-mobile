@@ -1,12 +1,14 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useScreenTiming } from "@/hooks/use-screen-timing";
+import { getCoachSession } from "@/lib/coach-session";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert, Modal, StyleSheet, View } from "react-native";
 import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
 import Reanimated, { useAnimatedStyle } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useAuth } from "@clerk/clerk-expo";
-import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport } from "ai";
+import { Chat, useChat } from "@ai-sdk/react";
+import { TimedCoachTransport } from "@/lib/timed-chat-transport";
 import { AssistantRuntimeProvider } from "@assistant-ui/react-native";
 import { useAISDKRuntime } from "@assistant-ui/react-ai-sdk";
 import type { CoachUIMessage } from "@voicefit/contracts/coach";
@@ -41,7 +43,8 @@ const STARTER_PROMPTS = [
 // ---------------------------------------------------------------------------
 
 export default function CoachScreen() {
-  const { getToken } = useAuth();
+  const { getToken, userId, isSignedIn } = useAuth();
+  const historyKey = ["coach-messages", userId] as const;
   const router = useRouter();
   const queryClient = useQueryClient();
   const [showMenu, setShowMenu] = useState(false);
@@ -56,27 +59,9 @@ export default function CoachScreen() {
     profileSaveError,
   } = useCoachProfile();
 
-  // ---- Initial messages from server ----
-  const {
-    data: serverMessages,
-    isLoading: loadingHistory,
-  } = useQuery<CoachUIMessage[]>({
-    queryKey: ["coach-messages"],
-    queryFn: async () => {
-      const token = await getToken();
-      if (!token) throw new Error("Not signed in");
-      const result = await apiRequest<{ messages: CoachUIMessage[] }>(
-        "/api/coach/messages",
-        { token }
-      );
-      return result.messages;
-    },
-    staleTime: Infinity,
-  });
-
   // ---- useChat ----
-  const chat = useChat<CoachUIMessage>({
-    transport: new DefaultChatTransport<CoachUIMessage>({
+  const session = useMemo(() => getCoachSession(queryClient, () => new Chat<CoachUIMessage>({
+    transport: new TimedCoachTransport({
       fetch: expoFetch as unknown as typeof globalThis.fetch,
       api: `${API_BASE}/api/coach/chat`,
       headers: async (): Promise<Record<string, string>> => {
@@ -87,21 +72,54 @@ export default function CoachScreen() {
       body: { timezone: Intl.DateTimeFormat().resolvedOptions().timeZone },
     }),
     onError: (err) => console.error("Coach chat error:", err),
+    onFinish: ({ messages }) => { queryClient.setQueryData(["coach-messages", userId], messages); },
+  })), [queryClient, userId, getToken]);
+  const chat = useChat<CoachUIMessage>({ chat: session.chat });
+  const [historyReady, setHistoryReady] = useState(session.hydrated);
+  // ---- Initial messages from server ----
+  const {
+    data: serverMessages,
+    isFetchedAfterMount,
+    error: historyError,
+    refetch: retryHistory,
+  } = useQuery<CoachUIMessage[]>({
+    queryKey: historyKey,
+    enabled: !!isSignedIn && !historyReady,
+    queryFn: async () => {
+      const token = await getToken();
+      if (!token) throw new Error("Not signed in");
+      const result = await apiRequest<{ messages: CoachUIMessage[] }>(
+        "/api/coach/messages",
+        { token }
+      );
+      return result.messages;
+    },
+    staleTime: 0,
+    refetchOnMount: "always",
   });
+
+
   const { setMessages, error: chatError, regenerate } = chat;
 
   // assistant-ui runtime bridged from the useChat instance we keep owning
   // (preserves the custom transport, setMessages hydration, error/regenerate).
   const runtime = useAISDKRuntime(chat);
 
-  // Hydrate useChat from server-persisted messages once loaded
-  const hydratedRef = useRef(false);
+  // Wait for the current server history before enabling any send action.
+  // Cached history alone may predate messages sent during the last visit.
   useEffect(() => {
-    if (serverMessages != null && !hydratedRef.current) {
-      hydratedRef.current = true;
+    if (isFetchedAfterMount && !historyError && serverMessages && !historyReady) {
       setMessages(serverMessages);
+      session.hydrated = true;
+      setHistoryReady(true);
     }
-  }, [serverMessages, setMessages]);
+  }, [isFetchedAfterMount, historyError, serverMessages, historyReady, setMessages, session]);
+
+  useEffect(() => {
+    if (historyReady) queryClient.setQueryData(["coach-messages", userId], chat.messages);
+  }, [historyReady, chat.messages, queryClient, userId]);
+
+  useScreenTiming("coach", historyReady, !!historyError);
 
   // ---- Clear conversation ----
   const clearMutation = useMutation({
@@ -116,7 +134,7 @@ export default function CoachScreen() {
     },
     onSuccess: () => {
       setMessages([]);
-      queryClient.setQueryData(["coach-messages"], []);
+      queryClient.setQueryData(historyKey, []);
     },
   });
 
@@ -135,6 +153,11 @@ export default function CoachScreen() {
   }));
 
   const handleClear = useCallback(() => {
+    if (!historyReady || clearMutation.isPending) return;
+    if (chat.status === "streaming" || chat.status === "submitted") {
+      Alert.alert("Coach is replying", "Wait for the reply to finish before clearing the conversation.");
+      return;
+    }
     Alert.alert(
       "Clear conversation",
       "This will delete the chat history. Your coach profile and saved facts are kept.",
@@ -147,7 +170,7 @@ export default function CoachScreen() {
         },
       ]
     );
-  }, [clearMutation]);
+  }, [clearMutation, historyReady, chat.status]);
 
   return (
     // Coach keeps its rich custom header (CoachHeader: sparkle orb + menu dropdown),
@@ -158,7 +181,7 @@ export default function CoachScreen() {
         <Reanimated.View style={[styles.flex, keyboardLift]}>
           <CoachHeader
             showMenu={showMenu}
-            onBackPress={() => router.back()}
+            onBackPress={() => router.canGoBack() ? router.back() : router.replace("/(tabs)/dashboard")}
             onMenuPress={() => setShowMenu((visible) => !visible)}
             onDismissMenu={() => setShowMenu(false)}
             onEditProfilePress={openProfileModal}
@@ -166,10 +189,16 @@ export default function CoachScreen() {
           />
 
           <CoachMessageList
-            loadingHistory={loadingHistory}
+            loadingHistory={!historyReady}
             starterPrompts={STARTER_PROMPTS}
           />
 
+          {historyError && !historyReady ? (
+            <ErrorBubble message="Couldn't load your conversation." onRetry={() => void retryHistory()} />
+          ) : null}
+          {clearMutation.error ? (
+            <ErrorBubble message="Couldn't clear your conversation." onRetry={handleClear} />
+          ) : null}
           {chatError != null ? (
             <ErrorBubble
               message={chatError.message || "Something went wrong."}
@@ -178,7 +207,7 @@ export default function CoachScreen() {
           ) : null}
 
           <View>
-            <CoachComposer />
+            {historyReady && !clearMutation.isPending ? <CoachComposer /> : null}
           </View>
 
           <Modal

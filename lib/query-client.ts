@@ -6,7 +6,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 // How long a persisted cache snapshot stays usable across cold starts.
 const CACHE_MAX_AGE = 24 * 60 * 60 * 1000; // 24h
 
-export const queryClient = new QueryClient({
+const createQueryClient = () => new QueryClient({
   defaultOptions: {
     queries: {
       // gcTime must be >= the persister's maxAge. Otherwise queries are
@@ -39,28 +39,34 @@ const PERSIST_WHITELIST = [
 
 export const PERSIST_KEY = "voicefit-rq-cache";
 
-// Persist the React Query cache to disk so a cold start (first sign-in of the
-// day, or after the OS evicted the app) rehydrates the last-known dashboard
-// data immediately instead of flashing an empty loading skeleton while it waits
-// on a full auth + network round trip.
-export const asyncStoragePersister = createAsyncStoragePersister({
-  storage: AsyncStorage,
-  key: PERSIST_KEY,
-  throttleTime: 1000,
-});
+export function userCacheKey(userId: string | null | undefined) {
+  return `${PERSIST_KEY}:${userId ?? "signed-out"}`;
+}
 
-export const persistOptions = {
-  persister: asyncStoragePersister,
-  maxAge: CACHE_MAX_AGE,
-  // Bump this to discard persisted caches when the cached shape changes
-  // between releases.
-  buster: "v2",
-  dehydrateOptions: {
-    shouldDehydrateQuery: (query: Query) => {
-      const key = query.queryKey[0];
-      return (
-        typeof key === "string" && (PERSIST_WHITELIST as readonly string[]).includes(key)
-      );
+export async function clearPersistedUserCache(userId: string | null | undefined) {
+  await AsyncStorage.removeItem(userCacheKey(userId));
+}
+
+// Each auth identity owns both a separate in-memory client and storage key.
+// A late response from an expired session can only update that old client.
+export function createUserQueryCache(userId: string | null | undefined) {
+  return {
+    queryClient: createQueryClient(),
+    persistOptions: {
+      persister: createAsyncStoragePersister({
+        storage: AsyncStorage,
+        key: userCacheKey(userId),
+        throttleTime: 1000,
+      }),
+      maxAge: CACHE_MAX_AGE,
+      buster: "v4",
+      dehydrateOptions: {
+        shouldDehydrateQuery: (query: Query) => {
+          const key = query.queryKey[0];
+          return !!userId && query.state.status === "success" && typeof key === "string" &&
+            (PERSIST_WHITELIST as readonly string[]).includes(key);
+        },
+      },
     },
-  },
-};
+  };
+}

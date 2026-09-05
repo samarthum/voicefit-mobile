@@ -20,6 +20,7 @@ export function ReviewActionsFooter() {
   return (
     <View style={[styles.footer, { paddingBottom: insets.bottom + 12 }]}>
       <Pressable
+        accessibilityRole="button"
         style={styles.discardButton}
         onPress={() => dispatch({ type: "close" })}
         testID="cc-review-discard"
@@ -27,6 +28,7 @@ export function ReviewActionsFooter() {
         <Text style={styles.discardText}>DISCARD</Text>
       </Pressable>
       <Pressable
+        accessibilityRole="button"
         style={styles.saveButton}
         onPress={() => {
           haptic.success();

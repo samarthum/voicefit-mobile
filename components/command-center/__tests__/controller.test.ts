@@ -290,6 +290,7 @@ function createHarness(options: {
         calls.ensuredSessions += 1;
         return "quick-session-1";
       },
+      createWorkoutBatch: async (input) => { calls.workoutSets.push(...input.sets); },
       createWorkoutSet: async (input) => {
         calls.workoutSets.push(input);
       },
@@ -319,6 +320,7 @@ function createHarness(options: {
     },
     clock: {
       now: () => fixedNow,
+      createRequestId: () => "d1262a00-1122-4333-8444-555566667777",
     },
     preview: {
       isEnabled: () => options.previewEnabled ?? false,
@@ -363,6 +365,7 @@ function createHarness(options: {
 
   return {
     calls,
+    ports,
     controller: createCommandCenterController(ports),
   };
 }
@@ -476,7 +479,7 @@ describe("CommandCenterController typed entry boundary", () => {
 
     await controller.submitTypedText();
 
-    expect(calls.states).toEqual(["cc_submitting_typed"]);
+    expect(calls.states).toEqual(["cc_submitting_typed", "cc_saving"]);
     expect(calls.interpreted).toEqual([]);
     expect(calls.pendingMeals).toEqual([
       { transcript: "I had chicken rice for lunch", source: "text" },
@@ -670,7 +673,7 @@ describe("CommandCenterController voice/photo boundary", () => {
 
     await controller.submitPhotoMeal();
 
-    expect(calls.states).toContain("cc_submitting_photo");
+    expect(calls.states).toContain("cc_saving");
     expect(calls.pendingPhotoMeals).toEqual([{ photo, context: "late dinner" }]);
   });
 });
@@ -911,5 +914,88 @@ describe("CommandCenterController review draft editing boundary", () => {
       carbsG: 3,
       fatG: 2,
     });
+  });
+});
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: Error) => void;
+  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
+}
+
+describe("logging races and safe retries", () => {
+  test("closing and reopening ignores an old interpretation even if the backend ignores abort", async () => {
+    const { ports, controller, calls } = createHarness({ text: "bench press" });
+    const pending = deferred<InterpretEntryResponse>();
+    let signal: AbortSignal | undefined;
+    ports.backend.interpretEntry = async (_text, _source, requestSignal) => { signal = requestSignal; return pending.promise; };
+    const submit = controller.submitTypedText();
+    controller.closeCommandCenter();
+    controller.openCommandCenter();
+    controller.handleCommandInputChange("new entry");
+    pending.resolve(workoutInterpretation());
+    await submit;
+    expect(signal?.aborted).toBe(true);
+    expect(calls.states.includes("cc_review_workout")).toBe(false);
+    expect(ports.state.getCommandText()).toBe("new entry");
+  });
+
+  test("edit invalidates old results across provider controller recreation", async () => {
+    const { ports, calls } = createHarness({ text: "bench press" });
+    const operation = { generation: 0, saving: false };
+    const first = createCommandCenterController(ports, operation);
+    const pending = deferred<InterpretEntryResponse>();
+    ports.backend.interpretEntry = () => pending.promise;
+    const submit = first.submitTypedText();
+    const afterRender = createCommandCenterController(ports, operation);
+    afterRender.dispatch({ type: "text.edit" });
+    pending.reject(new Error("Old request failed"));
+    await submit;
+    expect(calls.errors).toEqual(["cleared"]);
+    expect(ports.state.getCommandState()).toBe("cc_expanded_typing");
+  });
+
+  test("a pending meal write blocks duplicate submit and cannot be labelled discarded", async () => {
+    const { ports, controller, calls } = createHarness({ text: "I had a banana" });
+    const pending = deferred<void>();
+    let writes = 0;
+    ports.backend.createPendingMealFromText = async () => { writes++; await pending.promise; };
+    const submit = controller.submitTypedText();
+    controller.closeCommandCenter();
+    controller.dispatch({ type: "text.edit" });
+    await controller.submitTypedText();
+    expect(writes).toBe(1);
+    expect(calls.closes).toBe(0);
+    expect(ports.state.getCommandState()).toBe("cc_saving");
+    pending.resolve();
+    await submit;
+    expect(calls.finished.length).toBe(1);
+  });
+
+  test("retry submits the exact workout batch and request ID after an uncertain response", async () => {
+    const { ports, controller } = createHarness({ text: "", reviewDraft: workoutReviewDraft() });
+    const batches: unknown[] = [];
+    ports.backend.createWorkoutBatch = async (batch) => {
+      batches.push(structuredClone(batch));
+      if (batches.length === 1) throw new Error("Request timed out");
+    };
+    await controller.saveReviewedEntry();
+    expect(ports.state.getCommandErrorSubtype()).toBe("auto_save_failure");
+    await controller.handleErrorPrimary();
+    expect(batches.length).toBe(2);
+    expect(batches[1]).toEqual(batches[0]);
+  });
+
+  test("double tapping workout save submits only one batch", async () => {
+    const { ports, controller } = createHarness({ text: "", reviewDraft: workoutReviewDraft() });
+    const pending = deferred<void>();
+    let writes = 0;
+    ports.backend.createWorkoutBatch = async () => { writes++; await pending.promise; };
+    const first = controller.saveReviewedEntry();
+    await controller.saveReviewedEntry();
+    pending.resolve();
+    await first;
+    expect(writes).toBe(1);
   });
 });
