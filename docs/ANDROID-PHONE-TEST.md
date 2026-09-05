@@ -23,3 +23,7 @@ This is a signed release APK built with the `phone-test` profile. It runs withou
 These are not native process-start, first-paint or frame-rate measurements. They should not be added together because some stages overlap. Diagnostics retain at most 200 redacted records in memory, never tokens, query strings, request/response payloads or error messages. Release diagnostics do not log to the console or upload measurements. The ordinary production profile does not enable the diagnostic flag.
 
 Build ID: 25693dc3-249e-43a2-8be3-6c9ba57586f1. The exact build result and artifact link are recorded when the cloud build completes.
+
+## Build result
+
+EAS build finished successfully. [Download the signed APK](https://expo.dev/artifacts/eas/tngxjwRf3-ohbSuKQT8QixZX_TMnoyjbwhZJivP7QwA.apk). Source changes committed in 62fdc7f; the build archive was uploaded before that commit, with the same runtime/configuration changes. 78 tests, TypeScript and whitespace checks pass. Installation and physical-device behavior still require the phone test.
