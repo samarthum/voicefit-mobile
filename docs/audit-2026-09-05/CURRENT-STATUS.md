@@ -47,3 +47,7 @@ Stayed on Expo SDK 54. Updated the six patches reported by Expo's compatibility 
 - Authoritative weekly workout summaries and process-restart recovery for uncertain saves.
 
 Local launch files, generated output and the account screenshot were deliberately excluded from commits. No claim is made that every flow or release-device behavior is certified.
+
+## UI polish follow-up
+
+See [UI-POLISH.md](./UI-POLISH.md) for the mobile spacing, header and empty-state pass. TypeScript and 77 tests pass. The completed-session menu icon now renders; native menu interaction still needs verification.

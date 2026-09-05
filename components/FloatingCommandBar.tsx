@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Circle } from "react-native-svg";
 import { color, font, radius } from "@/lib/tokens";
@@ -14,10 +14,10 @@ function PulseDot() {
   );
 }
 
-// Native Material 3 / UITabBar content height the bar must clear when it
-// floats over the native bottom tabs. Mirrors the prototype's `frame.tabBar`
-// token (the command center docks at `bottom: 83px`, just above the tab bar).
-export const TAB_BAR_HEIGHT = 83;
+// Reserve the native bar's content height separately from the safe area.
+// The previous 83pt iOS value already included a home-indicator inset.
+const TAB_BAR_CONTENT_HEIGHT = Platform.OS === "ios" ? 49 : 83;
+const TAB_BAR_GAP = Platform.OS === "ios" ? 8 : 0;
 
 type FloatingCommandBarProps = {
   hint: string;
@@ -51,7 +51,7 @@ export function FloatingCommandBar({
 }: FloatingCommandBarProps) {
   const insets = useSafeAreaInsets();
   const bottom = overTabBar
-    ? TAB_BAR_HEIGHT + insets.bottom + bottomOffset
+    ? TAB_BAR_CONTENT_HEIGHT + insets.bottom + TAB_BAR_GAP + bottomOffset
     : bottomOffset + (safeAreaBottom ? insets.bottom : 0);
   return (
     <View
@@ -60,11 +60,11 @@ export function FloatingCommandBar({
     >
       <View style={styles.bar}>
         <Pressable
-          style={styles.left}
+          style={({ pressed }) => [styles.left, pressed && styles.pressed]}
           onPress={onPress}
           testID={testID}
           accessibilityRole="button"
-          accessibilityLabel="Open command center"
+          accessibilityLabel="Log an entry"
         >
           <PulseDot />
           <Text style={styles.hint} numberOfLines={1}>
@@ -72,7 +72,7 @@ export function FloatingCommandBar({
           </Text>
         </Pressable>
         <Pressable
-          style={styles.micButton}
+          style={({ pressed }) => [styles.micButton, pressed && styles.pressed]}
           onPress={() => { haptic.press(); (onMicPress ?? onPress)(); }}
           accessibilityRole="button"
           accessibilityLabel="Start voice input"
@@ -85,6 +85,7 @@ export function FloatingCommandBar({
 }
 
 const styles = StyleSheet.create({
+  pressed: { opacity: 0.65 },
   docked: {
     marginHorizontal: 12,
     marginTop: 8,

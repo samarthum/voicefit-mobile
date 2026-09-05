@@ -313,6 +313,9 @@ export default function WorkoutsScreen() {
                 style={[styles.newButton, createSessionMutation.isPending ? styles.buttonDisabled : null]}
                 onPress={() => void handleCreateSession()}
                 disabled={createSessionMutation.isPending}
+                accessibilityRole="button"
+                accessibilityLabel="Start a new workout session"
+                accessibilityState={{ disabled: createSessionMutation.isPending }}
               >
                 <Icon name="plus" size={12} color={token.accentInk} />
                 <Text style={styles.newButtonText}>
@@ -395,7 +398,7 @@ export default function WorkoutsScreen() {
             <View style={styles.emptyCard}>
               <Text style={styles.emptyTitle}>No workout sessions yet</Text>
               <Text style={styles.emptyBody}>
-                Create a session to start logging sets, or use the Command Center to add a workout by voice.
+                Start a session to keep your exercises and sets together. You can type or use the microphone to log them.
               </Text>
             </View>
           )
@@ -463,7 +466,7 @@ export default function WorkoutsScreen() {
       ) : null}
 
       <FloatingCommandBar
-        hint="80 kilos for 10 reps…"
+        hint="Log a workout or exercise…"
         onPress={() => cc.open()}
         onMicPress={() => cc.startRecording()}
         overTabBar
@@ -510,7 +513,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
     paddingHorizontal: 14,
-    height: 36,
+    minHeight: 44,
+    paddingVertical: 10,
     borderRadius: r.pill,
     backgroundColor: token.accent,
   },

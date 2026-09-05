@@ -594,7 +594,20 @@ export default function DashboardScreen() {
                   );
                 })
               ) : (
-                <Text style={styles.emptyText}>No meals logged yet.</Text>
+                <View style={styles.emptyMeals}>
+                  <Text style={styles.emptyMealTitle}>No meals logged {selectedDate === today ? "today" : "for this day"}</Text>
+                  <Text style={styles.emptyText}>Your meals and nutrition estimates will appear here.</Text>
+                  {selectedDate === today ? (
+                    <Pressable
+                      onPress={() => cc.open()}
+                      accessibilityRole="button"
+                      style={({ pressed }) => [styles.emptyMealAction, pressed && { opacity: 0.65 }]}
+                    >
+                      <Icon name="plus" size={16} color={token.accent} />
+                      <Text style={styles.emptyMealActionText}>Log your first meal</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
               )}
             </View>
           </>
@@ -602,7 +615,7 @@ export default function DashboardScreen() {
       </ScrollView>
 
       <FloatingCommandBar
-        hint="Log a meal, lift, or weight…"
+        hint="Log a meal, workout, or weight…"
         onPress={() => cc.open()}
         onMicPress={() => cc.startRecording()}
         overTabBar
@@ -1025,11 +1038,15 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     color: token.textMute,
   },
+  emptyMeals: { padding: 18, gap: 6 },
+  emptyMealTitle: { fontFamily: font.sans[600], fontSize: 15, color: token.text },
+  emptyMealAction: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 8, alignSelf: "flex-start", marginTop: 4 },
+  emptyMealActionText: { fontFamily: font.sans[600], fontSize: 14, color: token.accent },
   emptyText: {
     fontFamily: font.sans[400],
     fontSize: 14,
     color: token.textSoft,
-    padding: 16,
+    lineHeight: 20,
   },
   blockingErrorCard: {
     marginTop: 24,

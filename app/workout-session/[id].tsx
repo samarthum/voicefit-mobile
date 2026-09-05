@@ -355,7 +355,7 @@ function WorkoutScreenHeader({ title, showMenu, showFinish, saving, onMenu, onFi
     headerShown: true,
     title,
     headerRight: () => (
-      <View style={styles.headerActions}>
+      <View collapsable={false} style={[styles.headerActions, { width: showFinish ? 148 : 44 }]}>
         {showMenu ? (
           <Pressable style={styles.iconButton} onPress={() => actions.current.onMenu()} hitSlop={8} accessibilityRole="button" accessibilityLabel="Session options">
             <Icon name="ellipsisVertical" size={18} color={token.textMute} />
@@ -1298,10 +1298,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
+    height: 44,
+    justifyContent: "flex-end",
   },
   iconButton: {
-    width: 32,
-    height: 32,
+    width: 44,
+    height: 44,
     alignItems: "center",
     justifyContent: "center",
   },
