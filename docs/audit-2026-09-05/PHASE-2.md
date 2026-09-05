@@ -1,5 +1,7 @@
 # VoiceFit mobile — second improvement pass
 
+**Current status:** See [CURRENT-STATUS.md](./CURRENT-STATUS.md) for pushed commits and the latest verification. Details below record their original audit pass.
+
 **Latest transition work:** DASHBOARD-TRANSITION.md documents the meal-to-dashboard changes and native checks.
 
 **Workout follow-up:** WORKOUT-FOLLOWUP.md records the successful production batch save, restart verification, parser correction, timings and synthetic data cleanup.

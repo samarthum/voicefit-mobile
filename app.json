@@ -68,7 +68,9 @@
           "NSHealthUpdateUsageDescription": false,
           "background": false
         }
-      ]
+      ],
+      "expo-asset",
+      "expo-web-browser"
     ],
     "extra": {
       "router": {},

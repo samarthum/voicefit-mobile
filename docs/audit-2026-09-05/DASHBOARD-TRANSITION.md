@@ -1,5 +1,7 @@
 # Interpretation → dashboard follow-up
 
+**Current status:** See [CURRENT-STATUS.md](./CURRENT-STATUS.md) for pushed commits and the latest verification. Details below record their original audit pass.
+
 ## Local changes
 
 - Entry, processing, review and saving now use one stable 92% sheet height. Removed the dynamic snap changes between these states.

@@ -7,6 +7,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -156,6 +157,8 @@ function mockDashboardData(selectedDate: string): DashboardHomeData {
 }
 
 export default function DashboardScreen() {
+  const { fontScale } = useWindowDimensions();
+  const largeText = fontScale >= 1.4;
   const { getToken } = useAuth();
   const router = useRouter();
   const cc = useCommandCenter();
@@ -424,13 +427,13 @@ export default function DashboardScreen() {
                   <Text style={styles.heroGoalText}>{todayCaloriesGoal.toLocaleString()} kcal goal</Text>
                 )}
               </View>
-              <View style={styles.heroBody}>
+              <View style={[styles.heroBody, largeText && styles.heroBodyLargeText]}>
                 {isDashboardInitialLoading ? (
                   <LoadingBlock width={150} height={150} radius={75} />
                 ) : (
                   <CalorieRing consumed={todayCaloriesConsumed} goal={todayCaloriesGoal} />
                 )}
-                <View style={styles.heroRight}>
+                <View style={[styles.heroRight, largeText && styles.heroRightLargeText]}>
                   {isDashboardInitialLoading ? (
                     <View style={styles.heroLoadingCopy}>
                       <LoadingBlock width={"92%"} height={18} radius={6} />
@@ -652,6 +655,8 @@ const styles = StyleSheet.create({
   },
   heroCardHeader: {
     flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
     alignItems: "center",
     justifyContent: "space-between",
     marginBottom: 18,
@@ -676,6 +681,14 @@ const styles = StyleSheet.create({
   },
   heroRight: {
     flex: 1,
+  },
+  heroBodyLargeText: {
+    flexDirection: "column",
+    alignItems: "stretch",
+  },
+  heroRightLargeText: {
+    flex: 0,
+    width: "100%",
   },
   heroLoadingCopy: {
     gap: 6,

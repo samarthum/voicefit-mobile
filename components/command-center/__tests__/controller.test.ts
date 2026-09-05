@@ -999,3 +999,49 @@ describe("logging races and safe retries", () => {
     expect(writes).toBe(1);
   });
 });
+
+describe('media cancellation and recovery', () => {
+  test('a photo picker result arriving after close cannot reopen the sheet', async () => {
+    const {ports,controller,calls}=createHarness({text:''});
+    const pending=deferred<PhotoAttachment | null>();
+    const reached=deferred<void>();
+    ports.media.pickMealPhoto=()=>{reached.resolve();return pending.promise;};
+    const picking=controller.launchPhotoPicker('library');
+    await reached.promise;
+    controller.closeCommandCenter();
+    controller.openCommandCenter();
+    pending.resolve(photoAttachment());
+    await picking;
+    expect(calls.states.includes('cc_photo_context')).toBe(false);
+    expect(ports.state.getCommandState()).toBe('cc_expanded_empty');
+  });
+  test('late transcription after close cannot create a meal or overwrite a new draft', async () => {
+    const {ports,controller,calls}=createHarness({text:'',activeRecording:voiceRecording({durationMillis:2000})});
+    const pending=deferred<string>();
+    const reached=deferred<void>();
+    ports.backend.transcribeAudio=()=>{reached.resolve();return pending.promise;};
+    const stopping=controller.stopRecording();
+    await reached.promise;
+    controller.closeCommandCenter();
+    controller.openCommandCenter();
+    controller.handleCommandInputChange('new unsaved draft');
+    pending.resolve('I ate an apple');
+    await stopping;
+    expect(calls.pendingMeals).toEqual([]);
+    expect(ports.state.getCommandText()).toBe('new unsaved draft');
+  });
+  test('cancelled photo selection does not create an error or save', async () => {
+    const {controller,calls}=createHarness({text:'',pickedPhoto:null});
+    await controller.launchPhotoPicker('library');
+    expect(calls.pendingPhotoMeals).toEqual([]);
+    expect(calls.states.includes('cc_photo_context')).toBe(false);
+    expect(calls.errors.filter(error=>error!=='cleared')).toEqual([]);
+  });
+  test('failed transcription keeps an actionable error and never saves', async () => {
+    const {ports,controller,calls}=createHarness({text:'',activeRecording:voiceRecording({durationMillis:2000})});
+    ports.backend.transcribeAudio=async()=>{throw new Error('Network unavailable');};
+    await controller.stopRecording();
+    expect(calls.pendingMeals).toEqual([]);
+    expect(calls.errors).toContainEqual({subtype:'voice_interpret_failure',detail:'Network unavailable'});
+  });
+});

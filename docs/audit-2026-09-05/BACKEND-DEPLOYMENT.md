@@ -1,5 +1,7 @@
 # Backend deployment — 2026-09-05
 
+**Current status:** See [CURRENT-STATUS.md](./CURRENT-STATUS.md) for pushed commits and the latest verification. Details below record their original audit pass.
+
 Status: production deployed and promoted successfully.
 
 - Mobile backend: https://voicefit-zeta.vercel.app

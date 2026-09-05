@@ -1,5 +1,7 @@
 # VoiceFit mobile audit — 5 September 2026
 
+**Current status:** See [CURRENT-STATUS.md](./CURRENT-STATUS.md) for pushed commits and the latest verification. Details below record their original audit pass.
+
 **Update:** [Second improvement pass](./PHASE-2.md) documents the implemented reliability fixes, current tests, and deployment/device limitations. The backlog below records the first-pass state and is superseded where noted there.
 
 Scope: `voicefit-mobile` (Expo 54 / React Native). The retired web interface was excluded. Existing backend routes were read where necessary to verify mobile API behavior. First-pass application changes were in the mobile repository. The second pass also adds a mobile-facing batch API in the shared backend.

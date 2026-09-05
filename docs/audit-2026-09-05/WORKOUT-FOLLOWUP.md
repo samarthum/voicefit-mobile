@@ -1,5 +1,7 @@
 # Native workout follow-up — 2026-09-05
 
+**Current status:** See [CURRENT-STATUS.md](./CURRENT-STATUS.md) for pushed commits and the latest verification. Details below record their original audit pass.
+
 ## Verified against production
 
 Created one new session in the signed-in iOS simulator, entered the labelled synthetic sentence “UI audit test: bench press 2 sets of 8 reps at 10 kg”, reviewed and saved through the deployed batch API. The UI showed two saved sets and 160 kg volume. Terminated/restarted Expo Go and reopened the exact session: both rows remained. A scoped database read independently confirmed two rows, each 10 kg × 8 reps.
