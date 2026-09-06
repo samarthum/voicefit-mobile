@@ -27,3 +27,7 @@ Build ID: 25693dc3-249e-43a2-8be3-6c9ba57586f1. The exact build result and artif
 ## Build result
 
 EAS build finished successfully. [Download the signed APK](https://expo.dev/artifacts/eas/tngxjwRf3-ohbSuKQT8QixZX_TMnoyjbwhZJivP7QwA.apk). Source changes committed in 62fdc7f; the build archive was uploaded before that commit, with the same runtime/configuration changes. 78 tests, TypeScript and whitespace checks pass. Installation and physical-device behavior still require the phone test.
+
+## Shared-icon update — September 6
+
+Build 66e96e65-fe0c-4c76-8fbf-55666d025b3c finished successfully. [Download the updated APK](https://expo.dev/artifacts/eas/86CCOnO07srTKu60KxGryUBoBN5JVPSwjY1e-k4lieE.apk). Replaces the earlier download for the unified icon and tab styling pass, source ee38f0c. Existing signing key and account configuration retained. Native Android signed-in visual review awaits login; iOS dashboard/Train visuals, 78 tests, TypeScript and both native exports passed.
