@@ -1,3 +1,4 @@
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { appTimingStarted, measureToken, monotonicNow, recordTiming } from "@/lib/performance-log";
 import "@/polyfills";
 import { ClerkProvider, useAuth } from "@clerk/clerk-expo";
@@ -102,6 +103,7 @@ function AuthQueryProvider({ children }: { children: ReactNode }) {
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
+    ...Ionicons.font,
     InterTight_300Light,
     InterTight_400Regular,
     InterTight_500Medium,

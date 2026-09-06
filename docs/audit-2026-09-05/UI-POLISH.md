@@ -37,3 +37,11 @@ Verified on signed-in iPhone 17 Pro / iOS 26.2:
 Restored simulator text size to original large and opened dashboard. TypeScript, 77 tests and whitespace checks pass. Screenshots remain out of Git because they contain account information.
 
 Limits: extended drag/scroll verification became unavailable again (noWindowsAvailable). Separate small-iPhone native checks, maximum accessibility sizes across all screens, active-session header and physical-device checks remain unverified. This is a completed focused pass, not certification of all devices or every flow.
+
+## Shared icon and navigation style — September 6
+
+Replaced platform-specific SF Symbols/Material glyphs with one typed Ionicons mapping. The tabs use the same rendered image source on iOS and Android: outline home, barbell and person. Shared controls use the same family throughout the app. Icons are preloaded with the app fonts and excluded from accessibility text so labels do not contain private-use font characters.
+
+Tab labels use Inter Tight, consistent 11pt sizing and medium/semibold selection weight. Android selection uses a softer sage tint and always-visible labels. iOS scroll-edge transparency and tab minimization are disabled to keep the navigation stable. Native navigation remains in place; OS bar geometry is not claimed to be identical.
+
+Validation: iOS dashboard and Train selected state visually verified after restart; 78 tests, TypeScript and iOS/Android exports pass. Android emulator could be launched but was not available to the computer-use app selector, so Android visual verification remains a phone check. New APK build: 66e96e65-fe0c-4c76-8fbf-55666d025b3c.
