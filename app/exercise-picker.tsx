@@ -120,7 +120,9 @@ export default function ExercisePickerScreen() {
 
   const handleAdd = (item: ExerciseItem) => {
     if (sessionId) {
-      router.replace({
+      // Return to the existing session so its drafts survive. Replacing the
+      // picker creates a second session screen and Back reveals stale drafts.
+      router.dismissTo({
         pathname: "/workout-session/[id]",
         params: {
           id: sessionId,
