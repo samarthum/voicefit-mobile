@@ -19,7 +19,8 @@
 - `type_search(query)` filters the visible exercise list in place.
 - `tap_filter(group)` switches the active chip and filters rows.
 - `tap_add_exercise`:
-  - with `sessionId`: replace back into `/workout-session/[id]` with picker payload params.
+  - with `sessionId`: dismiss back to the existing `/workout-session/[id]` with picker payload params, preserving its mounted screen and drafts. If no matching session is mounted (direct picker link), replace the picker with that session.
+  - Back from the returned session reaches the previous screen (the workouts list when opened there), not an older copy of the session.
   - without `sessionId`: return to `/workouts`.
 - floating command bar routes into Home command center.
 
