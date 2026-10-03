@@ -2,7 +2,6 @@ import { useScreenTiming } from "@/hooks/use-screen-timing";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Keyboard,
   Modal,
   Platform,
@@ -41,6 +40,7 @@ import { apiRequest } from "@/lib/api-client";
 import { haptic } from "@/lib/haptics";
 import { color as token, font, radius as rad } from "@/lib/tokens";
 import { isWebPreviewMode } from "@/lib/web-preview-mode";
+import { useAppPrompt } from "@/components/AppPrompt";
 
 const COLORS = {
   bg: token.bg,
@@ -434,6 +434,7 @@ export default function WorkoutSessionScreen() {
   const [renameText, setRenameText] = useState("");
   const [exerciseNoteEditing, setExerciseNoteEditing] = useState<string | null>(null);
   const [exerciseNoteText, setExerciseNoteText] = useState("");
+  const prompt = useAppPrompt([renderContext, renameModalVisible, exerciseNoteEditing]);
 
   useEffect(() => {
     const context = screenContextRef.current;
@@ -746,7 +747,7 @@ export default function WorkoutSessionScreen() {
       else router.replace("/(tabs)/workouts");
     },
     onError: (error) => {
-      Alert.alert("Error", error instanceof Error ? error.message : "Failed to delete session.");
+      prompt.alert("Error", error instanceof Error ? error.message : "Failed to delete session.");
     },
   });
 
@@ -768,7 +769,7 @@ export default function WorkoutSessionScreen() {
       void queryClient.invalidateQueries({ queryKey: ["workout-sessions"] });
     },
     onError: (error) => {
-      Alert.alert("Error", error instanceof Error ? error.message : "Failed to rename session.");
+      prompt.alert("Error", error instanceof Error ? error.message : "Failed to rename session.");
     },
   });
 
@@ -819,7 +820,7 @@ export default function WorkoutSessionScreen() {
       if (sessionId && context?.previous) {
         queryClient.setQueryData(["workout-session-detail", sessionId], context.previous);
       }
-      Alert.alert("Error", error instanceof Error ? error.message : "Failed to save note.");
+      prompt.alert("Error", error instanceof Error ? error.message : "Failed to save note.");
     },
     onSuccess: (updated) => {
       if (!sessionId) return;
@@ -840,7 +841,7 @@ export default function WorkoutSessionScreen() {
     if (blockUnreconciledAdd()) return;
     if (isPreviewId || isWebPreview) return;
     Keyboard.dismiss();
-    Alert.alert(
+    prompt.alert(
       session?.title ?? "Session",
       undefined,
       [
@@ -852,19 +853,19 @@ export default function WorkoutSessionScreen() {
           },
         },
         {
-          text: "Delete Session",
+          text: "Delete session",
           style: "destructive",
           onPress: () => {
             haptic.warning();
-            Alert.alert(
+            prompt.alert(
               "Delete this session?",
               "This will remove the session and all its sets. This cannot be undone.",
               [
                 { text: "Cancel", style: "cancel" },
                 {
-                  text: "Delete",
+                  text: "Delete session",
                   style: "destructive",
-                  onPress: () => { if (!blockUnreconciledAdd()) deleteSessionMutation.mutate(); },
+                  onPress: () => { if (!blockUnreconciledAdd()) return deleteSessionMutation.mutateAsync(); },
                 },
               ]
             );
@@ -879,7 +880,7 @@ export default function WorkoutSessionScreen() {
     if (blockUnreconciledAdd()) return;
     if (isPreviewId || isWebPreview) return;
     Keyboard.dismiss();
-    Alert.alert(
+    prompt.alert(
       exerciseName,
       undefined,
       [
@@ -888,15 +889,15 @@ export default function WorkoutSessionScreen() {
           style: "destructive",
           onPress: () => {
             haptic.warning();
-            Alert.alert(
+            prompt.alert(
               `Delete "${exerciseName}"?`,
               "All sets for this exercise will be removed from the session.",
               [
                 { text: "Cancel", style: "cancel" },
                 {
-                  text: "Delete",
+                  text: "Delete exercise",
                   style: "destructive",
-                  onPress: () => void handleDeleteExercise(exerciseName),
+                  onPress: () => handleDeleteExercise(exerciseName),
                 },
               ]
             );
@@ -1090,11 +1091,8 @@ export default function WorkoutSessionScreen() {
     if (changedWorkoutSets(current.sets, draftsRef.current).length) {
       const choice = { context, sessionId, run: finishWith };
       webFinishChoiceRef.current = choice;
-      if (Platform?.OS === "web") {
-        setWebFinishChoice(choice);
-        return;
-      }
-      Alert.alert("Unsaved set changes", "Save your typed changes before finishing, or explicitly discard them. Cancel keeps this workout open.", [
+      setWebFinishChoice(choice);
+      prompt.alert("Unsaved set changes", "Save your typed changes before finishing, or explicitly discard them. Cancel keeps this workout open.", [
         { text: "Cancel", style: "cancel", onPress: () => resolveWebFinishChoice(choice) },
         { text: "Discard & Finish", style: "destructive", onPress: () => resolveWebFinishChoice(choice, "discard") },
         { text: "Save & Finish", onPress: () => resolveWebFinishChoice(choice, "save") },
@@ -1146,7 +1144,7 @@ export default function WorkoutSessionScreen() {
     if (isPreviewId || isWebPreview) return;
     if (session?.finished) return;
     if (set.id.startsWith("temp-")) {
-      Alert.alert("Still saving", "Hang on a moment, then try again.");
+      prompt.alert("Still saving", "Hang on a moment, then try again.");
       return;
     }
     if (!sessionId) return;
@@ -1342,56 +1340,7 @@ export default function WorkoutSessionScreen() {
         onUndo={handleUndoDelete}
         onDismiss={handleConfirmDelete}
       />
-      {Platform?.OS === "web" && webFinishChoice && webFinishChoice.sessionId === sessionId ? (
-        <Modal
-          visible
-          transparent
-          animationType="fade"
-          accessibilityLabel="Unsaved set changes"
-          onRequestClose={() => resolveWebFinishChoice(webFinishChoice)}
-        >
-          <View style={styles.modalOverlay}>
-            <Pressable
-              style={StyleSheet.absoluteFill}
-              accessibilityRole="button"
-              accessibilityLabel="Dismiss finish dialog"
-              onPress={() => resolveWebFinishChoice(webFinishChoice)}
-            />
-            <View style={styles.modalCard}>
-              <Text accessibilityRole="header" style={styles.modalTitle}>Unsaved set changes</Text>
-              <Text style={styles.finishChoiceBody}>
-                Save your typed changes before finishing, or explicitly discard them. Cancel keeps this workout open.
-              </Text>
-              <View style={styles.finishChoiceButtons}>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Save & Finish"
-                  style={styles.modalButtonConfirm}
-                  onPress={() => resolveWebFinishChoice(webFinishChoice, "save")}
-                >
-                  <Text style={styles.modalButtonConfirmText}>Save & Finish</Text>
-                </Pressable>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Discard & Finish"
-                  style={styles.modalButtonCancel}
-                  onPress={() => resolveWebFinishChoice(webFinishChoice, "discard")}
-                >
-                  <Text style={styles.finishChoiceDiscardText}>Discard & Finish</Text>
-                </Pressable>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Cancel"
-                  style={styles.modalButtonCancel}
-                  onPress={() => resolveWebFinishChoice(webFinishChoice)}
-                >
-                  <Text style={styles.modalButtonCancelText}>Cancel</Text>
-                </Pressable>
-              </View>
-            </View>
-          </View>
-        </Modal>
-      ) : null}
+      {prompt.dialog}
       <Modal
         visible={renameModalVisible}
         transparent

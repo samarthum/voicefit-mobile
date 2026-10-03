@@ -2,7 +2,6 @@ import { diagnosticsEnabled } from "@/lib/performance-log";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   InputAccessoryView,
   Keyboard,
   Modal,
@@ -32,6 +31,7 @@ import { Icon } from "@/components/Icon";
 import { haptic } from "@/lib/haptics";
 import { useHealthAccess } from "@/hooks/use-health-steps";
 import { openHealthSettings } from "@/lib/health/steps";
+import { useAppPrompt } from "@/components/AppPrompt";
 
 const COLORS = {
   bg: token.bg,
@@ -144,6 +144,7 @@ export default function SettingsScreen() {
   const router = useRouter();
   const { signOut, getToken, isSignedIn, userId } = useAuth();
   const { user } = useUser();
+  const prompt = useAppPrompt([userId, isSignedIn]);
   const queryClient = useQueryClient();
   const isWebPreview = isWebPreviewMode();
   const [calorieGoal, setCalorieGoal] = useState(String(PREVIEW_SETTINGS.calorieGoal));
@@ -183,7 +184,7 @@ export default function SettingsScreen() {
       haptic.success();
       return;
     }
-    Alert.alert(
+    prompt.alert(
       `Connect ${health.sourceName}`,
       Platform.OS === "ios"
         ? "To share steps with VoiceFit, open the Health app and enable Steps under Sharing → Apps → VoiceFit."
@@ -357,6 +358,7 @@ export default function SettingsScreen() {
 
   return (
     <SafeAreaView style={styles.root} edges={["top"]}>
+      {prompt.dialog}
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
@@ -586,7 +588,7 @@ export default function SettingsScreen() {
 
         <Pressable style={styles.dangerButton} onPress={() => {
           haptic.press();
-          Alert.alert("Sign Out", "Are you sure you want to sign out?", [
+          prompt.alert("Sign out?", "Are you sure you want to sign out?", [
             { text: "Cancel", style: "cancel" },
             {
               text: "Sign Out",
@@ -597,7 +599,7 @@ export default function SettingsScreen() {
                 // user's rehydrated dashboard.
                 queryClient.clear();
                 void clearPersistedUserCache(userId);
-                void signOut();
+                return signOut();
               },
             },
           ]);

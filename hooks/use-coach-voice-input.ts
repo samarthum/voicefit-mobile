@@ -5,8 +5,8 @@ import {
   requestRecordingPermissionsAsync,
   setAudioModeAsync,
 } from "expo-audio";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Alert } from "react-native";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { useAppPrompt } from "@/components/AppPrompt";
 
 import { apiFormRequest } from "@/lib/api-client";
 import { haptic } from "@/lib/haptics";
@@ -18,6 +18,7 @@ type UseCoachVoiceInputOptions = {
 };
 
 export type UseCoachVoiceInputResult = {
+  dialog: ReactNode;
   isRecording: boolean;
   isRecordingMic: boolean;
   isTranscribing: boolean;
@@ -33,7 +34,8 @@ export function useCoachVoiceInput({
   onTranscriptFocus,
   minDurationMillis = 500,
 }: UseCoachVoiceInputOptions): UseCoachVoiceInputResult {
-  const { getToken } = useAuth();
+  const { getToken, userId } = useAuth();
+  const prompt = useAppPrompt([userId]);
 
   // NUI-8: hook-based recorder (expo-audio)
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
@@ -73,7 +75,7 @@ export function useCoachVoiceInput({
     try {
       const { granted } = await requestRecordingPermissionsAsync();
       if (!granted) {
-        Alert.alert(
+        prompt.alert(
           "Microphone",
           "Microphone permission is required to use voice input."
         );
@@ -91,14 +93,14 @@ export function useCoachVoiceInput({
     } catch (err) {
       console.error("Recording error:", err);
       if (mountedRef.current) {
-        Alert.alert(
+        prompt.alert(
           "Voice input",
           "Could not start recording. Please try again."
         );
       }
       safeSetIsRecording(false);
     }
-  }, [isTranscribing, isRecording, recorder, safeSetIsRecording]);
+  }, [isTranscribing, isRecording, recorder, safeSetIsRecording, prompt.alert]);
 
   const stopAndTranscribe = useCallback(async () => {
     if (!isRecording || isTranscribing) return;
@@ -144,7 +146,7 @@ export function useCoachVoiceInput({
     } catch (err) {
       console.error("Transcription error:", err);
       if (mountedRef.current) {
-        Alert.alert(
+        prompt.alert(
           "Voice input",
           "Could not transcribe that recording. Please try again."
         );
@@ -154,6 +156,7 @@ export function useCoachVoiceInput({
     }
   }, [
     getToken,
+    prompt.alert,
     isRecording,
     isTranscribing,
     minDurationMillis,
@@ -176,6 +179,7 @@ export function useCoachVoiceInput({
   }, [isRecording, isTranscribing, startRecording, stopAndTranscribe]);
 
   return {
+    dialog: prompt.dialog,
     isRecording,
     isRecordingMic: isRecording,
     isTranscribing,

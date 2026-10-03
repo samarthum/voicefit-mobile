@@ -45,7 +45,7 @@ async function screen(sets = [makeSet('one'), makeSet('two')]) {
     return {isPending,mutateAsync,mutate:vars=>{void mutateAsync(vars).catch(()=>{});}};
   };
   const native={StyleSheet:{create:x=>x,absoluteFill:{}},Keyboard:{dismiss(){}},Alert:{alert:(...args)=>alerts.push(args)}};
-  for(const name of ['View','Text','Pressable','TextInput','ActivityIndicator','Modal'])native[name]=name;
+  for(const name of ['View','Text','Pressable','TextInput','ActivityIndicator','Modal','ScrollView'])native[name]=name;
   const load=loader({
     'expo-crypto':{randomUUID:require('node:crypto').randomUUID},'react-native':native,'react-native-keyboard-controller':{KeyboardAvoidingView:'View',KeyboardAwareScrollView:'ScrollView'},
     'expo-router':{Redirect:'Redirect',Stack:{Screen:'Screen'},useLocalSearchParams:()=>({id:'test-session'}),useRouter:()=>({setParams(){},push(){},back(){}})},
@@ -63,10 +63,10 @@ async function screen(sets = [makeSet('one'), makeSet('two')]) {
   let r;await act(async()=>{r=create(React.createElement(Component));});
   const card=()=>r.root.findByType('ExerciseCard');
   const finish=()=>r.root.findByType('Screen').props.options.headerRight().props.children.find(e=>e?.props.accessibilityLabel==='Finish workout').props.onPress();
-  return {r,requests,alerts,card,data:()=>data,response:fn=>response=fn,
+  return {r,requests,alerts,prompt:()=>require('./workout-prompt-fixture.cjs').prompt(r),card,data:()=>data,response:fn=>response=fn,
     edit:async(id,patch)=>act(async()=>card().props.onChangeDraft(id,patch)),
     finish:async()=>act(async()=>{finish();}),
-    choose:async text=>{const buttons=alerts.at(-1)?.[2];assert.ok(buttons,'Finish must prompt before ending');const button=buttons.find(b=>b.text===text);assert.ok(button,`missing ${text}`);await act(async()=>{await button.onPress?.();});},
+    choose:async text=>{const buttons=require('./workout-prompt-fixture.cjs').prompt(r)?.[2];assert.ok(buttons,'Finish must prompt before ending');const button=buttons.find(b=>b.text===text);assert.ok(button,`missing ${text}`);await act(async()=>{await button.onPress?.();});},
     close:async()=>act(async()=>r.unmount())};
 }
 test('workout screen metadata preserves explicit equipment on a non-catalog variant',async()=>{
@@ -168,7 +168,7 @@ test('Save & Finish waits for every row update, locks edits, and only then ends 
       return url.startsWith('/api/workout-sets/') ? {...s.data().sets.find(set=>set.id===url.split('/').pop()),...body} : {...s.data(),...body};
     });
     await s.finish();let pending;
-    await act(async()=>{pending=s.alerts.at(-1)[2].find(b=>b.text==='Save & Finish').onPress();});
+    await act(async()=>{pending=s.prompt()[2].find(b=>b.text==='Save & Finish').onPress();});
     assert.equal(s.requests.length,1);assert.equal(s.data().endedAt,null);
     assert.equal(s.card().props.saving,true,'rows must be locked during finishing');
     await s.edit('one',{weightKg:'90'});
@@ -207,7 +207,7 @@ test('actual Finish prompts for edited already-complete rows and Cancel retains 
     await s.edit('one',{weightKg:'85'});
     await s.finish();
     assert.equal(s.requests.length,0,'must not end before the choice');
-    assert.deepEqual(s.alerts.at(-1)[2].map(b=>b.text),['Cancel','Discard & Finish','Save & Finish']);
+    assert.deepEqual(s.prompt()[2].map(b=>b.text),['Cancel','Discard & Finish','Save & Finish']);
     await s.choose('Cancel');
     assert.equal(s.data().endedAt,null);
     assert.equal(s.card().props.drafts.one.weightKg,'85');

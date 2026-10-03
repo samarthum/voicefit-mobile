@@ -46,7 +46,7 @@ async function screen(sets = [makeSet('one'), makeSet('two')], platform = 'web',
     return {isPending,mutateAsync,mutate:vars=>{void mutateAsync(vars).catch(()=>{});}};
   };
   const native={Platform:{OS:platform},StyleSheet:{create:x=>x,absoluteFill:{}},Keyboard:{dismiss(){}},Alert:{alert:(...args)=>alerts.push(args)}};
-  for(const name of ['View','Text','Pressable','TextInput','ActivityIndicator','Modal'])native[name]=name;
+  for(const name of ['View','Text','Pressable','TextInput','ActivityIndicator','Modal','ScrollView'])native[name]=name;
   const load=loader({
     'expo-crypto':{randomUUID:require('node:crypto').randomUUID},'react-native':native,'react-native-keyboard-controller':{KeyboardAvoidingView:'View',KeyboardAwareScrollView:'ScrollView'},
     'expo-router':{Redirect:'Redirect',Stack:{Screen:'Screen'},useLocalSearchParams:()=>({id:routeId}),useRouter:()=>({setParams(){},push(){},back(){}})},
@@ -58,13 +58,13 @@ async function screen(sets = [makeSet('one'), makeSet('two')], platform = 'web',
     '@/components/workout':{SessionStatsStrip:'Stats',WorkoutExerciseCard:'ExerciseCard'},
     '@/hooks/use-screen-timing':{useScreenTiming(){}},'@/lib/web-preview-mode':{isWebPreviewMode:()=>false},
     '@/lib/haptics':{haptic:{success(){},warning(){}}},
-    '@/lib/api-client':{apiRequest:async(url,options)=>{const body=JSON.parse(options.body);requests.push({url,body});return response(url,body);}},
+    '@/lib/api-client':{apiRequest:async(url,options)=>{const body=options.body?JSON.parse(options.body):null;requests.push({url,body,method:options.method});return options.method==='DELETE'?{deleted:true}:response(url,body);}},
   });
   const Component=load('@/app/workout-session/[id]').default;
   let r;await act(async()=>{r=create(React.createElement(Component));});
   const card=()=>r.root.findByType('ExerciseCard');
   const finish=()=>r.root.findByType('Screen').props.options.headerRight().props.children.find(e=>e?.props.accessibilityLabel==='Finish workout').props.onPress();
-  return {r,requests,alerts,card,data:()=>data,response:fn=>response=fn,
+  return {r,requests,alerts,prompt:()=>require('./workout-prompt-fixture.cjs').prompt(r),card,data:()=>data,response:fn=>response=fn,
     switchRoute:async id=>act(async()=>{routeId=id;data={...data,id,sets:data.sets.map(s=>({...s,sessionId:id}))};notify();}),
     add:async()=>act(async()=>{await card().props.onAddSet(card().props.card);}),
     text:()=>r.root.findAllByType('Text').map(n=>n.props.children).join(' '),

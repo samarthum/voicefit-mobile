@@ -86,7 +86,7 @@ export function CoachComposer({
   const focusComposer = useCallback(() => {
     inputRef.current?.focus();
   }, []);
-  const { isRecordingMic, isTranscribing, handleMicPress } = useCoachVoiceInput(
+  const { isRecordingMic, isTranscribing, handleMicPress, dialog: voiceInputDialog } = useCoachVoiceInput(
     {
       onTranscript: handleTranscript,
       onTranscriptFocus: focusComposer,
@@ -110,6 +110,7 @@ export function CoachComposer({
     // container (no full-width top border), buttons pinned to the bottom edge
     // so they stay put while the input grows.
     <ComposerPrimitive.Root style={styles.composer}>
+      {voiceInputDialog}
       <Reanimated.View style={keyboardAwarePadding}>
         <View style={styles.pill}>
         <TextInput

@@ -1,7 +1,7 @@
+import { useAppPrompt } from "@/components/AppPrompt";
 import { useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   StyleSheet,
   Text,
@@ -60,6 +60,7 @@ function GoogleGlyph() {
 
 export default function SignInScreen() {
   const { startSSOFlow } = useSSO();
+  const prompt = useAppPrompt();
   const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
   const [isAppleSubmitting, setIsAppleSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -87,7 +88,7 @@ export default function SignInScreen() {
 
   const handleAppleSignIn = async () => {
     if (process.env.EXPO_OS === "android" || process.env.EXPO_OS === "web") {
-      Alert.alert("Apple Sign In", "Apple sign in is only available on supported Apple platforms.");
+      prompt.alert("Apple Sign In", "Apple sign in is only available on supported Apple platforms.");
       return;
     }
 
@@ -115,6 +116,7 @@ export default function SignInScreen() {
 
   return (
     <SafeAreaView style={styles.root} edges={["top", "bottom"]}>
+      {prompt.dialog}
       <View style={styles.wordmarkRow}>
         <Wordmark size={22} />
       </View>

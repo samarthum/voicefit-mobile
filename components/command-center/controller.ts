@@ -239,6 +239,7 @@ export interface CommandCenterOperationState {
   workoutBatch?: { requestId: string; sets: WorkoutSetSaveInput[] };
   /** Confirmed original awaiting dismissal when a different review was retained. */
   workoutBatchAcknowledged?: boolean;
+  photoSourcePending?: number;
 }
 
 export function createCommandCenterController(
@@ -792,13 +793,15 @@ export function createCommandCenterController(
 
   const openPhotoMenu = async () => {
     if (operation.saving || blockFrozenMealEdit()) return;
-    if (ports.platform.isWeb()) {
-      await launchPhotoPicker("library");
-      return;
+    if (operation.photoSourcePending === operation.generation) return;
+    const { generation } = beginInterpretation();
+    operation.photoSourcePending = generation;
+    try {
+      const mode = await ports.platform.selectPhotoSource();
+      if (isCurrent(generation) && mode) await launchPhotoPicker(mode);
+    } finally {
+      if (operation.photoSourcePending === generation) operation.photoSourcePending = undefined;
     }
-
-    const mode = await ports.platform.selectPhotoSource();
-    if (mode) await launchPhotoPicker(mode);
   };
 
   const submitPhotoMeal = async () => {

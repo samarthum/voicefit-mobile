@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
+
   Pressable,
   ScrollView,
   StyleSheet,
@@ -35,6 +35,7 @@ import {
 } from "@/components/command-center/helpers";
 import type { EditableIngredient } from "@/components/command-center/ingredient-edit";
 import { StatusNotice, MealSummaryCard, IngredientList, MealActionsBar } from "@/components/meal-edit";
+import { useAppPrompt } from "@/components/AppPrompt";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -144,6 +145,7 @@ function MealEditSession({ id }: { id: string }) {
   const [ingredientsDirty, setIngredientsDirty] = useState(false);
   const [editorMode, setEditorMode] = useState<IngredientEditorMode<EditableIngredient> | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const prompt = useAppPrompt([id, editorMode, ingredients]);
 
   const mealQuery = useQuery({
     queryKey: ["meal", id],
@@ -275,7 +277,7 @@ function MealEditSession({ id }: { id: string }) {
 
   const handleClose = useCallback(() => {
     if (isDirty && !saveMutation.isPending) {
-      Alert.alert(
+      prompt.alert(
         "Discard changes?",
         "Your edits to this meal will be lost.",
         [
@@ -286,21 +288,21 @@ function MealEditSession({ id }: { id: string }) {
       return;
     }
     router.back();
-  }, [isDirty, saveMutation.isPending, router]);
+  }, [isDirty, saveMutation.isPending, router, prompt.alert]);
 
   const handleDelete = () => {
     haptic.warning();
-    Alert.alert("Delete meal", "This will permanently delete the meal.", [
+    prompt.alert("Delete meal?", "It will be removed from your log.", [
       { text: "Cancel", style: "cancel" },
-      { text: "Delete", style: "destructive", onPress: () => deleteMutation.mutate() },
+      { text: "Delete meal", style: "destructive", onPress: () => deleteMutation.mutateAsync() },
     ]);
   };
 
   const handleLongPressIngredient = (ingredient: EditableIngredient) => {
-    Alert.alert("Delete ingredient?", `Remove "${ingredient.name}" from this meal.`, [
+    prompt.alert("Delete ingredient?", `Remove "${ingredient.name}" from this meal.`, [
       { text: "Cancel", style: "cancel" },
       {
-        text: "Delete",
+        text: "Delete ingredient",
         style: "destructive",
         onPress: () => {
           setIngredients((prev) => prev.filter((ing) => ing.id !== ingredient.id));
@@ -497,6 +499,7 @@ function MealEditSession({ id }: { id: string }) {
         onSubmitEdit={onSubmitEdit}
         onClose={() => setEditorMode(null)}
       />
+      {prompt.dialog}
         </View>
       </BottomSheetModalProvider>
     </GestureHandlerRootView>

@@ -3,7 +3,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MealIngredient } from "@voicefit/contracts/types";
 import {
-  Alert,
+
   StyleSheet,
   Text,
   View,
@@ -24,6 +24,7 @@ import type { MealReviewIngredient } from "@/components/command-center/types";
 import { SheetShell } from "@/components/command-center/states/SheetShell";
 import { IdleState } from "@/components/command-center/states/IdleState";
 import { PhotoState } from "@/components/command-center/states/PhotoState";
+import { PhotoSourceState } from "@/components/command-center/states/PhotoSourceState";
 import { RecordingState } from "@/components/command-center/states/RecordingState";
 import { InterpretingState } from "@/components/command-center/states/InterpretingState";
 import { MealReviewState } from "@/components/command-center/states/MealReviewState";
@@ -34,6 +35,7 @@ import { isSavingState } from "@/components/command-center/states/saving-ui";
 import { ErrorState } from "@/components/command-center/states/ErrorState";
 
 import { color as t, font } from "@/lib/tokens";
+import { useAppPrompt } from "@/components/AppPrompt";
 
 // ---------------------------------------------------------------------------
 // Main Overlay Component
@@ -45,7 +47,7 @@ const REVIEW_SNAP_POINTS = ["92%"];
 export function CommandCenterOverlay() {
   const insets = useSafeAreaInsets();
 
-  const { snapshot, dispatch, showSavedFeedback } = useCommandCenterOverlay();
+  const { snapshot, dispatch, showSavedFeedback, photoSourceChoice } = useCommandCenterOverlay();
 
   const { state: commandState, review: reviewDraft, error, toast } = snapshot;
   const isSaving = isSavingState(commandState);
@@ -139,6 +141,7 @@ export function CommandCenterOverlay() {
   // The ingredient editor is an independent full-screen native Modal, shared
   // with meal edit. It is not a stacked Gorhom sheet.
   const [ingredientEditor, setIngredientEditor] = useState<IngredientEditorMode | null>(null);
+  const prompt = useAppPrompt([commandState, reviewDraft, ingredientEditor]);
 
   // Auto-dismiss the editor if the review sheet itself goes away (user
   // discarded, navigated, etc.) so we don't leave a stale editor mounted.
@@ -154,13 +157,13 @@ export function CommandCenterOverlay() {
   const closeIngredientEditor = () => setIngredientEditor(null);
 
   const handleLongPressIngredient = (ingredient: MealReviewIngredient) => {
-    Alert.alert(
+    prompt.alert(
       "Delete ingredient?",
       `Remove "${ingredient.name}" from this meal.`,
       [
         { text: "Cancel", style: "cancel" },
         {
-          text: "Delete",
+          text: "Delete ingredient",
           style: "destructive",
           onPress: () => dispatch({ type: "ingredient.remove", id: ingredient.id }),
         },
@@ -169,6 +172,7 @@ export function CommandCenterOverlay() {
   };
 
   const renderContent = (): ReactNode => {
+    if (photoSourceChoice) return <PhotoSourceState choose={photoSourceChoice.choose} onClose={closeCommandCenter} />;
     if (commandState === "cc_expanded_empty" || commandState === "cc_expanded_typing") {
       return (
         <SheetShell title="Log anything" onClose={closeCommandCenter} scrollable>
@@ -287,6 +291,7 @@ export function CommandCenterOverlay() {
         onClose={closeIngredientEditor}
       />
       {commandState !== "cc_saved" ? toastNode : null}
+      {prompt.dialog}
     </>
   );
 }

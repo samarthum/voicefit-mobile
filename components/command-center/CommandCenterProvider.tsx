@@ -1,6 +1,6 @@
 import { createContext, use, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useFocusEffect, useRouter } from "expo-router";
-import { Alert, Keyboard, Linking } from "react-native";
+import { Keyboard, Linking } from "react-native";
 import { useAudioRecorder, RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync } from "expo-audio";
 import * as ImagePicker from "expo-image-picker";
 import { randomUUID } from "expo-crypto";
@@ -92,6 +92,7 @@ interface CommandCenterOverlayValue {
   snapshot: CommandCenterSnapshot;
   dispatch: CommandCenterOverlayDispatch;
   showSavedFeedback: () => void;
+  photoSourceChoice: { choose: (mode: PhotoPickerMode | null) => void } | null;
 }
 
 const CommandCenterOverlayContext = createContext<CommandCenterOverlayValue | null>(null);
@@ -133,6 +134,27 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
   const [commandErrorSubtype, setCommandErrorSubtype] = useState<CommandErrorSubtype>(null);
   const [commandErrorDetail, setCommandErrorDetail] = useState<string | null>(null);
   const [screenContext, setScreenContextState] = useState<ScreenContext>({});
+  const [photoSourceChoice, setPhotoSourceChoice] = useState<CommandCenterOverlayValue["photoSourceChoice"]>(null);
+  const photoSourceRef = useRef<CommandCenterOverlayValue["photoSourceChoice"]>(null);
+  const mountedRef = useRef(true);
+  const cancelPhotoSource = useCallback(() => photoSourceRef.current?.choose(null), []);
+  const selectPhotoSource = useCallback(() => new Promise<PhotoPickerMode | null>((resolve) => {
+    if (!mountedRef.current) { resolve(null); return; }
+    cancelPhotoSource();
+    const request = { choose: (mode: PhotoPickerMode | null) => {
+      if (photoSourceRef.current !== request) return;
+      photoSourceRef.current = null; // consume before React commits or picker awaits
+      if (mountedRef.current) setPhotoSourceChoice(null);
+      resolve(mode);
+    } };
+    photoSourceRef.current = request;
+    setPhotoSourceChoice(request);
+  }), [cancelPhotoSource]);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; cancelPhotoSource(); };
+  }, [cancelPhotoSource]);
+
 
   const pendingSaveRef = useRef<SaveAction | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -604,13 +626,7 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
     platform: {
       isWeb: () => process.env.EXPO_OS === "web",
       openSettings: () => Linking.openSettings(),
-      selectPhotoSource: () => new Promise<PhotoPickerMode | null>((resolve) => {
-        Alert.alert("Log meal photo", "Add optional context after selecting a photo.", [
-          { text: "Take photo", onPress: () => resolve("camera") },
-          { text: "Choose from library", onPress: () => resolve("library") },
-          { text: "Cancel", style: "cancel", onPress: () => resolve(null) },
-        ]);
-      }),
+      selectPhotoSource,
     },
   }, operationRef.current), [
     commandText,
@@ -642,6 +658,7 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
     finishWithSaved,
     audioRecorder,
     router,
+    selectPhotoSource,
   ]);
 
   const overlaySnapshot = useSyncExternalStore(
@@ -652,28 +669,31 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
 
   const openCommandCenter = useCallback(
     () => {
+      cancelPhotoSource();
       void commandCenterController.dispatch({ type: "open" });
     },
-    [commandCenterController],
+    [commandCenterController, cancelPhotoSource],
   );
 
   const closeCommandCenterForConsumers = useCallback(
     () => {
+      cancelPhotoSource();
       void commandCenterController.dispatch({ type: "close" });
     },
-    [commandCenterController],
+    [commandCenterController, cancelPhotoSource],
   );
 
   const startRecording = useCallback(
     async () => {
+      cancelPhotoSource();
       await commandCenterController.dispatch({ type: "voice.start" });
     },
-    [commandCenterController],
+    [commandCenterController, cancelPhotoSource],
   );
 
   // ---- Screen context ----
-  const setScreenContext = useCallback((ctx: ScreenContext) => setScreenContextState(ctx), []);
-  const clearScreenContext = useCallback(() => setScreenContextState({}), []);
+  const setScreenContext = useCallback((ctx: ScreenContext) => { cancelPhotoSource(); setScreenContextState(ctx); }, [cancelPhotoSource]);
+  const clearScreenContext = useCallback(() => { cancelPhotoSource(); setScreenContextState({}); }, [cancelPhotoSource]);
 
   // ---- Context values ----
   const launcherProps = useMemo<CommandCenterLauncherProps>(() => ({
@@ -701,9 +721,13 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
 
   const overlayValue = useMemo<CommandCenterOverlayValue>(() => ({
     snapshot: overlaySnapshot,
-    dispatch: commandCenterController.dispatch,
+    dispatch: (event) => {
+      if (event.type !== "photo.menu.open") cancelPhotoSource();
+      return commandCenterController.dispatch(event);
+    },
     showSavedFeedback,
-  }), [commandCenterController.dispatch, overlaySnapshot, showSavedFeedback]);
+    photoSourceChoice,
+  }), [commandCenterController.dispatch, overlaySnapshot, showSavedFeedback, photoSourceChoice, cancelPhotoSource]);
 
   return (
     <CommandCenterPublicContext.Provider value={publicValue}>
