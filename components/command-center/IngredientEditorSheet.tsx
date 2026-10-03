@@ -9,15 +9,16 @@ import {
 } from "@gorhom/bottom-sheet";
 import type { MealIngredient } from "@voicefit/contracts/types";
 import { IngredientEditor, type IngredientEditorMode } from "@/components/command-center/IngredientEditor";
+import type { EditableIngredient } from "@/components/command-center/ingredient-edit";
 import type { MealReviewIngredient } from "@/components/command-center/types";
 import { color as t } from "@/lib/tokens";
 
-interface IngredientEditorSheetProps {
+interface IngredientEditorSheetProps<T extends EditableIngredient> {
   /** Non-null presents the sheet; null dismisses it. */
-  mode: IngredientEditorMode | null;
+  mode: IngredientEditorMode<T> | null;
   fetchInterpreted: (name: string, grams?: number) => Promise<MealIngredient>;
   onSubmitAdd: (ingredient: MealIngredient) => void;
-  onSubmitEdit: (replacement: MealIngredient | MealReviewIngredient) => void;
+  onSubmitEdit: (replacement: MealIngredient | T) => void;
   /** Called when the editor should close (submit, cancel, swipe, backdrop). */
   onClose: () => void;
 }
@@ -30,21 +31,36 @@ interface IngredientEditorSheetProps {
  *
  * Presentation is driven by `mode`: set it to open, clear it to close.
  */
-export function IngredientEditorSheet({
+export function IngredientEditorSheet<T extends EditableIngredient = MealReviewIngredient>({
   mode,
   fetchInterpreted,
   onSubmitAdd,
   onSubmitEdit,
   onClose,
-}: IngredientEditorSheetProps) {
+}: IngredientEditorSheetProps<T>) {
   const insets = useSafeAreaInsets();
   const sheetRef = useRef<BottomSheetModal>(null);
   const { height } = useWindowDimensions();
 
+  const hasPresentedRef = useRef(false);
+  const programmaticDismissRef = useRef(false);
   useEffect(() => {
-    if (mode) sheetRef.current?.present();
-    else sheetRef.current?.dismiss();
+    if (mode) {
+      hasPresentedRef.current = true;
+      sheetRef.current?.present();
+    } else if (hasPresentedRef.current) {
+      hasPresentedRef.current = false;
+      programmaticDismissRef.current = true;
+      sheetRef.current?.dismiss();
+    }
   }, [mode]);
+  const handleDismiss = () => {
+    if (programmaticDismissRef.current) {
+      programmaticDismissRef.current = false;
+      return;
+    }
+    onClose();
+  };
 
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
@@ -65,7 +81,7 @@ export function IngredientEditorSheet({
       topInset={insets.top}
       accessible={false}
       accessibilityRole="none"
-      onDismiss={onClose}
+      onDismiss={handleDismiss}
       enableDynamicSizing
       maxDynamicContentSize={height * 0.92}
       enablePanDownToClose
@@ -81,6 +97,7 @@ export function IngredientEditorSheet({
     >
       {mode ? (
         <IngredientEditor
+          key={mode.kind === "edit" ? mode.ingredient.id : "add"}
           mode={mode}
           fetchInterpreted={fetchInterpreted}
           onSubmitAdd={onSubmitAdd}

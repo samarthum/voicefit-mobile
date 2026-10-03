@@ -8,16 +8,18 @@
  * presentational.
  */
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import type { MealReviewIngredient } from "@/components/command-center/types";
+import type { EditableIngredient } from "@/components/command-center/ingredient-edit";
 import { color as t, font } from "@/lib/tokens";
 
 interface Props {
-  ingredients: MealReviewIngredient[];
+  ingredients: EditableIngredient[];
   isPendingEstimate: boolean;
   onAdd: () => void;
-  onEdit: (ingredient: MealReviewIngredient) => void;
-  onLongPress: (ingredient: MealReviewIngredient) => void;
+  onEdit: (ingredient: EditableIngredient) => void;
+  onLongPress: (ingredient: EditableIngredient) => void;
 }
+
+const nutrition = (value: number | null) => value === null ? "Unknown" : String(Number(value.toFixed(3)));
 
 function IngredientRow({
   ingredient,
@@ -26,11 +28,11 @@ function IngredientRow({
   onEdit,
   onLongPress,
 }: {
-  ingredient: MealReviewIngredient;
+  ingredient: EditableIngredient;
   index: number;
   isPendingEstimate: boolean;
-  onEdit: (ingredient: MealReviewIngredient) => void;
-  onLongPress: (ingredient: MealReviewIngredient) => void;
+  onEdit: (ingredient: EditableIngredient) => void;
+  onLongPress: (ingredient: EditableIngredient) => void;
 }) {
   return (
     <Pressable
@@ -50,11 +52,11 @@ function IngredientRow({
       <View style={styles.ingredientCopy}>
         <Text style={styles.ingredientName}>{ingredient.name}</Text>
         <Text style={styles.ingredientMacros}>
-          {`P ${Math.round(ingredient.proteinG)}g · C ${Math.round(ingredient.carbsG)}g · F ${Math.round(ingredient.fatG)}g`}
+          {`P ${nutrition(ingredient.proteinG)}g · C ${nutrition(ingredient.carbsG)}g · F ${nutrition(ingredient.fatG)}g`}
         </Text>
       </View>
-      <Text style={styles.ingredientQty} selectable>{`${Math.round(ingredient.grams)} g`}</Text>
-      <Text style={styles.ingredientCal} selectable>{ingredient.calories}</Text>
+      <Text style={styles.ingredientQty} selectable>{`${nutrition(ingredient.grams)} g`}</Text>
+      <Text style={styles.ingredientCal} selectable>{nutrition(ingredient.calories)}</Text>
     </Pressable>
   );
 }

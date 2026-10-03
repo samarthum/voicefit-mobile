@@ -12,6 +12,7 @@
 import { Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { Icon } from "@/components/Icon";
 import { color as token, font } from "@/lib/tokens";
+import { isWorkoutDraftChanged } from "@/lib/workout-drafts";
 import type { RenderRow, SetDraft } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -22,8 +23,9 @@ export interface WorkoutSetRowProps {
   row: RenderRow;
   /** Current draft value for this row (live rows only). */
   draft?: SetDraft;
-  /** Whether the session is finished — disables editing. */
+  /** Completion does not prevent later corrections to existing sets. */
   sessionFinished: boolean;
+  saving?: boolean;
   /** Called when the user edits the weight/duration/reps field. Live rows only. */
   onChangeDraft?: (setId: string, patch: Partial<SetDraft>) => void;
   /** Called when the user taps the checkmark to save. Live rows only. */
@@ -39,7 +41,7 @@ export interface WorkoutSetRowProps {
 export function WorkoutSetRow({
   row,
   draft,
-  sessionFinished,
+  saving = false,
   onChangeDraft,
   onToggleComplete,
   onLongPressChip,
@@ -85,6 +87,7 @@ export function WorkoutSetRow({
     weightKg: liveSet.weightKg == null ? "" : String(liveSet.weightKg),
     durationMinutes: liveSet.durationMinutes == null ? "" : String(liveSet.durationMinutes),
   };
+  const saved = row.checked && !isWorkoutDraftChanged(liveSet, effectiveDraft);
   const repsValue =
     liveSet.exerciseType === "cardio"
       ? effectiveDraft.durationMinutes
@@ -97,7 +100,7 @@ export function WorkoutSetRow({
 
   return (
     <View>
-      <View style={[styles.setRow, row.checked ? styles.setRowChecked : null]}>
+      <View style={[styles.setRow, saved ? styles.setRowChecked : null]}>
         <Pressable
           onLongPress={() => onLongPressChip?.(row)}
           delayLongPress={400}
@@ -118,7 +121,7 @@ export function WorkoutSetRow({
           keyboardType="decimal-pad"
           placeholder="-"
           placeholderTextColor={token.textMute}
-          editable={!sessionFinished}
+          editable={!saving}
           caretHidden={hideEmptyCaret(effectiveDraft.weightKg)}
         />
         <TextInput
@@ -135,17 +138,17 @@ export function WorkoutSetRow({
           keyboardType="number-pad"
           placeholder="-"
           placeholderTextColor={token.textMute}
-          editable={!sessionFinished}
+          editable={!saving}
           caretHidden={hideEmptyCaret(repsValue)}
         />
         <Pressable
-          style={[styles.checkCell, row.checked ? styles.checkCellFilled : null]}
+          style={[styles.checkCell, saved ? styles.checkCellFilled : null]}
           onPress={() => onToggleComplete?.(row)}
-          disabled={sessionFinished}
+          disabled={saving}
           accessibilityRole="button"
-          accessibilityLabel={row.checked ? "Set saved" : "Save set"}
+          accessibilityLabel={saved ? "Set saved" : "Save set"}
         >
-          {row.checked ? <Icon name="check" size={12} color={token.accentInk} /> : null}
+          {saved ? <Icon name="check" size={12} color={token.accentInk} /> : null}
         </Pressable>
       </View>
     </View>

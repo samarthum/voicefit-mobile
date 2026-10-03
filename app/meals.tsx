@@ -282,6 +282,10 @@ export default function MealsScreen() {
         keyboardShouldPersistTaps="handled"
       >
 
+        <Pressable testID="meals-repeat-open" accessibilityRole="button" style={styles.retryButton} onPress={() => router.push({ pathname: "/meal-repeat" })}>
+          <Text style={styles.retryButtonText}>Repeat a familiar meal…</Text>
+        </Pressable>
+        <Text style={styles.emptyBody}>Choose a saved meal and portion; no new AI estimate.</Text>
         <View style={styles.statsRow}>
           <View style={styles.statPill}>
             <Text style={styles.statLabel}>Calories</Text>

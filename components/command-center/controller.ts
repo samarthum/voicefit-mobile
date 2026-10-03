@@ -26,6 +26,8 @@ import {
   toLocalDateString,
 } from "@/components/command-center/helpers";
 
+import { assertSingleWorkoutExercise } from "@/lib/workout-transcript";
+
 export type PhotoPickerMode = "camera" | "library";
 
 export interface CommandCenterVoiceRecording {
@@ -36,6 +38,7 @@ export interface CommandCenterVoiceRecording {
 }
 
 type MealSaveInput = {
+  requestId: string;
   eatenAt: string;
   mealType: string;
   description: string;
@@ -108,12 +111,16 @@ export interface CommandCenterStatePort {
   clearCommandError: () => void;
 }
 
+export type MealCaptureIdentity = { requestId: string; eatenAt: string; timezone: string };
+
 export interface CommandCenterBackendPort {
   interpretEntry: (transcript: string, source: EntrySource, signal?: AbortSignal) => Promise<InterpretEntryResponse>;
-  createPendingMealFromText: (transcript: string, source: EntrySource) => Promise<void>;
-  createPendingMealFromPhoto: (photo: PhotoAttachment, context: string) => Promise<void>;
+  createPendingMealFromText: (transcript: string, source: EntrySource, identity: MealCaptureIdentity) => Promise<void>;
+  createPendingMealFromPhoto: (photo: PhotoAttachment, context: string, identity: MealCaptureIdentity) => Promise<void>;
   transcribeAudio: (audio: { uri: string; name: string; type: string }, signal?: AbortSignal) => Promise<string>;
   createMeal: (input: MealSaveInput) => Promise<void>;
+  /** Opens full-source repeat confirmation; summaries must never create meals. */
+  selectRepeatedMeal?: (sourceMealId: string) => void;
   ensureQuickSession: () => Promise<string>;
   createWorkoutSet: (input: WorkoutSetSaveInput) => Promise<void>;
   createWorkoutBatch: (input: { requestId: string; sets: WorkoutSetSaveInput[] }) => Promise<void>;
@@ -128,12 +135,14 @@ export interface CommandCenterAuthPort {
 
 export interface CommandCenterCachePort {
   refreshAfterSave: () => Promise<void>;
+  refreshAfterMealSave?: () => Promise<void>;
   computeKcalLeftAfterMeal: (justSavedKcal: number) => number | null;
 }
 
 export interface CommandCenterClockPort {
   now: () => Date;
   createRequestId: () => string;
+  getTimezone?: () => string;
 }
 
 export interface CommandCenterPreviewPort {
@@ -215,21 +224,18 @@ function savedMealCalories(action: SaveAction) {
   return 0;
 }
 
-function quickAddToMealInput(item: QuickAddItem, now: Date): MealSaveInput {
-  return {
-    eatenAt: now.toISOString(),
-    mealType: item.mealType,
-    description: item.description,
-    calories: item.calories,
-    transcriptRaw: `quick_add:${item.description}`,
-  };
-}
-
 export interface CommandCenterOperationState {
   generation: number;
   saving: boolean;
   abort?: AbortController;
+  /** Memory only: retained across renders, not process restart/offline storage. */
+  mealCapture?: ({ kind: "text"; transcript: string; source: EntrySource } | { kind: "photo"; photo: PhotoAttachment; context: string }) & { identity: MealCaptureIdentity };
+  mealSave?: { input: MealSaveInput; kcalLeft: number | null; acknowledged?: boolean };
+  /** Consumes trailing save taps until open starts a new logical draft. */
+  mealAcknowledged?: boolean;
   workoutBatch?: { requestId: string; sets: WorkoutSetSaveInput[] };
+  /** Confirmed original awaiting dismissal when a different review was retained. */
+  workoutBatchAcknowledged?: boolean;
 }
 
 export function createCommandCenterController(
@@ -249,21 +255,80 @@ export function createCommandCenterController(
     return { generation: operation.generation, signal: operation.abort.signal };
   };
   const isCurrent = (generation: number) => generation === operation.generation;
-  const savePendingMeal = async (transcript: string, source: EntrySource) => {
-    if (operation.saving) return;
+  const workoutSetsForSave = (draft: Extract<ReviewDraft, { kind: "workout" }>) => {
+    const filled = draft.sets.filter((set) => set.weightKg.trim() || set.reps.trim() || set.notes.trim());
+    return filled.length > 0 ? filled : [draft.sets[0]];
+  };
+  const workoutReviewMatchesBatch = (draft: ReviewDraft | null) => {
+    const batch = operation.workoutBatch;
+    if (!batch || draft?.kind !== "workout") return false;
+    const sets = workoutSetsForSave(draft);
+    const sessionId = ports.state.getScreenContext().sessionId;
+    return sets.length === batch.sets.length && sets.every((set, index) => {
+      const frozen = batch.sets[index];
+      return set && (!sessionId || sessionId === frozen.sessionId) &&
+        draft.transcript === frozen.transcriptRaw &&
+        draft.interpreted.payload.exerciseName === frozen.exerciseName &&
+        draft.interpreted.payload.exerciseType === frozen.exerciseType &&
+        draft.interpreted.payload.durationMinutes === frozen.durationMinutes &&
+        parsePositiveNumber(set.reps) === frozen.reps &&
+        parsePositiveNumber(set.weightKg) === frozen.weightKg &&
+        (set.notes.trim() || draft.interpreted.payload.notes) === frozen.notes;
+    });
+  };
+  const originalWorkoutSavedMessage = () => {
+    const batch = operation.workoutBatch!;
+    return `Original ${batch.sets[0].exerciseName} saved: ${batch.sets.length} set${batch.sets.length > 1 ? "s" : ""}. Changed entry not saved.`;
+  };
+  const blockFrozenWorkoutEdit = () => {
+    if (!operation.workoutBatch) return false;
+    ports.state.setCommandError("auto_save_failure", operation.workoutBatchAcknowledged
+      ? `${originalWorkoutSavedMessage()} Your changed entry is retained here; close and correct the saved sets in your workout.`
+      : "The original workout batch may already be saved. The changed entry cannot be saved as its retry. Retry original to confirm its outcome before editing saved sets in your workout.");
+    return true;
+  };
+  const blockFrozenMealEdit = () => {
+    if (!operation.mealCapture && !operation.mealSave) return false;
+    ports.state.setCommandError("auto_save_failure", "The original meal may already be saved. Retry original to confirm its outcome before starting another meal. This retry is kept in memory only; closing the app loses it.");
+    return true;
+  };
+  const retryPendingMeal = async () => {
+    if (operation.saving || !operation.mealCapture) return;
+    const capture = operation.mealCapture;
     operation.saving = true;
+    ports.state.clearCommandError();
     ports.state.setCommandState("cc_saving");
     try {
-      await ports.backend.createPendingMealFromText(transcript, source);
-      ports.feedback.finishWithSaved("Logging your meal…");
+      if (capture.kind === "text") {
+        await ports.backend.createPendingMealFromText(capture.transcript, capture.source, capture.identity);
+      } else {
+        await ports.backend.createPendingMealFromPhoto(capture.photo, capture.context, capture.identity);
+      }
+      operation.mealAcknowledged = true;
+      operation.mealCapture = undefined;
+      ports.feedback.finishWithSaved(capture.kind === "photo" ? "Looking at your photo…" : "Logging your meal…");
+    } catch (error) {
+      ports.state.setCommandError("auto_save_failure", getErrorMessage(error));
     } finally {
       operation.saving = false;
     }
   };
+  const savePendingMeal = async (transcript: string, source: EntrySource) => {
+    if (operation.saving || blockFrozenMealEdit()) return;
+    operation.mealCapture = {
+      kind: "text", transcript, source,
+      identity: { requestId: ports.clock.createRequestId(), eatenAt: ports.clock.now().toISOString(),
+        timezone: ports.clock.getTimezone?.() ?? Intl.DateTimeFormat().resolvedOptions().timeZone },
+    };
+    await retryPendingMeal();
+  };
   const openCommandCenter = () => {
-    if (operation.saving) return;
+    if (operation.saving || blockFrozenMealEdit()) return;
+    operation.mealAcknowledged = undefined;
+    if (operation.workoutBatch && !operation.workoutBatchAcknowledged && blockFrozenWorkoutEdit()) return;
     cancelInterpretation();
     operation.workoutBatch = undefined;
+    operation.workoutBatchAcknowledged = undefined;
     ports.state.setCommandText("");
     ports.state.setVoiceTranscript("");
     ports.state.setRecordingSeconds(0);
@@ -275,12 +340,14 @@ export function createCommandCenterController(
   };
 
   const closeCommandCenter = () => {
-    if (operation.saving) return;
+    if (operation.saving || blockFrozenMealEdit()) return;
+    if (operation.workoutBatch && !operation.workoutBatchAcknowledged && blockFrozenWorkoutEdit()) return;
     cancelInterpretation();
     ports.state.closeCommandCenter();
   };
 
   const handleCommandInputChange = (text: string) => {
+    if (operation.saving || blockFrozenMealEdit() || blockFrozenWorkoutEdit()) return;
     ports.state.setCommandText(text);
     const state = ports.state.getCommandState();
     if (state === "cc_expanded_empty" && text.trim()) ports.state.setCommandState("cc_expanded_typing");
@@ -291,6 +358,7 @@ export function createCommandCenterController(
     setIndex: number,
     patch: Partial<Pick<WorkoutReviewSet, "weightKg" | "reps" | "notes">>,
   ) => {
+    if (operation.saving || blockFrozenWorkoutEdit()) return;
     const reviewDraft = ports.state.getReviewDraft();
     if (!reviewDraft || reviewDraft.kind !== "workout") return;
     const sets = reviewDraft.sets.map((set, index) => (index === setIndex ? { ...set, ...patch } : set));
@@ -298,6 +366,7 @@ export function createCommandCenterController(
   };
 
   const addWorkoutSet = () => {
+    if (operation.saving || blockFrozenWorkoutEdit()) return;
     const reviewDraft = ports.state.getReviewDraft();
     if (!reviewDraft || reviewDraft.kind !== "workout") return;
     const n = reviewDraft.sets.length + 1;
@@ -378,12 +447,78 @@ export function createCommandCenterController(
     return ports.backend.fetchInterpretedIngredient(trimmedName, grams);
   };
 
+  const retryLegacyMeal = async () => {
+    if (operation.saving || !operation.mealSave) return;
+    const frozen = operation.mealSave;
+    operation.saving = true;
+    ports.state.clearCommandError();
+    ports.state.setCommandState("cc_saving");
+    try {
+      if (!frozen.acknowledged) {
+        if (ports.preview.isEnabled()) {
+          if (ports.preview.hasFlag("save_fail")) throw new Error("Mock auto-save failure.");
+          await ports.preview.delay(550);
+        } else {
+          await ports.backend.createMeal(frozen.input);
+        }
+        frozen.acknowledged = true;
+      }
+      try { await (ports.cache.refreshAfterMealSave ?? ports.cache.refreshAfterSave)(); } catch { /* Acknowledged, never create again. */ }
+      operation.mealAcknowledged = true;
+      operation.mealSave = undefined;
+      ports.feedback.finishWithSaved("Saved", frozen.kcalLeft);
+    } catch (error) {
+      ports.state.setCommandError("auto_save_failure", getErrorMessage(error));
+    } finally {
+      operation.saving = false;
+    }
+  };
   const runSaveAction = async (action: SaveAction) => {
-    if (operation.saving) return;
+    if (operation.mealAcknowledged || operation.saving || blockFrozenMealEdit()) return;
+    if (action.kind === "entry" && action.interpreted.intent === "meal") {
+      const { payload } = action.interpreted;
+      operation.mealSave = {
+        input: {
+          requestId: ports.clock.createRequestId(), eatenAt: ports.clock.now().toISOString(),
+          mealType: payload.mealType, description: payload.description, calories: payload.calories,
+          proteinG: payload.proteinG, carbsG: payload.carbsG, fatG: payload.fatG,
+          ingredients: payload.ingredients?.map((ingredient) => ({ ...ingredient })), transcriptRaw: action.transcript,
+        },
+        kcalLeft: ports.cache.computeKcalLeftAfterMeal(payload.calories),
+      };
+      ports.state.setPendingSaveAction(action);
+      await retryLegacyMeal();
+      return;
+    }
+    if (action.kind === "entry" && action.interpreted.intent === "workout_set") {
+      if (blockFrozenWorkoutEdit()) return;
+      try {
+        const draft = buildWorkoutReviewDraft(action.interpreted, action.transcript, action.source);
+        if (draft.sets.length > 1) {
+          ports.state.setReviewDraft(draft);
+          ports.state.setCommandState("cc_review_workout");
+          return;
+        }
+      } catch (error) {
+        ports.state.setCommandText(action.transcript);
+        ports.state.setCommandError("typed_interpret_failure", getErrorMessage(error));
+        return;
+      }
+    }
+    if (action.kind === "quick_add") {
+      ports.state.clearCommandError();
+      if (!ports.backend.selectRepeatedMeal) {
+        ports.state.setCommandError("quick_add_failure", "Open Meals to choose and repeat a saved meal.");
+        return;
+      }
+      ports.state.closeCommandCenter();
+      ports.backend.selectRepeatedMeal(action.item.id);
+      return;
+    }
     operation.saving = true;
     ports.state.setPendingSaveAction(action);
     ports.state.clearCommandError();
-    ports.state.setCommandState(action.kind === "quick_add" ? "cc_quick_add_saving" : "cc_saving");
+    ports.state.setCommandState("cc_saving");
 
     const kcalLeftAfterSave = isMealSave(action)
       ? ports.cache.computeKcalLeftAfterMeal(savedMealCalories(action))
@@ -394,9 +529,6 @@ export function createCommandCenterController(
         if (action.kind === "entry" && ports.preview.hasFlag("save_fail")) {
           throw new Error("Mock auto-save failure.");
         }
-        if (action.kind === "quick_add" && ports.preview.hasFlag("quick_add_fail")) {
-          throw new Error("Mock quick-add save failure.");
-        }
         await ports.preview.delay(550);
         await ports.cache.refreshAfterSave();
         ports.feedback.finishWithSaved("Saved", kcalLeftAfterSave);
@@ -405,23 +537,12 @@ export function createCommandCenterController(
 
       const now = ports.clock.now();
 
-      if (action.kind === "quick_add") {
-        await ports.backend.createMeal(quickAddToMealInput(action.item, now));
-      } else {
+      {
         const { interpreted, transcript, source } = action;
 
         if (interpreted.intent === "meal") {
-          await ports.backend.createMeal({
-            eatenAt: now.toISOString(),
-            mealType: interpreted.payload.mealType,
-            description: interpreted.payload.description,
-            calories: interpreted.payload.calories,
-            proteinG: interpreted.payload.proteinG,
-            carbsG: interpreted.payload.carbsG,
-            fatG: interpreted.payload.fatG,
-            ingredients: interpreted.payload.ingredients,
-            transcriptRaw: transcript,
-          });
+          await retryLegacyMeal();
+          return;
         } else if (interpreted.intent === "workout_set") {
           const sessionId = ports.state.getScreenContext().sessionId ?? await ports.backend.ensureQuickSession();
           await ports.backend.createWorkoutSet({
@@ -465,7 +586,7 @@ export function createCommandCenterController(
       ports.feedback.finishWithSaved("Saved", kcalLeftAfterSave);
     } catch (error) {
       ports.state.setCommandError(
-        action.kind === "quick_add" ? "quick_add_failure" : "auto_save_failure",
+        "auto_save_failure",
         getErrorMessage(error),
       );
     } finally {
@@ -478,6 +599,8 @@ export function createCommandCenterController(
     transcript: string,
     source: EntrySource,
   ) => {
+    if (operation.saving || blockFrozenMealEdit()) return;
+    if (interpreted.intent === "workout_set" && blockFrozenWorkoutEdit()) return;
     if (interpreted.intent === "meal") {
       await savePendingMeal(transcript, source);
     } else if (interpreted.intent === "workout_set") {
@@ -489,7 +612,8 @@ export function createCommandCenterController(
   };
 
   const submitTypedText = async () => {
-    if (operation.saving) return;
+    if (operation.mealAcknowledged || operation.saving || blockFrozenMealEdit()) return;
+    if (blockFrozenWorkoutEdit()) return;
     const { generation, signal } = beginInterpretation();
     const trimmed = ports.state.getCommandText().trim();
     if (!trimmed) return;
@@ -513,7 +637,8 @@ export function createCommandCenterController(
   };
 
   const interpretVoiceTranscript = async (text: string) => {
-    if (operation.saving) return;
+    if (operation.mealAcknowledged || operation.saving || blockFrozenMealEdit()) return;
+    if (blockFrozenWorkoutEdit()) return;
     const { generation, signal } = beginInterpretation();
     const transcript = text.trim();
     if (!transcript) {
@@ -543,7 +668,8 @@ export function createCommandCenterController(
   };
 
   const startRecording = async () => {
-    if (operation.saving) return;
+    if (operation.saving || blockFrozenMealEdit()) return;
+    operation.mealAcknowledged = undefined;
     const { generation, signal } = beginInterpretation();
     ports.state.clearCommandError();
     ports.state.setVoiceTranscript("");
@@ -582,7 +708,7 @@ export function createCommandCenterController(
   };
 
   const stopRecording = async () => {
-    if (operation.saving) return;
+    if (operation.saving || blockFrozenMealEdit()) return;
     const { generation, signal } = beginInterpretation();
     if (ports.preview.isEnabled()) {
       const previewTranscript = "I had a chicken salad with rice for lunch, about 500 calories";
@@ -634,7 +760,8 @@ export function createCommandCenterController(
   };
 
   const launchPhotoPicker = async (mode: PhotoPickerMode) => {
-    if (operation.saving) return;
+    if (operation.saving || blockFrozenMealEdit()) return;
+    operation.mealAcknowledged = undefined;
     const { generation, signal } = beginInterpretation();
     ports.state.clearCommandError();
 
@@ -659,6 +786,7 @@ export function createCommandCenterController(
   };
 
   const openPhotoMenu = async () => {
+    if (operation.saving || blockFrozenMealEdit()) return;
     if (ports.platform.isWeb()) {
       await launchPhotoPicker("library");
       return;
@@ -669,35 +797,36 @@ export function createCommandCenterController(
   };
 
   const submitPhotoMeal = async () => {
-    if (operation.saving) return;
+    if (operation.mealAcknowledged || operation.saving || blockFrozenMealEdit()) return;
     const photo = ports.state.getSelectedMealPhoto();
     if (!photo) return;
-
-    operation.saving = true;
-    ports.state.setCommandState("cc_saving");
-    ports.state.clearCommandError();
-
-    try {
-      await ports.backend.createPendingMealFromPhoto(photo, ports.state.getCommandText());
-      ports.feedback.finishWithSaved("Looking at your photo…");
-    } catch (error) {
-      ports.state.setCommandError("photo_interpret_failure", getErrorMessage(error));
-    } finally {
-      operation.saving = false;
-    }
+    operation.mealCapture = {
+      kind: "photo", photo: { ...photo }, context: ports.state.getCommandText().trim(),
+      identity: { requestId: ports.clock.createRequestId(), eatenAt: ports.clock.now().toISOString(),
+        timezone: ports.clock.getTimezone?.() ?? Intl.DateTimeFormat().resolvedOptions().timeZone },
+    };
+    await retryPendingMeal();
   };
 
   const saveReviewedEntry = async () => {
-    if (operation.saving) return;
+    if (operation.saving || blockFrozenMealEdit()) return;
     const reviewDraft = ports.state.getReviewDraft();
+    // Never send an old frozen payload as though it were the visible correction.
+    if (operation.workoutBatch && (operation.workoutBatchAcknowledged || !workoutReviewMatchesBatch(reviewDraft))) {
+      blockFrozenWorkoutEdit();
+      return;
+    }
     if (!reviewDraft) return;
 
     if (reviewDraft.kind === "workout") {
+      try {
+        assertSingleWorkoutExercise(reviewDraft.transcript, reviewDraft.interpreted.payload.exerciseName);
+      } catch (error) {
+        ports.state.setCommandError("auto_save_failure", getErrorMessage(error));
+        return;
+      }
       operation.saving = true;
-      const filledSets = reviewDraft.sets.filter((set) =>
-        set.weightKg.trim() || set.reps.trim() || set.notes.trim(),
-      );
-      const setsToSave = filledSets.length > 0 ? filledSets : [reviewDraft.sets[0]];
+      const setsToSave = workoutSetsForSave(reviewDraft);
       ports.state.setCommandState("cc_saving");
       ports.state.clearCommandError();
 
@@ -750,6 +879,7 @@ export function createCommandCenterController(
   };
 
   const editReviewTranscript = () => {
+    if (operation.saving || blockFrozenMealEdit() || blockFrozenWorkoutEdit()) return;
     const reviewDraft = ports.state.getReviewDraft();
     if (!reviewDraft) return;
 
@@ -762,6 +892,39 @@ export function createCommandCenterController(
   const handleErrorPrimary = async () => {
     const subtype = ports.state.getCommandErrorSubtype();
     if (!subtype) return;
+    if (operation.mealCapture) {
+      await retryPendingMeal();
+      return;
+    }
+    if (operation.mealSave) {
+      await retryLegacyMeal();
+      return;
+    }
+
+    if (subtype === "auto_save_failure" && operation.workoutBatch) {
+      if (operation.saving) return;
+      if (operation.workoutBatchAcknowledged) {
+        ports.state.closeCommandCenter();
+      } else if (workoutReviewMatchesBatch(ports.state.getReviewDraft())) {
+        await saveReviewedEntry();
+      } else {
+        // This is explicit reconciliation of the original, not a corrected save.
+        operation.saving = true;
+        ports.state.setCommandState("cc_saving");
+        try {
+          await ports.backend.createWorkoutBatch(operation.workoutBatch);
+          operation.workoutBatchAcknowledged = true;
+          ports.state.setCommandToast(originalWorkoutSavedMessage());
+          await ports.cache.refreshAfterSave();
+        } catch (error) {
+          if (!operation.workoutBatchAcknowledged) ports.state.setCommandErrorDetail(getErrorMessage(error));
+        } finally {
+          operation.saving = false;
+          blockFrozenWorkoutEdit();
+        }
+      }
+      return;
+    }
 
     if (subtype === "typed_interpret_failure") {
       await submitTypedText();
@@ -803,9 +966,14 @@ export function createCommandCenterController(
   };
 
   const handleErrorSecondary = () => {
+    if (operation.saving || blockFrozenMealEdit()) return;
     const subtype = ports.state.getCommandErrorSubtype();
     if (!subtype) return;
 
+    if (subtype === "auto_save_failure" && ports.state.getReviewDraft()?.kind === "workout") {
+      editReviewTranscript();
+      return;
+    }
     const commandText = ports.state.getCommandText();
     if (subtype === "typed_interpret_failure") {
       ports.state.setCommandState(commandText.trim() ? "cc_expanded_typing" : "cc_expanded_empty");
@@ -864,7 +1032,15 @@ export function createCommandCenterController(
       error: {
         subtype: errorSubtype,
         detail: ports.state.getCommandErrorDetail(),
-        copy: errorSubtype ? ERROR_COPY[errorSubtype] : null,
+        copy: errorSubtype && (operation.mealCapture || operation.mealSave)
+          ? { ...ERROR_COPY[errorSubtype], title: "Meal save not confirmed", body: "The original meal may already be saved. Retry original before starting another meal. This retry is kept in memory only; closing the app loses it.", primary: "Retry original", secondary: null }
+          : errorSubtype === "auto_save_failure" && operation.workoutBatchAcknowledged
+          ? { ...ERROR_COPY[errorSubtype], title: "Original workout saved", body: "Your changed entry was not saved. Close and correct the saved sets in your workout.", primary: "Close", secondary: null }
+          : errorSubtype === "auto_save_failure" && operation.workoutBatch
+          ? { ...ERROR_COPY[errorSubtype], title: "Workout save not confirmed", body: "The original batch may already be saved. Retry that same batch before editing saved sets in your workout.", primary: "Retry original", secondary: null }
+          : errorSubtype === "auto_save_failure" && ports.state.getReviewDraft()?.kind === "workout"
+          ? { ...ERROR_COPY[errorSubtype], secondary: "Edit entry" }
+          : errorSubtype ? ERROR_COPY[errorSubtype] : null,
       },
       quickAddItems: ports.state.getQuickAddItems(),
       screenContext: ports.state.getScreenContext(),
@@ -881,6 +1057,10 @@ export function createCommandCenterController(
   };
 
   const runDispatchedEvent = (event: CommandCenterEvent) => {
+    if ((operation.mealCapture || operation.mealSave) && event.type !== "error.primary") {
+      if (!operation.saving) blockFrozenMealEdit();
+      return;
+    }
     switch (event.type) {
       case "open":
         return openCommandCenter();
@@ -891,7 +1071,7 @@ export function createCommandCenterController(
       case "text.set":
         return ports.state.setCommandText(event.text);
       case "text.edit":
-        if (operation.saving) return;
+        if (operation.saving || blockFrozenWorkoutEdit()) return;
         cancelInterpretation();
         return ports.state.setCommandState("cc_expanded_typing");
       case "text.submit":

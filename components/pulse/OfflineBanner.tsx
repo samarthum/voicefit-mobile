@@ -14,7 +14,7 @@ const WARN_BORDER = "rgba(232,146,75,0.3)";
 
 export function OfflineBanner({
   queuedCount = 0,
-  message = "Offline · logging to queue",
+  message = "Offline · reconnect to save changes",
 }: OfflineBannerProps) {
   return (
     <Animated.View

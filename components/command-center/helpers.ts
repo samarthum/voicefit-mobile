@@ -1,5 +1,6 @@
 import type { InterpretEntryResponse } from "@voicefit/contracts/types";
 import { apiRequest } from "@/lib/api-client";
+import { assertSingleWorkoutExercise, workoutEquipmentLabel } from "@/lib/workout-transcript";
 import { color as token } from "@/lib/tokens";
 import type {
   CommandErrorSubtype,
@@ -250,33 +251,42 @@ export function scaleIngredientByGrams(
 // ---------------------------------------------------------------------------
 
 export function parseWorkoutSetsFromTranscript(transcript: string) {
-  // Match whole multi-set phrases first. Their nested "8 reps at 10 kg"
-  // must not be counted again as an additional single set.
-  const groups: Array<{ start: number; end: number; count: number; weightKg: string; reps: string }> = [];
+  // Whole groups take precedence over nested rep/weight phrases. Unit
+  // normalization happens ONLY here, on raw explicitly-unit-labelled weights;
+  // interpreted.payload.weightKg is already normalized and is never converted.
+  const groups: Array<{ start: number; end: number; count: number; weightKg: string; reps: string; notes: string }> = [];
+  const unit = "(kgs?|kilograms?|kilos?|lbs?|pounds?)";
   const patterns = [
-    { regex: /(\d+)\s*sets?\s*(?:of|x|×)\s*(\d+)\s*(?:reps?\b\s*)?(?:(?:at|@)\s*(\d+(?:\.\d+)?)\s*(?:kgs?|kilograms?)?)?/gi, count: 1, reps: 2, weight: 3 },
-    { regex: /(\d+(?:\.\d+)?)\s*(?:kgs?|kilograms?)\s*(?:for|x|×)\s*(\d+)/gi, count: 0, reps: 2, weight: 1 },
-    { regex: /(\d+)\s*(?:reps?)?\s*(?:at|@)\s*(\d+(?:\.\d+)?)\s*(?:kgs?|kilograms?)?/gi, count: 0, reps: 1, weight: 2 },
+    { regex: new RegExp(`(\\d+)\\s*sets?\\s*(?:of|x|×)\\s*(?:[a-z][a-z\\s-]*,\\s*)?(\\d+)\\s*(?:reps?\\b\\s*)?(?:(?:at|@)\\s*(\\d+(?:\\.\\d+)?)\\s*${unit}?)?`, "gi"), count: 1, reps: 2, weight: 3, unit: 4 },
+    { regex: /(\d+)\s*[x×]\s*(\d+)\b(?:\s*(?:at|@)\s*(\d+(?:\.\d+)?)\s*(kgs?|kilograms?|kilos?|lbs?|pounds?))?/gi, count: 1, reps: 2, weight: 3, unit: 4 },
+    { regex: new RegExp(`(\\d+(?:\\.\\d+)?)\\s*${unit}\\s*(?:for|x|×)\\s*(\\d+)`, "gi"), count: 0, reps: 3, weight: 1, unit: 2 },
+    { regex: new RegExp(`(\\d+)\\s*(?:reps?)?\\s*(?:at|@)\\s*(\\d+(?:\\.\\d+)?)\\s*${unit}?`, "gi"), count: 0, reps: 1, weight: 2, unit: 3 },
   ];
   for (const pattern of patterns) {
     for (const match of transcript.matchAll(pattern.regex)) {
       const start = match.index!;
       const end = start + match[0].length;
       if (groups.some((group) => start < group.end && end > group.start)) continue;
-      groups.push({ start, end, count: pattern.count ? Number(match[pattern.count]) : 1, reps: match[pattern.reps], weightKg: match[pattern.weight] ?? "" });
+      const weight = match[pattern.weight] ?? "";
+      const originalUnit = match[pattern.unit] ?? "";
+      const pounds = /^(lb|pound)/i.test(originalUnit);
+      const weightKg = !originalUnit ? "" : pounds ? String(Number((Number(weight) * 0.45359237).toPrecision(15))) : weight;
+      groups.push({ start, end, count: pattern.count ? Number(match[pattern.count]) : 1, reps: match[pattern.reps], weightKg, notes: originalUnit ? `Original: ${weight} ${originalUnit}` : "" });
     }
   }
+  if (groups.some((group) => group.count < 1 || !Number.isSafeInteger(group.count)) || groups.reduce((sum, group) => sum + group.count, 0) > 100) {
+    throw new Error("Log between 1 and 100 sets at a time. Split this entry and try again.");
+  }
   const results = groups.sort((a, b) => a.start - b.start).flatMap((group) =>
-    Array.from({ length: Math.min(group.count, 100) }, () => ({ weightKg: group.weightKg, reps: group.reps })),
+    Array.from({ length: group.count }, () => group),
   );
 
-  if (!results.length) return [];
-  return results.slice(0, 100).map((r, index) => ({
+  return results.map((r, index) => ({
     id: `set-${index + 1}`,
     setNumber: index + 1,
     weightKg: r.weightKg,
     reps: r.reps,
-    notes: "",
+    notes: r.notes,
   }));
 }
 
@@ -285,6 +295,7 @@ export function buildWorkoutReviewDraft(
   transcript: string,
   source: EntrySource,
 ): WorkoutReviewDraft {
+  assertSingleWorkoutExercise(transcript, interpreted.payload.exerciseName);
   const parsedSets = parseWorkoutSetsFromTranscript(transcript);
   const fallbackSet: WorkoutReviewSet = {
     id: "set-1",
@@ -293,6 +304,12 @@ export function buildWorkoutReviewDraft(
     reps: interpreted.payload.reps == null ? "" : String(interpreted.payload.reps),
     notes: interpreted.payload.notes ?? "",
   };
+  // Homogeneous raw groups share the interpreted, already-normalized weight.
+  // Heterogeneous explicitly labelled groups need their individual raw values.
+  const normalizedWeight = interpreted.payload.weightKg;
+  if (normalizedWeight != null && parsedSets.length && parsedSets.every((set) => set.weightKg !== "" && set.weightKg === parsedSets[0].weightKg)) {
+    for (const set of parsedSets) set.weightKg = String(normalizedWeight);
+  }
   const sets = parsedSets.length ? parsedSets : [fallbackSet];
 
   return {
@@ -301,7 +318,7 @@ export function buildWorkoutReviewDraft(
     transcript,
     source,
     confidence: interpreted.payload.confidence,
-    exerciseTypeLabel: interpreted.payload.exerciseType === "resistance" ? "BARBELL" : "CARDIO",
+    exerciseTypeLabel: workoutEquipmentLabel(interpreted.payload.exerciseName, interpreted.payload.exerciseType),
     sessionLabel: "New Session",
     sets,
   };
