@@ -1,5 +1,7 @@
 import type { DashboardData, InterpretEntryResponse, MealIngredient } from "@voicefit/contracts/types";
 
+export type SavedFeedbackKind = "meal" | "workout" | "processing" | "entry" | "answer";
+
 export type CommandState =
   | "cc_collapsed"
   | "cc_expanded_empty"
@@ -159,6 +161,8 @@ export interface CommandCenterSnapshot {
   toast: {
     message: string | null;
     lastSavedKcalLeft: number | null;
+    kind?: SavedFeedbackKind;
+    ready?: boolean;
   };
   error: {
     subtype: CommandErrorSubtype;

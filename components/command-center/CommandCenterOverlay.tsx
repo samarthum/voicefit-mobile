@@ -1,13 +1,13 @@
 import type { ReactNode } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { MealIngredient } from "@voicefit/contracts/types";
 import {
   Alert,
   StyleSheet,
   Text,
   View,
-  useWindowDimensions,
+
 } from "react-native";
 import {
   BottomSheetBackdrop,
@@ -29,40 +29,32 @@ import { InterpretingState } from "@/components/command-center/states/Interpreti
 import { MealReviewState } from "@/components/command-center/states/MealReviewState";
 import { WorkoutReviewState } from "@/components/command-center/states/WorkoutReviewState";
 import { ReviewActionsFooter } from "@/components/command-center/states/ReviewActionsFooter";
-import { SavingState } from "@/components/command-center/states/SavingState";
-import { getSavingSheetHeight } from "@/components/command-center/states/saving-ui";
+import { isSavingState } from "@/components/command-center/states/saving-ui";
+
 import { ErrorState } from "@/components/command-center/states/ErrorState";
-import { SavedToastState } from "@/components/command-center/states/SavedToastState";
+
 import { color as t, font } from "@/lib/tokens";
 
 // ---------------------------------------------------------------------------
 // Main Overlay Component
 // ---------------------------------------------------------------------------
 
-// Entry, processing and review keep their stable height. Saving alone uses a
-// compact status panel; one provided detent avoids competing dynamic snaps.
+// Saving stays in the action surface; the review never changes detent.
 const REVIEW_SNAP_POINTS = ["92%"];
 
 export function CommandCenterOverlay() {
   const insets = useSafeAreaInsets();
-  const { height, width, fontScale } = useWindowDimensions();
-  const { snapshot, dispatch } = useCommandCenterOverlay();
+
+  const { snapshot, dispatch, showSavedFeedback } = useCommandCenterOverlay();
 
   const { state: commandState, review: reviewDraft, error, toast } = snapshot;
-  const isSaving =
-    commandState === "cc_saving" ||
-    commandState === "cc_auto_saving" ||
-    commandState === "cc_quick_add_saving";
-  const snapPoints = useMemo(
-    () => isSaving
-      ? [getSavingSheetHeight({ height, width, fontScale, topInset: insets.top, bottomInset: insets.bottom })]
-      : REVIEW_SNAP_POINTS,
-    [isSaving, height, width, fontScale, insets.top, insets.bottom],
-  );
+  const isSaving = isSavingState(commandState);
+  const snapPoints = REVIEW_SNAP_POINTS;
   const isVisible = commandState !== "cc_collapsed";
   const canCloseViaBackdrop =
     commandState === "cc_expanded_empty" || commandState === "cc_expanded_typing";
-  const isReview = commandState === "cc_review_meal" || commandState === "cc_review_workout";
+  const isReview = commandState === "cc_review_meal" || commandState === "cc_review_workout" ||
+    (!!reviewDraft && (isSaving || (commandState === "cc_error" && error.subtype === "auto_save_failure")));
   const closeCommandCenter = useCallback(() => dispatch({ type: "close" }), [dispatch]);
 
   // gorhom owns presentation now. We drive it imperatively from the command
@@ -83,12 +75,15 @@ export function CommandCenterOverlay() {
   // is closed (so later taps can't re-open it).
   const hasPresentedRef = useRef(false);
   const shouldPresentSheet = isVisible && commandState !== "cc_saved";
-  // Match the retained content during dismissal: never expand a compact saving
-  // panel just because the acknowledged state now renders the saved toast.
+  // Match retained content and actions through acknowledgement dismissal.
   const lastSheetSnapPoints = useRef(snapPoints);
   const presentedSnapPoints = shouldPresentSheet
     ? (lastSheetSnapPoints.current = snapPoints)
     : lastSheetSnapPoints.current;
+  const lastSheetHasFooter = useRef(false);
+  const showReviewFooter = shouldPresentSheet
+    ? (lastSheetHasFooter.current = isReview)
+    : !sheetDismissed && lastSheetHasFooter.current;
 
   useEffect(() => {
     if (shouldPresentSheet) {
@@ -105,6 +100,7 @@ export function CommandCenterOverlay() {
   const handleSheetDismiss = useCallback(() => {
     hasPresentedRef.current = false;
     setSheetDismissed(true);
+    showSavedFeedback?.();
     // Programmatic dismiss (state transition) — already handled by the reducer.
     if (programmaticDismissRef.current) {
       programmaticDismissRef.current = false;
@@ -112,7 +108,7 @@ export function CommandCenterOverlay() {
     }
     // User-initiated swipe/backdrop dismiss — keep app state in sync.
     closeCommandCenter();
-  }, [closeCommandCenter]);
+  }, [closeCommandCenter, showSavedFeedback]);
 
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
@@ -132,18 +128,16 @@ export function CommandCenterOverlay() {
   // reach and always sit above the keyboard + safe area.
   const renderFooter = useCallback(
     (props: BottomSheetFooterProps) =>
-      isReview ? (
+      showReviewFooter ? (
         <BottomSheetFooter {...props}>
           <ReviewActionsFooter />
         </BottomSheetFooter>
       ) : null,
-    [isReview],
+    [showReviewFooter],
   );
 
-  // Ingredient editor sheet state — local to the overlay because nothing else
-  // needs to read it. The editor mounts as a second gorhom sheet on top of the
-  // meal review so the user keeps the meal context visible behind a darkened
-  // backdrop.
+  // The ingredient editor is an independent full-screen native Modal, shared
+  // with meal edit. It is not a stacked Gorhom sheet.
   const [ingredientEditor, setIngredientEditor] = useState<IngredientEditorMode | null>(null);
 
   // Auto-dismiss the editor if the review sheet itself goes away (user
@@ -183,7 +177,8 @@ export function CommandCenterOverlay() {
       );
     }
 
-    if (commandState === "cc_photo_context") {
+    if (commandState === "cc_photo_context" || (!reviewDraft && !!snapshot.input.selectedMealPhoto &&
+      (isSaving || (commandState === "cc_error" && error.subtype === "auto_save_failure")))) {
       return <PhotoState onClose={closeCommandCenter} />;
     }
 
@@ -200,7 +195,7 @@ export function CommandCenterOverlay() {
       return <RecordingState onClose={closeCommandCenter} />;
     }
 
-    if (commandState === "cc_review_meal" && reviewDraft?.kind === "meal") {
+    if (isReview && reviewDraft?.kind === "meal") {
       return (
         <MealReviewState
           onAddIngredient={openAddIngredientEditor}
@@ -210,16 +205,15 @@ export function CommandCenterOverlay() {
       );
     }
 
-    if (commandState === "cc_review_workout" && reviewDraft?.kind === "workout") {
+    if (isReview && reviewDraft?.kind === "workout") {
       return <WorkoutReviewState />;
     }
 
-    if (isSaving) {
+    if (isSaving || (commandState === "cc_error" && error.subtype === "auto_save_failure" && !reviewDraft)) {
       return (
-        <SavingState
-          onClose={closeCommandCenter}
-          kind={commandState === "cc_quick_add_saving" ? "meal" : reviewDraft?.kind}
-        />
+        <SheetShell title="Log anything" onClose={closeCommandCenter} showCloseButton={false} scrollable>
+          <IdleState />
+        </SheetShell>
       );
     }
 
@@ -268,9 +262,9 @@ export function CommandCenterOverlay() {
         {shouldPresentSheet ? (lastSheetContent.current = renderContent()) : lastSheetContent.current}
       </BottomSheetModal>
 
-      {commandState === "cc_saved" && sheetDismissed ? <SavedToastState /> : null}
 
-      {/* Ingredient editor — a gorhom sheet stacked over the meal review,
+
+      {/* Ingredient editor — an independent full-screen native Modal,
           shared with the meal-edit screen via IngredientEditorSheet. */}
       <IngredientEditorSheet
         mode={ingredientEditor}

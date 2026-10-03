@@ -4,6 +4,7 @@ import Svg, { Circle } from "react-native-svg";
 import { color, font, radius } from "@/lib/tokens";
 import { Icon } from "@/components/Icon";
 import { haptic } from "@/lib/haptics";
+import { SavedToastState } from "@/components/command-center/states/SavedToastState";
 
 function PulseDot() {
   return (
@@ -58,6 +59,7 @@ export function FloatingCommandBar({
       style={overTabBar ? [styles.docked, { marginBottom: bottom }] : [styles.wrap, { bottom }]}
       pointerEvents="box-none"
     >
+      <SavedToastState />
       <View style={styles.bar}>
         <Pressable
           style={({ pressed }) => [styles.left, pressed && styles.pressed]}

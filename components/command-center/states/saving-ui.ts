@@ -1,20 +1,12 @@
-/** One saving detent, with room for scaled/wrapped copy and the bottom safe area.
- * The saving body scrolls if an unusually small viewport cannot fit that room.
- */
-export function getSavingSheetHeight({
-  height,
-  width,
-  fontScale,
-  topInset,
-  bottomInset,
-}: Readonly<{
-  height: number;
-  width: number;
-  fontScale: number;
-  topInset: number;
-  bottomInset: number;
-}>): number {
-  const copyAllowance = 80 * Math.max(0, fontScale - 1) + (width < 360 ? 16 : 0);
-  const desiredHeight = 220 + bottomInset + copyAllowance;
-  return Math.min(desiredHeight, Math.max(1, height - topInset));
+import type { CommandCenterSnapshot, CommandState } from "@/components/command-center/types";
+
+export function isSavingState(state: CommandState) {
+  return state === "cc_saving" || state === "cc_auto_saving" || state === "cc_quick_add_saving";
+}
+
+// Frozen uncertain writes remain read-only until the original is reconciled.
+// Pre-write validation failures still offer the controller's Edit entry action.
+export function isReviewLocked(snapshot: CommandCenterSnapshot) {
+  return isSavingState(snapshot.state) || snapshot.state === "cc_saved" ||
+    (snapshot.state === "cc_error" && snapshot.error.subtype === "auto_save_failure");
 }

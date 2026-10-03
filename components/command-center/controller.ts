@@ -10,6 +10,7 @@ import type {
   QuickAddItem,
   ReviewDraft,
   SaveAction,
+  SavedFeedbackKind,
   ScreenContext,
   WorkoutReviewSet,
 } from "@/components/command-center/types";
@@ -89,6 +90,8 @@ export interface CommandCenterStatePort {
   getActiveRecording: () => CommandCenterVoiceRecording | null;
   getReviewDraft: () => ReviewDraft | null;
   getCommandToast: () => string | null;
+  getSavedFeedbackKind?: () => SavedFeedbackKind;
+  getSavedFeedbackReady?: () => boolean;
   getLastSavedKcalLeft: () => number | null;
   getCommandErrorSubtype: () => CommandErrorSubtype;
   getCommandErrorDetail: () => string | null;
@@ -152,7 +155,7 @@ export interface CommandCenterPreviewPort {
 }
 
 export interface CommandCenterFeedbackPort {
-  finishWithSaved: (toast: string, kcalLeft?: number | null) => void;
+  finishWithSaved: (toast: string, kcalLeft?: number | null, kind?: SavedFeedbackKind) => void;
 }
 
 export interface CommandCenterMediaPort {
@@ -306,7 +309,7 @@ export function createCommandCenterController(
       }
       operation.mealAcknowledged = true;
       operation.mealCapture = undefined;
-      ports.feedback.finishWithSaved(capture.kind === "photo" ? "Looking at your photo…" : "Logging your meal…");
+      ports.feedback.finishWithSaved(capture.kind === "photo" ? "Photo added" : "Meal received", null, "processing");
     } catch (error) {
       ports.state.setCommandError("auto_save_failure", getErrorMessage(error));
     } finally {
@@ -466,7 +469,7 @@ export function createCommandCenterController(
       try { await (ports.cache.refreshAfterMealSave ?? ports.cache.refreshAfterSave)(); } catch { /* Acknowledged, never create again. */ }
       operation.mealAcknowledged = true;
       operation.mealSave = undefined;
-      ports.feedback.finishWithSaved("Saved", frozen.kcalLeft);
+      ports.feedback.finishWithSaved("Meal added", frozen.kcalLeft, "meal");
     } catch (error) {
       ports.state.setCommandError("auto_save_failure", getErrorMessage(error));
     } finally {
@@ -577,7 +580,7 @@ export function createCommandCenterController(
             metadata: { answer: interpreted.payload.answer },
           });
           await ports.cache.refreshAfterSave();
-          ports.feedback.finishWithSaved(interpreted.payload.answer);
+          ports.feedback.finishWithSaved(interpreted.payload.answer, undefined, "answer");
           return;
         }
       }
@@ -670,6 +673,8 @@ export function createCommandCenterController(
   const startRecording = async () => {
     if (operation.saving || blockFrozenMealEdit()) return;
     operation.mealAcknowledged = undefined;
+    // A new recording is a new draft, just like explicitly opening the logger.
+    if (!operation.workoutBatch) operation.workoutBatchAcknowledged = undefined;
     const { generation, signal } = beginInterpretation();
     ports.state.clearCommandError();
     ports.state.setVoiceTranscript("");
@@ -809,6 +814,9 @@ export function createCommandCenterController(
   };
 
   const saveReviewedEntry = async () => {
+    // Shared operation state also consumes callbacks from obsolete provider renders.
+    if (operation.workoutBatchAcknowledged && !operation.workoutBatch) return;
+    if (ports.state.getCommandState() === "cc_saved") return;
     if (operation.saving || blockFrozenMealEdit()) return;
     const reviewDraft = ports.state.getReviewDraft();
     // Never send an old frozen payload as though it were the visible correction.
@@ -833,9 +841,9 @@ export function createCommandCenterController(
       try {
         if (ports.preview.isEnabled()) {
           await ports.preview.delay(550);
-          await ports.cache.refreshAfterSave();
-          ports.state.setCommandToast("Saved");
-          ports.state.closeCommandCenter();
+          try { await ports.cache.refreshAfterSave(); } catch { /* Acknowledged preview. */ }
+          operation.workoutBatchAcknowledged = true;
+          ports.feedback.finishWithSaved("Sets added", null, "workout");
           return;
         }
 
@@ -858,10 +866,10 @@ export function createCommandCenterController(
           };
         }
         await ports.backend.createWorkoutBatch(operation.workoutBatch);
+        operation.workoutBatchAcknowledged = true;
         operation.workoutBatch = undefined;
-        await ports.cache.refreshAfterSave();
-        ports.state.setCommandToast(`Saved ${setsToSave.length} set${setsToSave.length > 1 ? "s" : ""}`);
-        ports.state.closeCommandCenter();
+        try { await ports.cache.refreshAfterSave(); } catch { /* Acknowledged: never retry a write for a cache failure. */ }
+        ports.feedback.finishWithSaved("Sets added", null, "workout");
       } catch (error) {
         ports.state.setCommandError("auto_save_failure", getErrorMessage(error));
       } finally {
@@ -1028,6 +1036,8 @@ export function createCommandCenterController(
       toast: {
         message: ports.state.getCommandToast(),
         lastSavedKcalLeft: ports.state.getLastSavedKcalLeft(),
+        kind: ports.state.getSavedFeedbackKind?.(),
+        ready: ports.state.getSavedFeedbackReady?.(),
       },
       error: {
         subtype: errorSubtype,
@@ -1057,6 +1067,7 @@ export function createCommandCenterController(
   };
 
   const runDispatchedEvent = (event: CommandCenterEvent) => {
+    if (operation.saving) return;
     if ((operation.mealCapture || operation.mealSave) && event.type !== "error.primary") {
       if (!operation.saving) blockFrozenMealEdit();
       return;

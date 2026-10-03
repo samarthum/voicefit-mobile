@@ -25,6 +25,7 @@ import type {
   RecentMeal,
   ReviewDraft,
   SaveAction,
+  SavedFeedbackKind,
   ScreenContext,
 } from "@/components/command-center/types";
 import {
@@ -90,6 +91,7 @@ type CommandCenterOverlayDispatch = (
 interface CommandCenterOverlayValue {
   snapshot: CommandCenterSnapshot;
   dispatch: CommandCenterOverlayDispatch;
+  showSavedFeedback: () => void;
 }
 
 const CommandCenterOverlayContext = createContext<CommandCenterOverlayValue | null>(null);
@@ -125,6 +127,8 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
   const [reviewDraft, setReviewDraft] = useState<ReviewDraft | null>(null);
   const [selectedMealPhoto, setSelectedMealPhoto] = useState<PhotoAttachment | null>(null);
   const [commandToast, setCommandToast] = useState<string | null>(null);
+  const [savedFeedbackKind, setSavedFeedbackKind] = useState<SavedFeedbackKind>("entry");
+  const [savedFeedbackReady, setSavedFeedbackReady] = useState(false);
   const [lastSavedKcalLeft, setLastSavedKcalLeft] = useState<number | null>(null);
   const [commandErrorSubtype, setCommandErrorSubtype] = useState<CommandErrorSubtype>(null);
   const [commandErrorDetail, setCommandErrorDetail] = useState<string | null>(null);
@@ -228,12 +232,15 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
     setReviewDraft(null);
     setSelectedMealPhoto(null);
     setLastSavedKcalLeft(null);
+    setSavedFeedbackReady(false);
   }, [recording]);
 
   // Success starts sheet dismissal; the overlay shows this message afterward.
-  const finishWithSaved = useCallback((toast: string, kcalLeft: number | null = null) => {
+  const finishWithSaved = useCallback((toast: string, kcalLeft: number | null = null, kind: SavedFeedbackKind = "entry") => {
     Keyboard.dismiss();
     setCommandToast(toast);
+    setSavedFeedbackKind(kind);
+    setSavedFeedbackReady(false);
     setLastSavedKcalLeft(kcalLeft);
     setCommandState("cc_saved");
   }, []);
@@ -430,6 +437,8 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
       getActiveRecording: () => recording,
       getReviewDraft: () => reviewDraft,
       getCommandToast: () => commandToast,
+      getSavedFeedbackKind: () => savedFeedbackKind,
+      getSavedFeedbackReady: () => savedFeedbackReady,
       getLastSavedKcalLeft: () => lastSavedKcalLeft,
       getCommandErrorSubtype: () => commandErrorSubtype,
       getCommandErrorDetail: () => commandErrorDetail,
@@ -614,6 +623,8 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
     recording,
     reviewDraft,
     commandToast,
+    savedFeedbackKind,
+    savedFeedbackReady,
     lastSavedKcalLeft,
     commandErrorSubtype,
     commandErrorDetail,
@@ -684,10 +695,15 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
     clearScreenContext,
   }), [commandState, commandToast, openCommandCenter, startRecording, closeCommandCenterForConsumers, launcherProps, setScreenContext, clearScreenContext]);
 
+  const showSavedFeedback = useCallback(() => {
+    if (commandState === "cc_saved") setSavedFeedbackReady(true);
+  }, [commandState]);
+
   const overlayValue = useMemo<CommandCenterOverlayValue>(() => ({
     snapshot: overlaySnapshot,
     dispatch: commandCenterController.dispatch,
-  }), [commandCenterController.dispatch, overlaySnapshot]);
+    showSavedFeedback,
+  }), [commandCenterController.dispatch, overlaySnapshot, showSavedFeedback]);
 
   return (
     <CommandCenterPublicContext.Provider value={publicValue}>
