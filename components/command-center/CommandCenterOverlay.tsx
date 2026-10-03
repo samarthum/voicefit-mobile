@@ -1,12 +1,13 @@
 import type { ReactNode } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MealIngredient } from "@voicefit/contracts/types";
 import {
   Alert,
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
 } from "react-native";
 import {
   BottomSheetBackdrop,
@@ -29,6 +30,7 @@ import { MealReviewState } from "@/components/command-center/states/MealReviewSt
 import { WorkoutReviewState } from "@/components/command-center/states/WorkoutReviewState";
 import { ReviewActionsFooter } from "@/components/command-center/states/ReviewActionsFooter";
 import { SavingState } from "@/components/command-center/states/SavingState";
+import { getSavingSheetHeight } from "@/components/command-center/states/saving-ui";
 import { ErrorState } from "@/components/command-center/states/ErrorState";
 import { SavedToastState } from "@/components/command-center/states/SavedToastState";
 import { color as t, font } from "@/lib/tokens";
@@ -37,15 +39,26 @@ import { color as t, font } from "@/lib/tokens";
 // Main Overlay Component
 // ---------------------------------------------------------------------------
 
-// Keep one stable height through entry, processing, review and saving. Dynamic
-// content sizing otherwise animates several competing snaps during submission.
+// Entry, processing and review keep their stable height. Saving alone uses a
+// compact status panel; one provided detent avoids competing dynamic snaps.
 const REVIEW_SNAP_POINTS = ["92%"];
 
 export function CommandCenterOverlay() {
   const insets = useSafeAreaInsets();
+  const { height, width, fontScale } = useWindowDimensions();
   const { snapshot, dispatch } = useCommandCenterOverlay();
 
   const { state: commandState, review: reviewDraft, error, toast } = snapshot;
+  const isSaving =
+    commandState === "cc_saving" ||
+    commandState === "cc_auto_saving" ||
+    commandState === "cc_quick_add_saving";
+  const snapPoints = useMemo(
+    () => isSaving
+      ? [getSavingSheetHeight({ height, width, fontScale, topInset: insets.top, bottomInset: insets.bottom })]
+      : REVIEW_SNAP_POINTS,
+    [isSaving, height, width, fontScale, insets.top, insets.bottom],
+  );
   const isVisible = commandState !== "cc_collapsed";
   const canCloseViaBackdrop =
     commandState === "cc_expanded_empty" || commandState === "cc_expanded_typing";
@@ -70,6 +83,12 @@ export function CommandCenterOverlay() {
   // is closed (so later taps can't re-open it).
   const hasPresentedRef = useRef(false);
   const shouldPresentSheet = isVisible && commandState !== "cc_saved";
+  // Match the retained content during dismissal: never expand a compact saving
+  // panel just because the acknowledged state now renders the saved toast.
+  const lastSheetSnapPoints = useRef(snapPoints);
+  const presentedSnapPoints = shouldPresentSheet
+    ? (lastSheetSnapPoints.current = snapPoints)
+    : lastSheetSnapPoints.current;
 
   useEffect(() => {
     if (shouldPresentSheet) {
@@ -84,6 +103,7 @@ export function CommandCenterOverlay() {
   }, [shouldPresentSheet]);
 
   const handleSheetDismiss = useCallback(() => {
+    hasPresentedRef.current = false;
     setSheetDismissed(true);
     // Programmatic dismiss (state transition) — already handled by the reducer.
     if (programmaticDismissRef.current) {
@@ -194,12 +214,13 @@ export function CommandCenterOverlay() {
       return <WorkoutReviewState />;
     }
 
-    if (
-      commandState === "cc_saving" ||
-      commandState === "cc_auto_saving" ||
-      commandState === "cc_quick_add_saving"
-    ) {
-      return <SavingState onClose={closeCommandCenter} />;
+    if (isSaving) {
+      return (
+        <SavingState
+          onClose={closeCommandCenter}
+          kind={commandState === "cc_quick_add_saving" ? "meal" : reviewDraft?.kind}
+        />
+      );
     }
 
     if (commandState === "cc_error" && error.copy) {
@@ -231,7 +252,7 @@ export function CommandCenterOverlay() {
         accessibilityRole="none"
         onDismiss={handleSheetDismiss}
         enableDynamicSizing={false}
-        snapPoints={REVIEW_SNAP_POINTS}
+        snapPoints={presentedSnapPoints}
         enablePanDownToClose={canCloseViaBackdrop}
         backdropComponent={renderBackdrop}
         footerComponent={renderFooter}
