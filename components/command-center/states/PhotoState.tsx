@@ -1,17 +1,21 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { Image } from "expo-image";
 import { BottomSheetTextInput } from "@/components/command-center/SheetTextInput";
 import { Icon } from "@/components/Icon";
 import { SheetShell } from "@/components/command-center/states/SheetShell";
 import { useCommandCenterOverlay } from "@/components/command-center/CommandCenterProvider";
 import { color as t, font } from "@/lib/tokens";
+import { isSavingState, isReviewLocked } from "./saving-ui";
 
 export function PhotoState({ onClose }: { onClose: () => void }) {
   const { snapshot, dispatch } = useCommandCenterOverlay();
   const photo = snapshot.input.selectedMealPhoto;
+  const busy = isSavingState(snapshot.state) || snapshot.state === "cc_saved";
+  const locked = isReviewLocked(snapshot);
+  const failure = snapshot.state === "cc_error" ? snapshot.error.copy : null;
 
   return (
-    <SheetShell title="Log meal photo" onClose={onClose} scrollable>
+    <SheetShell title="Log meal photo" onClose={onClose} showCloseButton={!locked} scrollable>
       <View style={styles.photoBody}>
         {photo ? (
           <Image
@@ -32,6 +36,7 @@ export function PhotoState({ onClose }: { onClose: () => void }) {
             style={styles.photoContextInput}
             placeholder="Add context, e.g. chicken, rice, and sauce"
             placeholderTextColor={t.textSoft}
+            editable={!locked}
             value={snapshot.input.text}
             onChangeText={(text) => dispatch({ type: "text.change", text })}
             multiline
@@ -39,9 +44,12 @@ export function PhotoState({ onClose }: { onClose: () => void }) {
           />
         </View>
 
+        {failure ? <View accessibilityLiveRegion="polite" style={{ marginTop: 12 }}><Text style={styles.photoSecondaryText}>{failure.title}</Text><Text style={styles.photoSecondaryText}>{failure.body}</Text></View> : null}
         <View style={styles.photoActions}>
           <Pressable
             style={styles.photoSecondaryButton}
+            disabled={locked}
+            accessibilityState={{ disabled: locked }}
             onPress={() => void dispatch({ type: "photo.menu.open" })}
             testID="cc-photo-replace"
           >
@@ -49,11 +57,15 @@ export function PhotoState({ onClose }: { onClose: () => void }) {
           </Pressable>
           <Pressable
             style={styles.photoPrimaryButton}
-            onPress={() => void dispatch({ type: "photo.submit" })}
+            disabled={busy}
+            accessibilityRole="button"
+            accessibilityState={{ busy, disabled: busy }}
+            aria-busy={busy}
+            onPress={() => { if (!busy) void dispatch({ type: failure ? "error.primary" : "photo.submit" }); }}
             testID="cc-photo-submit"
           >
-            <Text style={styles.photoPrimaryText}>Submit photo</Text>
-            <Icon name="sparkSend" size={16} color={t.accentInk} />
+            <Text style={styles.photoPrimaryText}>{busy ? "Uploading…" : failure ? failure.primary : "Submit photo"}</Text>
+            {busy ? <ActivityIndicator size="small" color={t.accentInk} /> : <Icon name="sparkSend" size={16} color={t.accentInk} />}
           </Pressable>
         </View>
       </View>
@@ -137,6 +149,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   photoPrimaryText: {
+    flexShrink: 1,
     fontFamily: font.sans[700],
     fontSize: 13.5,
     fontWeight: "700",

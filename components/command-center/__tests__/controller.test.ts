@@ -768,8 +768,8 @@ describe("CommandCenterController review and retry boundary", () => {
       },
     ]);
     expect(calls.refreshed).toBe(1);
-    expect(calls.commandToasts).toEqual(["Saved 2 sets"]);
-    expect(calls.closes).toBe(1);
+    expect(calls.finished).toEqual([{ toast: "Sets added", kcalLeft: null }]);
+    expect(calls.closes).toBe(0); // ACK initiates feedback dismissal, not a review reset.
   });
 
   test("edit review transcript restores text editing state", () => {
@@ -1045,7 +1045,7 @@ describe("logging races and safe retries", () => {
     await controller.saveReviewedEntry();
     expect(batches).toHaveLength(2);
     expect(batches[1]).toEqual(batches[0]);
-    expect(calls.commandToasts).toEqual(["Saved 2 sets"]);
+    expect(calls.finished).toEqual([{ toast: "Sets added", kcalLeft: null }]);
   });
 
   test("save-time guard retains a changed review until explicit original-batch reconciliation", async () => {
@@ -1115,7 +1115,7 @@ describe("logging races and safe retries", () => {
     expect(batches[1]).toEqual(batches[0]);
     expect(requestIds).toBe(1);
     expect(calls.ensuredSessions).toBe(1);
-    expect(calls.commandToasts).toEqual(["Saved 2 sets"]);
+    expect(calls.finished).toEqual([{ toast: "Sets added", kcalLeft: null }]);
   });
 
   test("retry submits the exact workout batch and request ID after an uncertain response", async () => {

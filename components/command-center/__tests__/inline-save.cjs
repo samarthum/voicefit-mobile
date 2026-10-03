@@ -1,0 +1,157 @@
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const {harness,meal,workout,act,byId,textOf}=require('./inline-save-harness.cjs');
+test('real reviewed meal callback retains review and pinned busy action until acknowledgement/dismissal',async()=>{
+ const h=await harness();try{
+ await h.seed(meal());h.defer();const save=byId(h.r,'cc-review-save').props.onPress;
+ const {pending}=await h.start(save);
+ assert.equal(h.snapshot().state,'cc_saving');assert.deepEqual(h.modal().snapPoints,['92%']);
+ assert.match(textOf(h.r),/Rice/);assert.ok(byId(h.r,'cc-review-save'),'Keep original action mounted');
+ assert.match(textOf(h.r),/Saving…/);assert.equal(byId(h.r,'cc-review-save').props.disabled,true);
+ assert.deepEqual(byId(h.r,'cc-review-save').props.accessibilityState,{busy:true,disabled:true});
+ assert.equal(byId(h.r,'cc-review-discard').props.disabled,true);
+ await act(async()=>save());assert.equal(h.requests.length,1);
+ await h.release({id:'canonical-reviewed'});await pending;
+ assert.equal(h.snapshot().state,'cc_saved');assert.match(textOf(h.r),/Rice/);
+ assert.ok(h.modal().footerComponent({}),'Retain footer through ACK animation');
+ assert.equal(byId(h.r,'cc-saved-toast'),undefined,'Do not cover closing review');
+ await h.dismiss();assert.ok(byId(h.r,'cc-saved-toast'));
+ }finally{await h.close()}
+});
+
+test('failure keeps the actual meal review, freezes edits/close, and retries the original from its action',async()=>{
+ const h=await harness();try{
+ await h.seed(meal());h.defer();await h.start(byId(h.r,'cc-review-save').props.onPress);await h.reject();
+ assert.equal(h.snapshot().state,'cc_error');assert.match(textOf(h.r),/Rice/);
+ const retry=byId(h.r,'cc-review-save');assert.ok(retry);assert.match(textOf(h.r),/Retry original/);
+ assert.equal(byId(h.r,'cc-review-discard').props.disabled,true);
+ for(const id of ['cc-review-edit-transcript','cc-review-add-ingredient','cc-review-ingredient-0'])assert.equal(byId(h.r,id).props.disabled,true,id);
+ const frozen=h.requests[0].payload;h.defer();await h.start(retry.props.onPress);
+ assert.match(textOf(h.r),/Saving…/);await h.release({id:'same-canonical'});
+ assert.equal(h.requests.length,2);assert.deepEqual(h.requests[1].payload,frozen);assert.equal(h.snapshot().state,'cc_saved');
+ }finally{await h.close()}
+});
+test('real workout caller retains sets and blocks stale edit/close/save callbacks during the deferred write',async()=>{
+ const h=await harness();try{
+ await h.seed(workout());const save=byId(h.r,'cc-review-save').props.onPress,edit=byId(h.r,'cc-review-workout-kg-0').props.onChangeText,close=byId(h.r,'cc-review-discard').props.onPress;
+ h.defer();await h.start(save);assert.match(textOf(h.r),/Bench Press/);assert.match(textOf(h.r),/Saving…/);
+ assert.equal(byId(h.r,'cc-review-workout-kg-0').props.editable,false);assert.equal(byId(h.r,'cc-review-add-set').props.disabled,true);
+ await act(async()=>{save();edit('150');close()});assert.equal(h.requests.length,2,'session lookup then batch, no duplicate');assert.equal(h.snapshot().review.sets[0].weightKg,'80');
+ await h.release({id:'canonical-workout'});assert.equal(h.snapshot().state,'cc_saved');await h.dismiss();assert.match(textOf(h.r),/Sets added/);
+ }finally{await h.close()}
+});
+
+test('acknowledged reviewed meal is one short noninteractive snackbar in the actual logging-bar layout',async()=>{
+ const h=await harness();try{
+ await h.seed(meal());await act(async()=>byId(h.r,'cc-review-save').props.onPress());await h.dismiss();
+ const toast=byId(h.r,'cc-saved-toast');assert.ok(toast);assert.equal(toast.props.pointerEvents,'none');
+ assert.equal(toast.props.accessibilityLiveRegion,'polite');
+ assert.equal(toast.findAll(n=>n.type==='Text').map(n=>n.props.children).join(' '),'Meal added');
+ assert.equal(toast.findAll(n=>n.type==='Pressable').length,0);
+ assert.equal(toast.findAll(n=>n.type==='Text').length,1);let parent=toast.parent;while(parent&&typeof parent.type!=='string')parent=parent.parent;assert.equal(parent.type,'View');
+ assert.equal(toast.props.style.some?.(s=>s?.position==='absolute')??false,false);
+ }finally{await h.close()}
+});
+
+test('actual photo submit stays on the photo action until upload ACK and failure retries that action',async()=>{
+ const h=await harness();try{
+ await act(async()=>h.controller().launchPhotoPicker('library'));h.defer();const submit=byId(h.r,'cc-photo-submit').props.onPress;
+ await h.start(submit);assert.ok(byId(h.r,'cc-photo-preview'));assert.match(textOf(h.r),/Uploading…/);
+ assert.equal(byId(h.r,'cc-photo-submit').props.disabled,true);assert.equal(byId(h.r,'cc-photo-replace').props.disabled,true);assert.equal(byId(h.r,'cc-photo-context').props.editable,false);
+ await act(async()=>submit());assert.equal(h.requests.length,1);await h.reject();
+ assert.ok(byId(h.r,'cc-photo-preview'));assert.match(textOf(h.r),/Retry original/);
+ h.defer();await h.start(byId(h.r,'cc-photo-submit').props.onPress);await h.release({id:'canonical-photo',eatenAt:new Date().toISOString(),calories:null,interpretationStatus:'interpreting'});await h.dismiss();
+ const toast=byId(h.r,'cc-saved-toast');assert.ok(toast);assert.equal(toast.findByType('Icon').props.name,'sparkSend');assert.match(textOf(h.r),/Photo added/);assert.doesNotMatch(textOf(h.r),/LOGGED|ENTRY SAVED|KCAL LEFT/);
+ }finally{await h.close()}
+});
+test('all no-review saving command states keep a disabled input/action surface, never blank or a saving sheet',async()=>{
+ const h=await harness();try{
+ await h.dispatch({type:'open'});await h.dispatch({type:'text.set',text:'I ate rice'});
+ for(const state of ['cc_saving','cc_auto_saving','cc_quick_add_saving']){
+ await h.setState(state);assert.ok(byId(h.r,'cc-input-text'));assert.equal(byId(h.r,'cc-input-text').props.editable,false);assert.equal(byId(h.r,'cc-send').props.disabled,true);assert.match(textOf(h.r),/Saving…/);assert.deepEqual(h.modal().snapPoints,['92%']);
+ }
+ }finally{await h.close()}
+});
+
+test('actual dashboard canonical pending row persists after feedback expiry and becomes ready/failed without zero nutrition',async()=>{
+ const h=await harness();try{
+ const day=new Date().toISOString().slice(0,10),eatenAt=day+'T12:00:00.000Z';
+ const base={today:{calories:{consumed:0,goal:2000},macros:{protein:null,carbs:null,fat:null},steps:{count:0,goal:10000},weight:null},weeklyTrends:[],recentMeals:[]};
+ await h.dashboard(base);assert.equal(byId(h.r,'home-meal-row-canonical-photo'),undefined);
+ const pending={id:'canonical-photo',description:'Meal photo',calories:null,mealType:'snack',eatenAt,interpretationStatus:'interpreting'};
+ await h.dashboard({...base,recentMeals:[pending]});
+ const row=byId(h.r,'home-meal-row-canonical-photo');assert.ok(row);assert.match(row.findAllByType('Text').map(n=>n.props.children).join(' '),/Analyzing meal…/);
+ assert.equal(h.queryConfig().refetchInterval({state:{data:{recentMeals:[pending]}}}),2000);
+ await act(async()=>row.props.onPress());assert.deepEqual(h.pushes.at(-1),{pathname:'/meal-edit/[id]',params:{id:'canonical-photo'}});
+ await h.dispatch({type:'close'});assert.ok(byId(h.r,'home-meal-row-canonical-photo'));
+ await h.dashboard({...base,recentMeals:[{...pending,description:'Rice and tofu',calories:450,interpretationStatus:'needs_review'}]});
+ assert.match(textOf(h.r),/Rice and tofu/);assert.doesNotMatch(textOf(h.r),/Analyzing/);assert.match(textOf(h.r),/450/);
+ await h.dashboard({...base,recentMeals:[{...pending,interpretationStatus:'failed'}]});assert.match(textOf(h.r),/Analysis failed/);assert.doesNotMatch(textOf(h.r),/450/);
+ await act(async()=>byId(h.r,'home-meal-row-canonical-photo').props.onPress());assert.equal(h.pushes.at(-1).params.id,'canonical-photo');
+ }finally{await h.close()}
+});
+
+test('actual controller rejects stale mutable dispatches during a workout write',async()=>{
+ const h=await harness();try{
+ await h.seed(workout());h.defer();await h.start(byId(h.r,'cc-review-save').props.onPress);
+ const before=structuredClone(h.snapshot().input);
+ await h.dispatch({type:'text.set',text:'different entry'});await h.dispatch({type:'voice.transcript.change',text:'different voice'});
+ assert.deepEqual(h.snapshot().input,before);await h.release({id:'workout-ack'});
+ }finally{await h.close()}
+});
+test('workout ACK survives a cache invalidation rejection and never duplicates a trailing save',async()=>{
+ const h=await harness();try{
+ await h.seed(workout());h.refreshFailure(true);const save=byId(h.r,'cc-review-save').props.onPress;
+ await act(async()=>save());assert.equal(h.snapshot().state,'cc_saved');await act(async()=>save());assert.equal(h.requests.filter(r=>r.url==='/api/workout-sets/batch').length,1);
+ }finally{await h.close()}
+});
+
+for(const capture of ['photo','text','voice'])test(`actual ${capture} capture ACK inserts a canonical pending dashboard row, expires feedback only, then refetch replaces it`,async()=>{
+ const h=await harness();try{
+ const day=new Date().toISOString().slice(0,10),base={today:{calories:{consumed:0,goal:2000},macros:{protein:null,carbs:null,fat:null},steps:{count:0,goal:10000},weight:null},weeklyTrends:[],recentMeals:[]};
+ await h.dashboard(base);await h.dispatch({type:'open'});
+ if(capture==='photo')await act(async()=>h.controller().launchPhotoPicker('library'));else await h.dispatch({type:'text.set',text:'I ate rice'});
+ h.defer();await h.start(()=>capture==='photo'?byId(h.r,'cc-photo-submit').props.onPress():capture==='voice'?h.controller().interpretVoiceTranscript('I ate rice'):byId(h.r,'cc-send').props.onPress());
+ assert.equal(byId(h.r,'home-meal-row-canonical-ack'),undefined,'No invented optimistic record before ACK');
+ const row={id:'canonical-ack',description:capture==='photo'?'Meal photo':'I ate rice',calories:null,mealType:'snack',eatenAt:day+'T12:00:00.000Z',interpretationStatus:'interpreting'};
+ await h.release(row);await h.dismiss();assert.ok(byId(h.r,'home-meal-row-canonical-ack'));assert.match(textOf(h.r),/Analyzing meal…/);
+ assert.equal(byId(h.r,'cc-saved-toast').findByType('Icon').props.name,'sparkSend');
+ await act(async()=>new Promise(resolve=>setTimeout(resolve,2300)));assert.equal(byId(h.r,'cc-saved-toast'),undefined);assert.ok(byId(h.r,'home-meal-row-canonical-ack'));
+ await h.dashboard({...base,recentMeals:[{...row,description:'Rice and tofu',calories:450,interpretationStatus:'needs_review'}]});assert.equal(h.r.root.findAll(n=>n.type==='Pressable'&&n.props.testID==='home-meal-row-canonical-ack').length,1);assert.match(textOf(h.r),/450/);assert.doesNotMatch(textOf(h.r),/Analyzing/);
+ }finally{await h.close()}
+});
+test('quick-add actual caller routes to full-source repeat selection, never writes a summary as a meal',async()=>{
+ const h=await harness();try{await h.dispatch({type:'open'});await h.dispatch({type:'quick-add.save',item:{id:'source-meal',description:'Rice',calories:120,mealType:'lunch'}});assert.equal(h.snapshot().state,'cc_collapsed');assert.deepEqual(h.pushes,[{pathname:'/meal-repeat',params:{id:'source-meal'}}]);assert.equal(h.requests.length,0);}finally{await h.close()}
+});
+
+test('capture upload action stays busy and immutable throughout ACK dismissal',async()=>{
+ for(const capture of ['photo','text']){const h=await harness();try{
+ await h.dispatch({type:'open'});if(capture==='photo')await act(async()=>h.controller().launchPhotoPicker('library'));else await h.dispatch({type:'text.set',text:'I ate rice'});
+ h.defer();const id=capture==='photo'?'cc-photo-submit':'cc-send';await h.start(byId(h.r,id).props.onPress);await h.release({id:'capture-ack',interpretationStatus:'interpreting',calories:null,eatenAt:new Date().toISOString()});
+ assert.equal(h.snapshot().state,'cc_saved');assert.equal(byId(h.r,id).props.disabled,true,'Retained action must not flicker enabled during dismissal');assert.equal(byId(h.r,id).props.accessibilityState.busy,true);await h.dismiss();
+ }finally{await h.close()}}
+});
+test('a new workout opened after acknowledged dismissal can save normally',async()=>{
+ const h=await harness();try{
+ await h.seed(workout());await act(async()=>byId(h.r,'cc-review-save').props.onPress());await h.dismiss();await h.dispatch({type:'open'});await h.seed(workout());await act(async()=>byId(h.r,'cc-review-save').props.onPress());assert.equal(h.requests.filter(r=>r.url==='/api/workout-sets/batch').length,2);
+ }finally{await h.close()}
+});
+
+test('voice meal capture retains its actual transcript on the busy action surface',async()=>{
+ const h=await harness();try{
+ await h.dispatch({type:'open'});await h.dispatch({type:'voice.transcript.change',text:'I ate rice'});h.defer();await h.start(()=>h.controller().interpretVoiceTranscript('I ate rice'));
+ assert.equal(byId(h.r,'cc-input-text').props.value,'I ate rice');assert.equal(byId(h.r,'cc-input-text').props.editable,false);assert.match(textOf(h.r),/Saving…/);await h.reject();assert.equal(byId(h.r,'cc-input-text').props.value,'I ate rice');
+ }finally{await h.close()}
+});
+
+test('busy text/voice submit has a visible accent surface, not white busy copy on a disabled white button',async()=>{
+ const h=await harness();try{
+ await h.dispatch({type:'open'});await h.setState('cc_auto_saving');const action=byId(h.r,'cc-send');const style=Object.assign({},...action.props.style({pressed:false}).filter(Boolean));assert.equal(style.backgroundColor,h.load('@/lib/tokens').color.accent);assert.equal(style.opacity??1,1);
+ }finally{await h.close()}
+});
+
+test('starting a fresh microphone capture after a workout ACK does not suppress its next reviewed save',async()=>{
+ const h=await harness();try{
+ await h.seed(workout());await act(async()=>byId(h.r,'cc-review-save').props.onPress());await h.dismiss();await act(async()=>h.controller().startRecording());assert.equal(h.snapshot().state,'cc_recording');await h.seed(workout());await act(async()=>byId(h.r,'cc-review-save').props.onPress());assert.equal(h.requests.filter(r=>r.url==='/api/workout-sets/batch').length,2);
+ }finally{await h.close()}
+});

@@ -1,14 +1,18 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { BottomSheetTextInput } from "@/components/command-center/SheetTextInput";
 import { Icon } from "@/components/Icon";
 import { useCommandCenterOverlay } from "@/components/command-center/CommandCenterProvider";
 import { EXERCISE_CATALOG } from "@/lib/exercise-catalog";
 import { color as t, font } from "@/lib/tokens";
+import { isSavingState, isReviewLocked } from "./saving-ui";
 
 export function IdleState() {
   const { snapshot, dispatch } = useCommandCenterOverlay();
   const { input, quickAddItems, screenContext } = snapshot;
-  const sendDisabled = !input.text.trim();
+  const busy = isSavingState(snapshot.state) || snapshot.state === "cc_saved";
+  const locked = isReviewLocked(snapshot);
+  const failure = snapshot.state === "cc_error" ? snapshot.error.copy : null;
+  const sendDisabled = busy || (!failure && !input.text.trim());
   const isWorkout = screenContext.screen === "workout";
   const placeholder = isWorkout
     ? 'Try "3 sets of squats, 8 reps at 80 kg"'
@@ -21,7 +25,8 @@ export function IdleState() {
           style={styles.idleInput}
           placeholder={placeholder}
           placeholderTextColor={t.textSoft}
-          value={input.text}
+          editable={!locked}
+          value={locked && !input.text.trim() ? input.voiceTranscript : input.text}
           onChangeText={(text) => dispatch({ type: "text.change", text })}
           multiline
           testID="cc-input-text"
@@ -29,12 +34,15 @@ export function IdleState() {
         />
       </View>
 
+      {failure ? <View accessibilityLiveRegion="polite" style={{ marginTop: 12 }}><Text style={styles.idleCaption}>{failure.title}</Text><Text style={styles.idleCaption}>{failure.body}</Text></View> : null}
       <View style={styles.idleActionsRow}>
         <Pressable
           style={({ pressed }) => [styles.idleSquareBtn, pressed && styles.pressed]}
           onPress={() => void dispatch({ type: "photo.menu.open" })}
           accessibilityRole="button"
           accessibilityLabel="Add meal photo"
+          disabled={locked}
+          accessibilityState={{ disabled: locked }}
           testID="cc-camera"
         >
           <Icon name="camera" size={20} color={t.textSoft} />
@@ -45,6 +53,8 @@ export function IdleState() {
           onPress={() => void dispatch({ type: "voice.start" })}
           accessibilityRole="button"
           accessibilityLabel="Start voice input"
+          disabled={locked}
+          accessibilityState={{ disabled: locked }}
           testID="cc-big-mic"
         >
           <View pointerEvents="none" style={styles.idleMicHaloOuter} />
@@ -55,15 +65,17 @@ export function IdleState() {
         </Pressable>
 
         <Pressable
-          style={({ pressed }) => [styles.idleSquareBtn, !sendDisabled && styles.idleSendActive, sendDisabled && styles.idleSquareBtnDisabled, pressed && styles.pressed]}
+          style={({ pressed }) => [styles.idleSquareBtn, (busy || !!failure) && styles.savingAction, (busy || !sendDisabled) && styles.idleSendActive, sendDisabled && !busy && styles.idleSquareBtnDisabled, pressed && styles.pressed]}
           disabled={sendDisabled}
-          accessibilityState={{ disabled: sendDisabled }}
-          onPress={() => void dispatch({ type: "text.submit" })}
+          accessibilityState={{ busy, disabled: sendDisabled }}
+          aria-busy={busy}
+          onPress={() => { if (!sendDisabled) void dispatch({ type: failure ? "error.primary" : "text.submit" }); }}
           accessibilityRole="button"
-          accessibilityLabel="Submit entry"
+          accessibilityLabel={busy ? "Saving" : failure ? failure.primary : "Submit entry"}
           testID="cc-send"
         >
-          <Icon name="sparkSend" size={20} color={sendDisabled ? t.textMute : t.accentInk} />
+          {busy ? <ActivityIndicator size="small" color={t.accentInk} /> : failure ? null : <Icon name="sparkSend" size={20} color={sendDisabled ? t.textMute : t.accentInk} />}
+          {busy || failure ? <Text style={styles.savingCopy}>{busy ? "Saving…" : failure?.primary}</Text> : null}
         </Pressable>
       </View>
 
@@ -81,6 +93,8 @@ export function IdleState() {
                 dispatch({ type: "text.change", text: `3 sets of ${exercise.name}` });
               }}
               accessibilityLabel={`Use ${exercise.name} as a starting point`}
+              disabled={locked}
+              accessibilityState={{ disabled: locked }}
               testID={`cc-exercise-${index}`}
             >
               <View style={styles.frequentText}>
@@ -107,6 +121,8 @@ export function IdleState() {
                 void dispatch({ type: "quick-add.save", item });
               }}
               accessibilityLabel={`Log ${item.description} again`}
+              disabled={locked}
+              accessibilityState={{ disabled: locked }}
               testID={`cc-quick-add-${index}`}
             >
               <View style={styles.frequentText}>
@@ -125,6 +141,8 @@ export function IdleState() {
 }
 
 const styles = StyleSheet.create({
+  savingAction: { width: "auto", minWidth: 44, maxWidth: 140, height: "auto", minHeight: 44, paddingHorizontal: 10, paddingVertical: 10, flexDirection: "row", gap: 6 },
+  savingCopy: { flexShrink: 1, fontFamily: font.sans[600], fontSize: 13, color: t.accentInk },
   pressed: { opacity: 0.65 },
   idleSendActive: { backgroundColor: t.accent, borderColor: t.accent },
   idleBody: { paddingHorizontal: 22 },

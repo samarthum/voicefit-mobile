@@ -8,12 +8,13 @@ export function MealStatusBadge({ status }: Props) {
   if (status === "reviewed") return null;
   const label =
     status === "interpreting"
-      ? "Estimating"
+      ? "Analyzing meal…"
       : status === "needs_review"
       ? "Review estimate"
-      : "Failed";
+      : "Analysis failed";
   return (
     <View
+      accessibilityLiveRegion={status === "interpreting" ? "polite" : undefined}
       style={[
         styles.mealStatusBadge,
         status === "failed" ? styles.mealStatusBadgeFailed : null,
@@ -27,7 +28,7 @@ export function MealStatusBadge({ status }: Props) {
           styles.mealStatusText,
           status === "failed" ? styles.mealStatusTextFailed : null,
         ]}
-        numberOfLines={1}
+
       >
         {label}
       </Text>
@@ -37,7 +38,7 @@ export function MealStatusBadge({ status }: Props) {
 
 const styles = StyleSheet.create({
   mealStatusBadge: {
-    maxWidth: 104,
+    maxWidth: "100%",
     minHeight: 20,
     borderRadius: r.pill,
     borderWidth: 1,
@@ -62,7 +63,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     letterSpacing: 0.35,
     color: token.textMute,
-    textTransform: "uppercase",
+
     flexShrink: 1,
   },
   mealStatusTextFailed: {

@@ -6,6 +6,7 @@ import { useCommandCenterOverlay } from "@/components/command-center/CommandCent
 import { formatMealTypeLabel } from "@/components/command-center/helpers";
 import type { MealReviewIngredient } from "@/components/command-center/types";
 import { color as t, font } from "@/lib/tokens";
+import { isReviewLocked } from "./saving-ui";
 
 export function MealReviewState({
   onAddIngredient,
@@ -18,6 +19,7 @@ export function MealReviewState({
 }) {
   const { snapshot, dispatch } = useCommandCenterOverlay();
   const insets = useSafeAreaInsets();
+  const locked = isReviewLocked(snapshot);
   const reviewDraft = snapshot.review?.kind === "meal" ? snapshot.review : null;
   if (!reviewDraft) return null;
 
@@ -29,13 +31,14 @@ export function MealReviewState({
 
   return (
     <BottomSheetScrollView
-      contentContainerStyle={[styles.mealReviewContent, { paddingBottom: insets.bottom + 96 }]}
+      contentContainerStyle={[styles.mealReviewContent, { paddingBottom: insets.bottom + 16 }]}
+      enableFooterMarginAdjustment
       showsVerticalScrollIndicator={false}
       keyboardDismissMode="on-drag"
     >
       <View style={styles.mealReviewYouSaidRow}>
         <Text style={styles.mealReviewYouSaidLabel}>YOU SAID</Text>
-        <Pressable onPress={() => dispatch({ type: "review.transcript.edit" })} testID="cc-review-edit-transcript">
+        <Pressable disabled={locked} accessibilityState={{ disabled: locked }} style={styles.editTouch} onPress={() => { if (!locked) dispatch({ type: "review.transcript.edit" }); }} testID="cc-review-edit-transcript">
           <Text style={styles.mealReviewEditLink}>EDIT</Text>
         </Pressable>
       </View>
@@ -87,7 +90,7 @@ export function MealReviewState({
 
         <View style={styles.mealReviewIngredientsHeader}>
           <Text style={styles.mealReviewIngredientsTitle}>INGREDIENTS</Text>
-          <Pressable onPress={() => { haptic.tap(); onAddIngredient(); }} testID="cc-review-add-ingredient">
+          <Pressable disabled={locked} accessibilityState={{ disabled: locked }} style={styles.editTouch} onPress={() => { if (!locked) { haptic.tap(); onAddIngredient(); } }} testID="cc-review-add-ingredient">
             <Text style={styles.mealReviewAddLink}>+ ADD</Text>
           </Pressable>
         </View>
@@ -95,8 +98,10 @@ export function MealReviewState({
         {reviewDraft.ingredients.map((ingredient, index) => (
           <Pressable
             key={ingredient.id}
-            onPress={() => onEditIngredient(ingredient)}
-            onLongPress={() => onLongPressIngredient(ingredient)}
+            disabled={locked}
+            accessibilityState={{ disabled: locked }}
+            onPress={() => { if (!locked) onEditIngredient(ingredient); }}
+            onLongPress={() => { if (!locked) onLongPressIngredient(ingredient); }}
             delayLongPress={400}
             style={[
               styles.mealReviewIngredientRow,
@@ -121,6 +126,7 @@ export function MealReviewState({
 }
 
 const styles = StyleSheet.create({
+  editTouch: { minHeight: 44, minWidth: 44, alignItems: "flex-end", justifyContent: "center" },
   mealReviewContent: { paddingHorizontal: 22, paddingBottom: 8 },
   mealReviewYouSaidRow: {
     flexDirection: "row",
@@ -266,6 +272,7 @@ const styles = StyleSheet.create({
     color: t.accent,
   },
   mealReviewIngredientRow: {
+    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
     paddingVertical: 10,

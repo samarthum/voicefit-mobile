@@ -5,10 +5,12 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useCommandCenterOverlay } from "@/components/command-center/CommandCenterProvider";
 import { confidenceLabel } from "@/components/command-center/helpers";
 import { color as t, font } from "@/lib/tokens";
+import { isReviewLocked } from "./saving-ui";
 
 export function WorkoutReviewState() {
   const { snapshot, dispatch } = useCommandCenterOverlay();
   const insets = useSafeAreaInsets();
+  const locked = isReviewLocked(snapshot);
   const reviewDraft = snapshot.review?.kind === "workout" ? snapshot.review : null;
   if (!reviewDraft) return null;
 
@@ -20,13 +22,14 @@ export function WorkoutReviewState() {
 
   return (
     <BottomSheetScrollView
-      contentContainerStyle={[styles.mealReviewContent, { paddingBottom: insets.bottom + 96 }]}
+      contentContainerStyle={[styles.mealReviewContent, { paddingBottom: insets.bottom + 16 }]}
+      enableFooterMarginAdjustment
       showsVerticalScrollIndicator={false}
       keyboardDismissMode="on-drag"
     >
       <View style={styles.mealReviewYouSaidRow}>
         <Text style={styles.mealReviewYouSaidLabel}>YOU SAID</Text>
-        <Pressable onPress={() => dispatch({ type: "review.transcript.edit" })} testID="cc-review-edit-transcript">
+        <Pressable disabled={locked} accessibilityState={{ disabled: locked }} style={{ minWidth: 44, minHeight: 44, alignItems: "flex-end", justifyContent: "center" }} onPress={() => { if (!locked) dispatch({ type: "review.transcript.edit" }); }} testID="cc-review-edit-transcript">
           <Text style={styles.mealReviewEditLink}>EDIT</Text>
         </Pressable>
       </View>
@@ -66,6 +69,7 @@ export function WorkoutReviewState() {
             </Text>
             <BottomSheetTextInput
               style={[styles.workoutSetCellInput, styles.workoutSetColKg]}
+              editable={!locked}
               value={set.weightKg}
               onChangeText={(v) =>
                 dispatch({ type: "workout-set.update", index, patch: { weightKg: v.replace(/[^0-9.]/g, "") } })
@@ -78,6 +82,7 @@ export function WorkoutReviewState() {
             />
             <BottomSheetTextInput
               style={[styles.workoutSetCellInput, styles.workoutSetColReps]}
+              editable={!locked}
               value={set.reps}
               onChangeText={(v) =>
                 dispatch({ type: "workout-set.update", index, patch: { reps: v.replace(/[^0-9]/g, "") } })
@@ -90,6 +95,7 @@ export function WorkoutReviewState() {
             />
             <BottomSheetTextInput
               style={[styles.workoutSetCellNotesInput, styles.workoutSetColNotes]}
+              editable={!locked}
               value={set.notes}
               onChangeText={(v) => dispatch({ type: "workout-set.update", index, patch: { notes: v } })}
               placeholder="—"
@@ -103,6 +109,8 @@ export function WorkoutReviewState() {
         <Pressable
         accessibilityRole="button"
           style={styles.workoutAddSetButton}
+          disabled={locked}
+          accessibilityState={{ disabled: locked }}
           onPress={() => dispatch({ type: "workout-set.add" })}
           testID="cc-review-add-set"
         >

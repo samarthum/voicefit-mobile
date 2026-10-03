@@ -1,18 +1,5 @@
-const {test}=require('node:test');
-const assert=require('node:assert/strict');
-const {renderOverlay,textOf}=require('./saving-ui-harness.cjs');
-test('saving copy uses the review kind, keeps unknown entries generic, and knows quick-add is a meal',async()=>{
-  const s=await renderOverlay();
-  try{
-    for(const [state,review,kind] of [
-      ['cc_saving',{kind:'meal'},'meal'],['cc_saving',{kind:'workout'},'workout'],
-      ['cc_auto_saving',{kind:'workout'},'workout'],['cc_auto_saving',null,'entry'],
-      ['cc_saving',null,'entry'],['cc_quick_add_saving',null,'meal'],
-      ['cc_quick_add_saving',{kind:'workout'},'meal'],
-    ]){
-      await s.update({state,review});
-      assert.match(textOf(s.r),new RegExp(`Saving your ${kind}…`),`${state} ${JSON.stringify(review)}`);
-    }
-    assert.deepEqual(s.dispatches,[]);
-  }finally{await s.close()}
+const {test}=require('node:test'),assert=require('node:assert/strict');
+const {harness,meal,workout,byId,textOf,act}=require('./inline-save-harness.cjs');
+test('saving action is generic while completed meal/workout feedback is kind-specific',async()=>{
+ for(const [draft,label] of [[meal(),'Meal added'],[workout(),'Sets added']]){const h=await harness();try{await h.seed(draft);h.defer();await h.start(byId(h.r,'cc-review-save').props.onPress);assert.match(textOf(h.r),/Saving…/);await h.release({id:'ack'});await h.dismiss();assert.equal(byId(h.r,'cc-saved-toast').findByType('Text').props.children,label)}finally{await h.close()}}
 });
