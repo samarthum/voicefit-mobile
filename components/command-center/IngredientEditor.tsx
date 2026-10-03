@@ -4,11 +4,10 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
-import { BottomSheetView } from "@gorhom/bottom-sheet";
-import { BottomSheetTextInput } from "@/components/command-center/SheetTextInput";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import type { MealIngredient } from "@voicefit/contracts/types";
 import { color as t, font } from "@/lib/tokens";
 import type { MealReviewIngredient } from "@/components/command-center/types";
@@ -31,13 +30,13 @@ interface IngredientEditorProps<T extends EditableIngredient> {
   /** Persists a fresh row to the parent draft (add mode only). */
   onSubmitAdd: (ingredient: MealIngredient) => void;
   onCancel: () => void;
+  /** Host-owned session guard: a mounted body may already be closing/replaced. */
+  isSessionActive?: () => boolean;
 }
 
 /**
- * Body of the ingredient add/edit sheet. Rendered as content inside a gorhom
- * `BottomSheetModal` by the overlay — so the sheet chrome (rounded top, grab
- * handle, backdrop, swipe-to-dismiss) and keyboard avoidance come from gorhom,
- * not a hand-rolled RN Modal. Dual-purpose:
+ * Scrollable form in the full-screen native ingredient editor. Plain RN inputs
+ * use the installed keyboard-controller's focused-input scrolling. Dual-purpose:
  *
  *  - Add: blank fields, calls the LLM to fetch macros for the entered name.
  *  - Edit: pre-fills name + grams. If only grams changed we scale locally
@@ -45,7 +44,7 @@ interface IngredientEditorProps<T extends EditableIngredient> {
  *    /api/interpret/ingredient.
  *
  * Stays open on error with an inline message + Retry. Closes only on success
- * or explicit Cancel / swipe-down.
+ * or explicit Cancel / native Back.
  */
 export function IngredientEditor<T extends EditableIngredient = MealReviewIngredient>({
   mode,
@@ -53,8 +52,9 @@ export function IngredientEditor<T extends EditableIngredient = MealReviewIngred
   onSubmitEdit,
   onSubmitAdd,
   onCancel,
+  isSessionActive = () => true,
 }: IngredientEditorProps<T>) {
-  const insets = useSafeAreaInsets();
+
   const [name, setName] = useState(mode.kind === "edit" ? mode.ingredient.name : "");
   const [gramsText, setGramsText] = useState(
     mode.kind === "edit" ? String(mode.ingredient.grams ?? "") : "",
@@ -62,8 +62,9 @@ export function IngredientEditor<T extends EditableIngredient = MealReviewIngred
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // The sheet can be swiped away mid-save; guard async setState so a dismiss
-  // during the network call doesn't update an unmounted component.
+  // Guard cancelled/unmounted lookups and consume a Save before React commits
+  // disabled state, so two callbacks in the same event cannot issue two lookups.
+  const submittingRef = useRef(false);
   const isMountedRef = useRef(true);
   useEffect(() => {
     isMountedRef.current = true;
@@ -96,7 +97,8 @@ export function IngredientEditor<T extends EditableIngredient = MealReviewIngred
     (mode.kind === "add" || isNameChanged || isGramsChanged);
 
   const handleSubmit = async () => {
-    if (!canSubmit) return;
+    if (!canSubmit || submittingRef.current || !isMountedRef.current || !isSessionActive()) return;
+    submittingRef.current = true;
     setErrorMessage(null);
 
     // Edit, grams-only: skip the network and apply local scaling. The parent
@@ -110,16 +112,19 @@ export function IngredientEditor<T extends EditableIngredient = MealReviewIngred
     try {
       const gramsArg = parsedGrams ?? undefined;
       const result = await fetchInterpreted(trimmedName, gramsArg);
-      if (!isMountedRef.current) return;
+      if (!isMountedRef.current || !isSessionActive()) return;
       if (mode.kind === "add") {
         onSubmitAdd(result);
       } else {
         onSubmitEdit(result);
       }
     } catch (error) {
-      if (isMountedRef.current) setErrorMessage(getErrorMessage(error));
+      if (isMountedRef.current && isSessionActive()) setErrorMessage(getErrorMessage(error));
     } finally {
-      if (isMountedRef.current) setIsSaving(false);
+      if (isMountedRef.current && isSessionActive()) {
+        submittingRef.current = false;
+        setIsSaving(false);
+      }
     }
   };
 
@@ -128,15 +133,20 @@ export function IngredientEditor<T extends EditableIngredient = MealReviewIngred
   const formatNutrition = (value: number | null) => value === null ? "Unknown" : String(Number(value.toFixed(3)));
 
   const submitLabel = mode.kind === "add" ? "Add ingredient" : "Save";
-  const title = mode.kind === "add" ? "Add ingredient" : "Edit ingredient";
+
 
   return (
-    <BottomSheetView style={[styles.sheet, { paddingBottom: insets.bottom + 22 }]}>
-      <Text style={styles.title}>{title}</Text>
+    <KeyboardAwareScrollView
+      testID="cc-ingredient-editor-scroll"
+      style={styles.scroll}
+      contentContainerStyle={styles.form}
+      keyboardShouldPersistTaps="handled"
+      bottomOffset={16}
+    >
 
       <View style={styles.fieldRow}>
         <Text style={styles.label}>NAME</Text>
-        <BottomSheetTextInput
+        <TextInput
           style={styles.input}
           value={name}
           onChangeText={setName}
@@ -147,12 +157,13 @@ export function IngredientEditor<T extends EditableIngredient = MealReviewIngred
           autoCorrect
           editable={!isSaving}
           testID="cc-ingredient-editor-name"
+          accessibilityLabel="Ingredient name"
         />
       </View>
 
       <View style={styles.fieldRow}>
         <Text style={styles.label}>GRAMS</Text>
-        <BottomSheetTextInput
+        <TextInput
           style={[styles.input, !gramsValid ? styles.inputError : null]}
           value={gramsText}
           onChangeText={setGramsText}
@@ -161,6 +172,7 @@ export function IngredientEditor<T extends EditableIngredient = MealReviewIngred
           keyboardType="decimal-pad"
           editable={!isSaving}
           testID="cc-ingredient-editor-grams"
+          accessibilityLabel="Grams"
         />
       </View>
 
@@ -178,7 +190,11 @@ export function IngredientEditor<T extends EditableIngredient = MealReviewIngred
       <View style={styles.actions}>
         <Pressable
           style={styles.cancelButton}
-          onPress={() => { isMountedRef.current = false; onCancel(); }}
+          onPress={() => {
+            if (!isMountedRef.current || !isSessionActive()) return;
+            isMountedRef.current = false;
+            onCancel();
+          }}
           accessibilityRole="button"
           accessibilityLabel="Cancel ingredient edit"
           testID="cc-ingredient-editor-cancel"
@@ -190,6 +206,7 @@ export function IngredientEditor<T extends EditableIngredient = MealReviewIngred
           onPress={() => void handleSubmit()}
           disabled={!canSubmit}
           testID="cc-ingredient-editor-submit"
+          accessibilityRole="button"
         >
           {isSaving ? (
             <ActivityIndicator color={t.accentInk} />
@@ -200,23 +217,17 @@ export function IngredientEditor<T extends EditableIngredient = MealReviewIngred
           )}
         </Pressable>
       </View>
-    </BottomSheetView>
+    </KeyboardAwareScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   previewText: { fontFamily: font.sans[400], fontSize: 13, color: t.textSoft, marginBottom: 12 },
-  sheet: {
+  scroll: { flex: 1 },
+  form: {
     paddingHorizontal: 22,
-    paddingTop: 4,
-  },
-  title: {
-    fontFamily: font.sans[600],
-    fontSize: 20,
-    fontWeight: "600",
-    color: t.text,
-    letterSpacing: -0.4,
-    marginBottom: 18,
+    paddingTop: 20,
+    paddingBottom: 22,
   },
   fieldRow: {
     marginBottom: 14,
@@ -231,6 +242,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   input: {
+    minHeight: 48,
     backgroundColor: t.surface,
     borderWidth: 1,
     borderColor: t.line,
@@ -259,7 +271,8 @@ const styles = StyleSheet.create({
   },
   cancelButton: {
     width: 110,
-    height: 52,
+    minHeight: 52,
+    paddingVertical: 14,
     backgroundColor: t.surface,
     borderWidth: 1,
     borderColor: t.line,
@@ -278,7 +291,8 @@ const styles = StyleSheet.create({
   },
   submitButton: {
     flex: 1,
-    height: 52,
+    minHeight: 52,
+    paddingVertical: 14,
     backgroundColor: t.accent,
     borderRadius: 14,
     borderCurve: "continuous",

@@ -14,9 +14,9 @@ const React = testRequire('react');
 const { create, act } = testRequire('react-test-renderer');
 global.IS_REACT_ACT_ENVIRONMENT = true;
 const root = path.resolve(__dirname, '../../..');
-const native = { StyleSheet: { create: x => x, absoluteFillObject: {} }, useWindowDimensions: () => ({height: 800}), Alert: { alert() {} } };
+const native = { StyleSheet: { create: x => x, absoluteFillObject: {} }, useWindowDimensions: () => ({height: 800}), Alert: { alert() {} }, Platform: { OS: 'ios', select: x=>x.ios??x.default }, Keyboard: { dismiss() {}, isVisible:()=>false } };
 for (const name of ['View','Text','Pressable','ScrollView','TextInput','ActivityIndicator','Modal']) native[name] = name;
-const sheet = { BottomSheetView: 'View', BottomSheetTextInput: 'TextInput', BottomSheetBackdrop: 'Backdrop' };
+const sheet = { BottomSheetView: 'View', BottomSheetScrollView: 'ScrollView', BottomSheetTextInput: 'TextInput', BottomSheetBackdrop: 'Backdrop' };
 let dismissCallback;
 sheet.BottomSheetModal = React.forwardRef((props, ref) => {
   React.useImperativeHandle(ref, () => ({ present() {}, dismiss() { dismissCallback = props.onDismiss; } }), [props.onDismiss]);
@@ -25,7 +25,11 @@ sheet.BottomSheetModal = React.forwardRef((props, ref) => {
 function loader(extra = {}) {
   const cache = new Map();
   const shims = { react: React, 'react/jsx-runtime': testRequire('react/jsx-runtime'), 'react-native': native,
-    '@gorhom/bottom-sheet': sheet, 'react-native-safe-area-context': { useSafeAreaInsets: () => ({top:0,bottom:0}) },
+    // This older screen-handler seam has no native animation runtime. Lifecycle
+    // behavior is tested separately against installed callbacks, not these stubs.
+    'react-native-reanimated': {runOnJS:f=>f,useAnimatedReaction(){},Easing:{exp:x=>x,out:f=>f}},
+    '@gorhom/bottom-sheet': sheet, 'react-native-safe-area-context': { useSafeAreaInsets: () => ({top:0,bottom:0}), SafeAreaProvider:'View', SafeAreaView:'View' },
+    'react-native-keyboard-controller': { KeyboardAwareScrollView:'ScrollView', KeyboardController:{isVisible:()=>false} },
     '@/components/command-center/SheetTextInput': { BottomSheetTextInput: 'TextInput' }, ...extra };
   function load(name, from = path.join(root, 'index.ts')) {
     if (name in shims) return shims[name];
@@ -39,6 +43,11 @@ function loader(extra = {}) {
     new Function('require','module','exports',code)(n=>load(n,file),module,module.exports);
     return module.exports;
   }
+  const constants=load(path.join(root,'node_modules/@gorhom/bottom-sheet/src/constants.ts'));
+  Object.assign(sheet,{ANIMATION_STATUS:constants.ANIMATION_STATUS,useBottomSheetInternal:()=>({
+    animatedPosition:{get:()=>0},animatedDetentsState:{get:()=>({closedDetentPosition:800})},
+    animatedAnimationState:{get:()=>({status:constants.ANIMATION_STATUS.STOPPED})},
+  })});
   return load;
 }
 const ingredient = (id='a', grams=100.25) => ({id,name:'Rice '+id,grams,calories:120.5,proteinG:2.5,carbsG:25.5,fatG:0.5});
@@ -94,13 +103,13 @@ test('cancel during a lookup suppresses the callback even before native sheet un
   assert.equal(cancelled,1);assert.equal(calls.length,0);
   await act(async()=>r.unmount());
 });
-test('late native dismiss from the previous session cannot close a reopened sheet',async()=>{
+test('late native requestClose from the previous session cannot close a reopened editor',async()=>{
   const {IngredientEditorSheet}=loader()('@/components/command-center/IngredientEditorSheet');
   let closed=0;
   const props={fetchInterpreted:async()=>ingredient(),onSubmitEdit(){},onSubmitAdd(){},onClose(){closed++;}};
   let r; await act(async()=>{r=create(React.createElement(IngredientEditorSheet,{...props,mode:{kind:'edit',ingredient:ingredient('a')}}));});
+  const oldDismiss=r.root.findByType('Modal').props.onRequestClose;
   await act(async()=>r.update(React.createElement(IngredientEditorSheet,{...props,mode:null})));
-  const oldDismiss=dismissCallback;
   await act(async()=>r.update(React.createElement(IngredientEditorSheet,{...props,mode:{kind:'edit',ingredient:ingredient('b')}})));
   await act(async()=>oldDismiss());
   assert.equal(closed,0);
