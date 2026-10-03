@@ -9,7 +9,7 @@ global.IS_REACT_ACT_ENVIRONMENT=true;
 const meal=()=>({kind:'meal',source:'text',transcript:'I ate rice',eatenAtLabel:'12:00',totalGrams:100,macros:{protein:2,carbs:25,fat:1},ingredients:[{id:'rice',name:'Rice',grams:100,calories:120,proteinG:2,carbsG:25,fatG:1}],interpreted:{intent:'meal',payload:{mealType:'lunch',description:'Rice',calories:120,proteinG:2,carbsG:25,fatG:1,ingredients:[{name:'Rice',grams:100,calories:120,proteinG:2,carbsG:25,fatG:1}]}}});
 const workout=()=>({kind:'workout',source:'text',transcript:'Bench press 80kg for 8 reps',confidence:0.9,exerciseTypeLabel:'Resistance',sessionLabel:'Quick session',sets:[{id:'set-1',setNumber:1,weightKg:'80',reps:'8',notes:''}],interpreted:{intent:'workout_set',payload:{exerciseName:'Bench Press',exerciseType:'resistance',weightKg:80,reps:8,durationMinutes:null,notes:null}}});
 const deferred=()=>{let resolve,reject;const promise=new Promise((r,j)=>{resolve=r;reject=j});return {promise,resolve,reject}};
-async function harness(){
+async function harness({mediaEvents=[]}={}){
  let api,ports,controller,modal,uuid=0,response=null,refreshFails=false,dashboardData,queryConfig,Dashboard;
  const requests=[],events=[],receipts=new Map(),pushes=[],cache=new Map();
  const token=async()=> 'fixture-token',router={push:p=>pushes.push(p)};
@@ -28,7 +28,7 @@ async function harness(){
  '@/components/command-center/states/InterpretingState':{InterpretingState:()=>null},
  'expo-router':{useRouter:()=>router,useFocusEffect(){}},
  'expo-audio':{useAudioRecorder:()=>({prepareToRecordAsync:async()=>{},record(){},stop:async()=>{},uri:'file:///voice.m4a'}),requestRecordingPermissionsAsync:async()=>({granted:true}),setAudioModeAsync:async()=>{},RecordingPresets:{HIGH_QUALITY:{}}},
- 'expo-image-picker':{requestMediaLibraryPermissionsAsync:async()=>({granted:true}),launchImageLibraryAsync:async()=>({canceled:false,assets:[{uri:'file:///photo.png',fileName:'photo.png',mimeType:'image/png',width:1200,height:900}]})},
+ 'expo-image-picker':{requestCameraPermissionsAsync:async()=>{mediaEvents.push('camera-permission');return {granted:true}},requestMediaLibraryPermissionsAsync:async()=>{mediaEvents.push('library-permission');return {granted:true}},launchCameraAsync:async()=>{mediaEvents.push('camera-picker');return {canceled:false,assets:[{uri:'file:///camera.png',fileName:'camera.png',mimeType:'image/png',width:1200,height:900}]}},launchImageLibraryAsync:async()=>{mediaEvents.push('library-picker');return {canceled:false,assets:[{uri:'file:///photo.png',fileName:'photo.png',mimeType:'image/png',width:1200,height:900}]}}},
  'expo-crypto':{randomUUID:()=>`00000000-0000-4000-8000-${String(++uuid).padStart(12,'0')}`},
  '@clerk/clerk-expo':{useAuth:()=>({getToken:token,isSignedIn:true})},
  '@tanstack/react-query':{useQuery:config=>{if(config.queryKey[0]==='dashboard'){queryConfig=config;return {data:cache.get(JSON.stringify(config.queryKey))??dashboardData,refetch:async()=>{},error:null}}return {data:[]}},useIsRestoring:()=>false,useQueryClient:()=>queryClient},
@@ -46,9 +46,9 @@ async function harness(){
  const actual=load('@/components/command-center/controller');shims['@/components/command-center/controller']={...actual,createCommandCenterController:(p,s)=>{const refresh=p.cache.refreshAfterSave;p.cache.refreshAfterSave=async()=>{if(refreshFails)throw Error('cache unavailable');return refresh()};ports=p;controller=actual.createCommandCenterController(p,s);return controller}};
  shims['@/components/dashboard']={MealStatusBadge:load('@/components/dashboard/MealStatusBadge').MealStatusBadge,CalorieRing:'CalorieRing',WeightSparkline:'WeightSparkline',StepsTrendIcon:'StepsTrendIcon',CoachBadge:'CoachBadge',MacroBar:'MacroBar',DayPicker:'DayPicker'};
  const provider=load('@/components/command-center/CommandCenterProvider'),Overlay=load('@/components/command-center/CommandCenterOverlay').CommandCenterOverlay,Bar=load('@/components/FloatingCommandBar').FloatingCommandBar;
- function Probe(){api=provider.useCommandCenterOverlay();return null}
+ let publicApi;function Probe(){api=provider.useCommandCenterOverlay();publicApi=provider.useCommandCenter();return null}
  let r;await act(async()=>{r=create(React.createElement(provider.CommandCenterProvider,null,React.createElement(Probe),React.createElement(Overlay),React.createElement(Bar,{hint:'Log an entry',onPress(){},overTabBar:true})))});
- return {r,load,requests,events,pushes,cache,receipts,snapshot:()=>api.snapshot,controller:()=>controller,modal:()=>modal,
+ return {r,load,requests,events,pushes,cache,receipts,snapshot:()=>api.snapshot,controller:()=>controller,modal:()=>modal,publicApi:()=>publicApi,
  seed:async(draft)=>act(async()=>{ports.state.setReviewDraft(draft);ports.state.setCommandState(draft.kind==='meal'?'cc_review_meal':'cc_review_workout')}),
  setState:async s=>act(async()=>ports.state.setCommandState(s)),dispatch:async e=>act(async()=>api.dispatch(e)),
  start:async fn=>{let pending;await act(async()=>{pending=fn()});return {pending}},

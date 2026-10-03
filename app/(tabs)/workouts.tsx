@@ -1,7 +1,7 @@
+import { useAppPrompt } from "@/components/AppPrompt";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Pressable,
   RefreshControl,
@@ -130,7 +130,8 @@ function formatSessionSubtitle(value: string) {
 export default function WorkoutsScreen() {
   const router = useRouter();
   const cc = useCommandCenter();
-  const { getToken, isSignedIn } = useAuth();
+  const { getToken, isSignedIn, userId } = useAuth();
+  const prompt = useAppPrompt([userId]);
   const queryClient = useQueryClient();
   const isWebPreview = isWebPreviewMode();
   const [refreshing, setRefreshing] = useState(false);
@@ -187,7 +188,7 @@ export default function WorkoutsScreen() {
       void queryClient.invalidateQueries({ queryKey: ["workout-sessions"] });
     },
     onError: (error) => {
-      Alert.alert(
+      prompt.alert(
         "Couldn’t create session",
         error instanceof Error ? error.message : "Please try again."
       );
@@ -290,6 +291,7 @@ export default function WorkoutsScreen() {
 
   return (
     <SafeAreaView style={styles.root} edges={["top"]}>
+      {prompt.dialog}
       <FlatList
         data={sessionCards}
         keyExtractor={(item) => item.id}

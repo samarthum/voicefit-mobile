@@ -46,7 +46,7 @@ async function screen(sets = [makeSet('one'), makeSet('two')], platform = 'web')
     return {isPending,mutateAsync,mutate:vars=>{void mutateAsync(vars).catch(()=>{});}};
   };
   const native={Platform:{OS:platform},StyleSheet:{create:x=>x,absoluteFill:{}},Keyboard:{dismiss(){}},Alert:{alert:(...args)=>alerts.push(args)}};
-  for(const name of ['View','Text','Pressable','TextInput','ActivityIndicator','Modal'])native[name]=name;
+  for(const name of ['View','Text','Pressable','TextInput','ActivityIndicator','Modal','ScrollView'])native[name]=name;
   const load=loader({
     'expo-crypto':{randomUUID:require('node:crypto').randomUUID},'react-native':native,'react-native-keyboard-controller':{KeyboardAvoidingView:'View',KeyboardAwareScrollView:'ScrollView'},
     'expo-router':{Redirect:'Redirect',Stack:{Screen:'Screen'},useLocalSearchParams:()=>({id:routeId}),useRouter:()=>({setParams(){},push(){},back(){}})},
@@ -64,7 +64,7 @@ async function screen(sets = [makeSet('one'), makeSet('two')], platform = 'web')
   let r;await act(async()=>{r=create(React.createElement(Component));});
   const card=()=>r.root.findByType('ExerciseCard');
   const finish=()=>r.root.findByType('Screen').props.options.headerRight().props.children.find(e=>e?.props.accessibilityLabel==='Finish workout').props.onPress();
-  return {r,requests,alerts,card,data:()=>data,response:fn=>response=fn,
+  return {r,requests,alerts,prompt:()=>require('./workout-prompt-fixture.cjs').prompt(r),card,data:()=>data,response:fn=>response=fn,
     switchRoute:async id=>act(async()=>{routeId=id;notify();}),
     button:text=>r.root.findAllByType('Pressable').find(b=>b.props.accessibilityLabel===text),
     modal:()=>r.root.findAllByType('Modal').find(m=>m.props.accessibilityLabel==='Unsaved set changes'),
@@ -73,15 +73,15 @@ async function screen(sets = [makeSet('one'), makeSet('two')], platform = 'web')
     choose:async text=>{const button=r.root.findAllByType('Pressable').find(b=>b.props.accessibilityLabel===text);assert.ok(button,`missing ${text}`);await act(async()=>{await button.props.onPress();});},
     close:async()=>act(async()=>r.unmount())};
 }
-test('iOS and Android retain the original native Alert text, styles and choice ordering',async()=>{
+test('iOS and Android branded prompt preserves original text, destructive styling and choice ordering',async()=>{
   for(const platform of ['ios','android']){
     const s=await screen(undefined,platform);try{
       await s.edit('one',{weightKg:'85'});await s.finish();
-      assert.equal(s.modal(),undefined);
-      assert.equal(s.alerts.length,1);
-      assert.equal(s.alerts[0][0],'Unsaved set changes');
-      assert.equal(s.alerts[0][1],'Save your typed changes before finishing, or explicitly discard them. Cancel keeps this workout open.');
-      assert.deepEqual(s.alerts[0][2].map(({text,style})=>({text,style})),[
+      assert.ok(s.modal());
+      assert.equal(s.alerts.length,0);
+      assert.equal(s.prompt()[0],'Unsaved set changes');
+      assert.equal(s.prompt()[1],'Save your typed changes before finishing, or explicitly discard them. Cancel keeps this workout open.');
+      assert.deepEqual(s.prompt()[2].map(({text,style})=>({text,style})),[
         {text:'Cancel',style:'cancel'},
         {text:'Discard & Finish',style:'destructive'},
         {text:'Save & Finish',style:undefined},
@@ -100,7 +100,7 @@ test('web dirty Finish displays an accessible explicit choice; Cancel does not w
     for(const label of ['Cancel','Discard & Finish','Save & Finish']) assert.ok(s.button(label));
     assert.equal(s.requests.length,0,'opening choice must not execute a callback');
     await s.choose('Cancel');
-    assert.equal(s.modal(),undefined);
+    assert.equal(Boolean(s.modal()),false);
     assert.equal(s.requests.length,0);
     assert.equal(s.card().props.drafts.one.weightKg,'85');
   }finally{await s.close();}
@@ -111,12 +111,12 @@ test('web request-close and backdrop dismiss preserve input and invalidate saved
     await s.edit('one',{weightKg:'85'});await s.finish();
     const stale=s.button('Save & Finish').props.onPress;
     await act(async()=>s.modal().props.onRequestClose());
-    assert.equal(s.modal(),undefined);
+    assert.equal(Boolean(s.modal()),false);
     await s.finish();
     await act(async()=>stale());
     assert.ok(s.modal(),'stale callback must not consume a later prompt');
     assert.equal(s.requests.length,0);
-    await s.choose('Dismiss finish dialog');
+    await s.choose('Dismiss dialog');
     await act(async()=>stale());
     assert.equal(s.requests.length,0);
     assert.equal(s.card().props.drafts.one.weightKg,'85');

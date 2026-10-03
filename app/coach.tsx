@@ -1,7 +1,8 @@
 import { useScreenTiming } from "@/hooks/use-screen-timing";
 import { getCoachSession } from "@/lib/coach-session";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Alert, Modal, StyleSheet, View } from "react-native";
+import { Modal, StyleSheet, View } from "react-native";
+import { useAppPrompt } from "@/components/AppPrompt";
 import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
 import Reanimated, { useAnimatedStyle } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -76,6 +77,7 @@ export default function CoachScreen() {
   })), [queryClient, userId, getToken]);
   const chat = useChat<CoachUIMessage>({ chat: session.chat });
   const [historyReady, setHistoryReady] = useState(session.hydrated);
+  const prompt = useAppPrompt([userId, chat.status, historyReady]);
   // ---- Initial messages from server ----
   const {
     data: serverMessages,
@@ -155,10 +157,10 @@ export default function CoachScreen() {
   const handleClear = useCallback(() => {
     if (!historyReady || clearMutation.isPending) return;
     if (chat.status === "streaming" || chat.status === "submitted") {
-      Alert.alert("Coach is replying", "Wait for the reply to finish before clearing the conversation.");
+      prompt.alert("Coach is replying", "Wait for the reply to finish before clearing the conversation.");
       return;
     }
-    Alert.alert(
+    prompt.alert(
       "Clear conversation",
       "This will delete the chat history. Your coach profile and saved facts are kept.",
       [
@@ -166,11 +168,11 @@ export default function CoachScreen() {
         {
           text: "Clear",
           style: "destructive",
-          onPress: () => clearMutation.mutate(),
+          onPress: () => clearMutation.mutateAsync(),
         },
       ]
     );
-  }, [clearMutation, historyReady, chat.status]);
+  }, [clearMutation, historyReady, chat.status, prompt.alert]);
 
   return (
     // Coach keeps its rich custom header (CoachHeader: sparkle orb + menu dropdown),
@@ -178,6 +180,7 @@ export default function CoachScreen() {
     // (global default) and SafeAreaView covers the top inset. (NUI-5 / NUI-10)
     <AssistantRuntimeProvider runtime={runtime}>
       <SafeAreaView style={styles.root} edges={["top"]}>
+        {prompt.dialog}
         <Reanimated.View style={[styles.flex, keyboardLift]}>
           <CoachHeader
             showMenu={showMenu}

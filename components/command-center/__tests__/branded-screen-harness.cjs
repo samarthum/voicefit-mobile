@@ -1,0 +1,43 @@
+// Real app-owned callers; local UI/auth/HTTP/cache boundaries, no live writes.
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict'),{createRequire}=require('node:module');
+const root=path.resolve(__dirname,'../../..'),app=createRequire(path.join(root,'package.json')),deps=createRequire(path.join(process.env.MEAL_UI_TEST_DEPS,'package.json'));
+const React=deps('react'),{create,act}=deps('react-test-renderer'),ts=app('typescript');global.IS_REACT_ACT_ENVIRONMENT=true;
+const row=id=>({id,userId:'fixture-user',description:'Rice lunch '+id,eatenAt:new Date().toISOString(),updatedAt:'2026-10-03T12:00:00Z',mealType:'lunch',interpretationStatus:'reviewed',calories:240,proteinG:4,carbsG:50,fatG:2,totalGrams:200,ingredients:[{id:'rice',name:'Rice',grams:200,calories:240,proteinG:4,carbsG:50,fatG:2,position:0}]});
+async function screen(caller='meals',platform='android'){
+ let id='meal-one',userId='fixture-user',status='ready',response=async()=>({deleted:true}),signout=async()=>{};const requests=[],alerts=[],events=[],mutationOptions=[];let r;const voice={permission:true,startError:false,transcribeError:false};
+ const token=async()=> 'fixture-token',qc={invalidateQueries:async()=>{},setQueryData(){},getQueryData(){},removeQueries(){},clear(){}};
+ const native={Platform:{OS:platform,select:x=>x[platform]??x.default},StyleSheet:{create:x=>x,absoluteFillObject:{}},Keyboard:{dismiss(){},addListener:()=>({remove(){}})},Alert:{alert:(...args)=>alerts.push(args)}};
+ for(const n of ['View','Text','Pressable','ScrollView','TextInput','ActivityIndicator','Modal','InputAccessoryView','FlatList','RefreshControl'])native[n]=n;
+ native.FlatList=props=>React.createElement('View',null,typeof props.ListHeaderComponent==='function'?React.createElement(props.ListHeaderComponent):props.ListHeaderComponent,props.ListFooterComponent);
+ const useMutation=opts=>{mutationOptions.push(opts);const [isPending,setPending]=React.useState(false),[error,setError]=React.useState(null);return {isPending,error,mutateAsync:async vars=>{setPending(true);try{const result=await opts.mutationFn(vars);await opts.onSuccess?.(result,vars);return result}catch(e){setError(e);await opts.onError?.(e,vars);throw e}finally{setPending(false)}},mutate:vars=>{throw Error('test expected awaitable mutation')}}};
+ const chat={messages:[],setMessages:()=>events.push('setMessages'),regenerate(){}};
+ const shims={react:React,'react/jsx-runtime':deps('react/jsx-runtime'),'react-native':native,
+ 'expo-router':{Stack:{Screen:'Screen'},router:{push(){},replace(){}},useRouter:()=>({back:()=>events.push('back'),push(){},canGoBack:()=>true,replace(){}}),useLocalSearchParams:()=>({id})},
+ '@clerk/clerk-expo':{useAuth:()=>({getToken:token,userId,isSignedIn:true,signOut:async()=>{events.push('signOut');await signout()}}),useSSO:()=>({startSSOFlow:async()=>{events.push('SSO');return {}}}),useUser:()=>({user:{fullName:'Test User',primaryEmailAddress:{emailAddress:'fixture@example.invalid'}}})},
+ '@tanstack/react-query':{useQueryClient:()=>qc,useMutation,useInfiniteQuery:()=>({data:{pages:[{meals:[{...row('meal-one'),interpretationStatus:'failed',calories:null},{...row('meal-two'),interpretationStatus:'failed',calories:null}],total:2,sessions:[]}]},isLoading:false,isError:false}),useQuery:opts=>({data:opts.queryKey[0]==='meal'?row(id):opts.queryKey[0]==='user-settings'?{calorieGoal:2000,stepGoal:10000,proteinGoal:140,weightGoalKg:null}:undefined,isLoading:false,isError:false,isFetchedAfterMount:true})},
+ 'react-native-safe-area-context':{useSafeAreaInsets:()=>({top:24,bottom:34}),SafeAreaView:'View'},'react-native-gesture-handler':{GestureHandlerRootView:'View'},
+ '@gorhom/bottom-sheet':{BottomSheetModalProvider:({children})=>children},'react-native-keyboard-controller':{useReanimatedKeyboardAnimation:()=>({height:{value:0},progress:{value:0}})},
+ 'react-native-reanimated':{__esModule:true,default:{View:'View'},useAnimatedStyle:()=>({}),interpolate:()=>10},
+ 'expo-audio':{useAudioRecorder:()=>({uri:'file:///fixture.m4a',prepareToRecordAsync:async()=>{if(voice.startError)throw Error('Fixture recorder unavailable')},record(){},stop:async()=>{}}),RecordingPresets:{HIGH_QUALITY:{}},requestRecordingPermissionsAsync:async()=>{events.push('microphonePermission');return {granted:voice.permission}},setAudioModeAsync:async()=>{}},
+ 'expo-crypto':{randomUUID:require('node:crypto').randomUUID},'expo/fetch':{fetch:()=>{throw Error('no external fetch')}},
+ '@/lib/timed-chat-transport':{TimedCoachTransport:class{}},'@ai-sdk/react':{Chat:class{},useChat:()=>({...chat,status})},
+ '@/lib/coach-session':{getCoachSession:()=>({chat:{},hydrated:true})},'@assistant-ui/react-native':{AssistantRuntimeProvider:({children})=>children,ComposerPrimitive:{Root:'View',Send:'View'},AuiIf:()=>null,useAui:()=>({composer:()=>({setText(){}})}),useAuiState:fn=>fn({composer:{text:'',canSend:false}}),useAuiEvent(){}},'@assistant-ui/react-ai-sdk':{useAISDKRuntime:()=>({})},
+ 'react-native-svg':{__esModule:true,default:'Svg',Path:'Path',Rect:'Rect'},'@/components/pulse':{Wordmark:'Wordmark'},
+ '@/components/CoachProfileForm':{CoachProfileForm:'Profile'},'@/components/coach':{CoachHeader:'CoachHeader',CoachComposer:'Composer',CoachMessageList:'Messages',ErrorBubble:'Error'},
+ '@/hooks/use-coach-profile':{useCoachProfile:()=>({profile:null,showProfileModal:false})},
+ '@/hooks/use-health-steps':{useHealthAccess:()=>({access:'prompt',sourceName:'Health Connect',connect:async()=>false})},'@/lib/health/steps':{openHealthSettings:async()=>events.push('healthSettings')},
+ '@/lib/query-client':{clearPersistedUserCache:async()=>events.push('clearCache')},'@/components/Icon':{Icon:'Icon'},
+ '@/components/FloatingCommandBar':{FloatingCommandBar:'Bar'},'@/components/command-center':{useCommandCenter:()=>({launcherProps:{}}),toLocalDateString:d=>[d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-')},
+ '@/components/command-center/IngredientEditorSheet':{IngredientEditorSheet:'Editor'},
+ '@/hooks/use-screen-timing':{useScreenTiming(){}},'@/lib/web-preview-mode':{isWebPreviewMode:()=>false},'@/lib/haptics':{haptic:{press(){},warning(){},tap(){},success(){}}},
+ '@/lib/api-client':{apiFormRequest:async()=>{events.push('transcribe');if(voice.transcribeError)throw Error('Fixture transcription failed');return {transcript:'Fixture voice'}},apiRequest:async(url,opts)=>{requests.push({url,...opts});return response(url,opts)}},
+ };
+ const cache=new Map();function load(name,from=path.join(root,'index.ts')){if(name in shims)return shims[name];if(!name.startsWith('@/')&&!name.startsWith('.')&&!path.isAbsolute(name))return app(name);const base=name.startsWith('@/')?path.join(root,name.slice(2)):path.resolve(path.dirname(from),name),file=[base,base+'.ts',base+'.tsx',path.join(base,'index.ts'),path.join(base,'index.tsx')].find(f=>fs.existsSync(f)&&fs.statSync(f).isFile());assert.ok(file,name);if(cache.has(file))return cache.get(file).exports;const m={exports:{}};cache.set(file,m);new Function('require','module','exports',ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{jsx:ts.JsxEmit.ReactJSX,module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,esModuleInterop:true}}).outputText)(n=>load(n,file),m,m.exports);return m.exports}
+ const Component=caller==='voice'?load('@/components/coach/coach-composer').CoachComposer:load('@/app/'+({meals:'meals',saved:'meal-edit/[id]',coach:'coach',settings:'(tabs)/settings',workouts:'(tabs)/workouts',signin:'sign-in'}[caller])).default;
+ await act(async()=>{r=create(React.createElement(Component))});
+ const byId=id=>r.root.findAll(n=>typeof n.type==='string'&&n.props.testID===id)[0];
+ const button=label=>{const items=r.root.findAllByType('Pressable').filter(n=>n.props.accessibilityLabel===label||n.findAllByType('Text').some(t=>t.props.children===label));return items.find(n=>n.props.testID?.startsWith('app-prompt-action'))??items[0]};
+ return {r,requests,alerts,events,mutationOptions,voice:patch=>Object.assign(voice,patch),load,byId,button,press:async label=>act(async()=>{const b=button(label);assert.ok(b,'button '+label);await b.props.onPress()}),response:fn=>response=fn,signout:fn=>signout=fn,
+ update:async patch=>act(async()=>{id=patch.id??id;userId=patch.userId??userId;status=patch.status??status;r.update(React.createElement(Component))}),close:async()=>act(async()=>r.unmount())};
+}
+module.exports={screen,React,act};

@@ -2,7 +2,7 @@ import { useScreenTiming } from "@/hooks/use-screen-timing";
 import { useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
+
   Pressable,
   ScrollView,
   StyleSheet,
@@ -26,6 +26,7 @@ import {
 import { color as token, font, radius as r } from "@/lib/tokens";
 import { haptic } from "@/lib/haptics";
 import { Icon } from "@/components/Icon";
+import { useAppPrompt } from "@/components/AppPrompt";
 
 type MealType = "breakfast" | "lunch" | "dinner" | "snack";
 
@@ -210,6 +211,7 @@ export default function MealsScreen() {
   });
 
   const allMeals = isWebPreview ? SAMPLE_MEALS : mealsQuery.data?.pages.flatMap((page) => page.meals) ?? [];
+  const prompt = useAppPrompt([selectedDate, isSignedIn, allMeals.map(meal => meal.id).join("\n")]);
 
   useScreenTiming("meals", !!mealsQuery.data, mealsQuery.isError);
 
@@ -227,12 +229,6 @@ export default function MealsScreen() {
         queryClient.invalidateQueries({ queryKey: ["meals"] }),
         queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
       ]);
-    },
-    onError: (error) => {
-      Alert.alert(
-        "Could not delete meal",
-        error instanceof Error ? error.message : "Please try again.",
-      );
     },
   });
 
@@ -265,14 +261,15 @@ export default function MealsScreen() {
   const handleDeleteMeal = (mealId: string) => {
     if (isWebPreview || deleteMutation.isPending) return;
     haptic.warning();
-    Alert.alert("Delete meal", "This will permanently delete the meal.", [
+    prompt.alert("Delete meal?", "It will be removed from your log.", [
       { text: "Cancel", style: "cancel" },
-      { text: "Delete", style: "destructive", onPress: () => deleteMutation.mutate(mealId) },
+      { text: "Delete meal", style: "destructive", onPress: () => deleteMutation.mutateAsync(mealId) },
     ]);
   };
 
   return (
     <View style={styles.root}>
+      {prompt.dialog}
       <Stack.Screen options={{ headerShown: true, title: "Meals" }} />
       <ScrollView
         style={styles.scroll}
