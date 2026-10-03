@@ -1,24 +1,27 @@
 import { test, expect } from "bun:test";
 import { saveMealEdits } from "../api/meal-edit";
 
-test("type-only legacy meal edit preserves nutrition; explicit ingredient removal is saved", async () => {
+test("type-only edit omits composition; explicit removal saves atomically and returns authoritative meal", async () => {
   const original = globalThis.fetch;
   const calls: Array<{ url: string; body: unknown }> = [];
   let calories = 450;
   globalThis.fetch = (async (url: unknown, options: RequestInit) => {
     const body = JSON.parse(options.body as string);
     calls.push({ url: String(url), body });
-    if (String(url).endsWith("/ingredients")) calories = 0;
-    return Response.json({ success: true, data: {} });
+    if (Object.hasOwn(body, "ingredients")) calories = 0;
+    return Response.json({ success: true, data: { id: "legacy", calories } });
   }) as typeof fetch;
   try {
     await saveMealEdits("legacy", "test", { mealType: "dinner" });
     expect(calories).toBe(450);
     expect(calls.length).toBe(1);
     expect(calls[0].body).toEqual({ interpretationStatus: "reviewed", mealType: "dinner" });
-    await saveMealEdits("legacy", "test", { ingredients: [] });
+    const saved = await saveMealEdits("legacy", "test", { ingredients: [], mealType: "lunch" });
     expect(calories).toBe(0);
-    expect(calls[1].url.endsWith("/ingredients")).toBe(true);
+    expect(calls).toHaveLength(2);
+    expect(calls[1].url.endsWith("/api/meals/legacy")).toBe(true);
+    expect(calls[1].body).toEqual({ ingredients: [], mealType: "lunch", interpretationStatus: "reviewed" });
+    expect(saved).toEqual({ id: "legacy", calories: 0 });
   } finally { globalThis.fetch = original; }
 });
 

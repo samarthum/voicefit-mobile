@@ -679,6 +679,60 @@ describe("CommandCenterController voice/photo boundary", () => {
 });
 
 describe("CommandCenterController review and retry boundary", () => {
+  test("workout direct-save entry cannot bypass identity safeguards or silently drop repeated sets", async () => {
+    const unsafe = createHarness({ text: 'bench press 8 reps and squats 8 reps' });
+    await unsafe.controller.runSaveAction({ kind: 'entry', interpreted: workoutInterpretation(), transcript: 'bench press 8 reps and squats 8 reps', source: 'text' });
+    expect(unsafe.calls.workoutSets).toEqual([]);
+    expect(unsafe.calls.ensuredSessions).toBe(0);
+    expect(unsafe.calls.finished).toEqual([]);
+    const repeated = createHarness({ text: '' });
+    await repeated.controller.runSaveAction({ kind: 'entry', interpreted: workoutInterpretation(), transcript: 'bench press 3 sets of 8 at 80 kg', source: 'text' });
+    expect(repeated.calls.workoutSets).toEqual([]);
+    expect(repeated.ports.state.getCommandState()).toBe('cc_review_workout');
+    expect(repeated.ports.state.getReviewDraft()?.kind).toBe('workout');
+    expect(repeated.calls.finished).toEqual([]);
+  });
+  test("workout save rejects a stale multi-exercise review and offers correction without dropping text", async () => {
+    const draft = { ...workoutReviewDraft(), transcript: 'bench press 8 reps at 80 kg then squats 8 reps at 100 kg' };
+    const { controller, calls, ports } = createHarness({ text: '', reviewDraft: draft });
+    await controller.saveReviewedEntry();
+    expect(calls.workoutSets).toEqual([]);
+    expect(calls.ensuredSessions).toBe(0);
+    expect(ports.state.getCommandErrorDetail()).toContain('one exercise');
+    expect(controller.getSnapshot().error.copy?.secondary).toBe('Edit entry');
+    controller.handleErrorSecondary();
+    expect(ports.state.getCommandText()).toBe(draft.transcript);
+    expect(ports.state.getCommandState()).toBe('cc_expanded_typing');
+    expect(calls.closes).toBe(0);
+  });
+
+  for (const entry of [
+    { transcript: "bench press 3x8 at 80 kg, donkey kicks 3x12", name: "Bench Press" },
+    { transcript: "donkey kicks 3x12 then fire hydrants 3x15", name: "Donkey Kick" },
+  ]) {
+    test(`unknown exercise clauses are rejected at interpretation, direct save and reviewed save: ${entry.name}`, async () => {
+      const response = { ...workoutInterpretation(), payload: { ...workoutInterpretation().payload, exerciseName: entry.name } };
+      const typed = createHarness({ text: entry.transcript, interpreted: response });
+      await typed.controller.submitTypedText();
+      expect(typed.ports.state.getReviewDraft()).toBeNull();
+      expect(typed.ports.state.getCommandErrorDetail()).toContain("one exercise");
+      const direct = createHarness({ text: entry.transcript });
+      await direct.controller.runSaveAction({ kind: "entry", interpreted: response, transcript: entry.transcript, source: "text" });
+      expect(direct.ports.state.getCommandErrorDetail()).toContain("one exercise");
+      const reviewed = createHarness({ text: "", reviewDraft: { ...workoutReviewDraft(), interpreted: response, transcript: entry.transcript } });
+      await reviewed.controller.dispatch({ type: "review.save" });
+      expect(reviewed.controller.getSnapshot().error.copy?.secondary).toBe("Edit entry");
+      reviewed.controller.handleErrorSecondary();
+      expect(reviewed.ports.state.getCommandText()).toBe(entry.transcript);
+      expect(reviewed.ports.state.getCommandState()).toBe("cc_expanded_typing");
+      for (const harness of [typed, direct, reviewed]) {
+        expect(harness.calls.workoutSets).toEqual([]);
+        expect(harness.calls.ensuredSessions).toBe(0);
+        expect(harness.calls.commandToasts).toEqual([]);
+      }
+    });
+  }
+
   test("reviewed workout saves filled sets into the active session and closes", async () => {
     const { controller, calls } = createHarness({
       text: "",
@@ -737,25 +791,20 @@ describe("CommandCenterController review and retry boundary", () => {
       kind: "quick_add",
       item: { id: "recent-1", description: "Chicken Salad", calories: 420, mealType: "lunch" },
     };
-    const { controller, calls } = createHarness({
+    const { controller, calls, ports } = createHarness({
       text: "",
       errorSubtype: "quick_add_failure",
       pendingSaveAction,
       kcalLeft: 380,
     });
+    const selected: string[] = [];
+    Object.assign(ports.backend, { selectRepeatedMeal: (id: string) => { selected.push(id); } });
 
     await controller.handleErrorPrimary();
 
-    expect(calls.meals).toEqual([
-      {
-        eatenAt: fixedNow.toISOString(),
-        mealType: "lunch",
-        description: "Chicken Salad",
-        calories: 420,
-        transcriptRaw: "quick_add:Chicken Salad",
-      },
-    ]);
-    expect(calls.finished).toEqual([{ toast: "Saved", kcalLeft: 380 }]);
+    expect(selected).toEqual(["recent-1"]);
+    expect(calls.meals).toEqual([]);
+    expect(calls.finished).toEqual([]);
   });
 
   test("primary permission action opens settings and records fallback detail on failure", async () => {
@@ -971,6 +1020,102 @@ describe("logging races and safe retries", () => {
     pending.resolve();
     await submit;
     expect(calls.finished.length).toBe(1);
+  });
+
+  test("uncertain batch blocks Edit entry so Squat cannot masquerade as the frozen Bench Press retry", async () => {
+    const { ports, controller, calls } = createHarness({ text: "", reviewDraft: workoutReviewDraft() });
+    const batches: Parameters<CommandCenterPorts["backend"]["createWorkoutBatch"]>[0][] = [];
+    ports.backend.createWorkoutBatch = async (batch) => {
+      batches.push(structuredClone(batch));
+      if (batches.length === 1) throw new Error("Request timed out");
+    };
+    await controller.dispatch({ type: "review.save" });
+    await controller.dispatch({ type: "error.secondary" });
+    expect(ports.state.getReviewDraft()?.kind).toBe("workout");
+    expect(ports.state.getCommandState()).toBe("cc_error");
+    expect(controller.getSnapshot().error.copy?.primary).toBe("Retry original");
+    expect(controller.getSnapshot().error.copy?.secondary).toBeNull();
+    expect(ports.state.getCommandErrorDetail()).toContain("may already be saved");
+
+    ports.backend.interpretEntry = async () => ({ ...workoutInterpretation(), payload: { ...workoutInterpretation().payload, exerciseName: "Squat", reps: 6, weightKg: 100 } });
+    controller.handleCommandInputChange("squat 3x6 at 100 kg");
+    await controller.submitTypedText();
+    expect(ports.state.getReviewDraft()).toEqual(workoutReviewDraft());
+    expect(calls.interpreted).toEqual([]);
+    await controller.saveReviewedEntry();
+    expect(batches).toHaveLength(2);
+    expect(batches[1]).toEqual(batches[0]);
+    expect(calls.commandToasts).toEqual(["Saved 2 sets"]);
+  });
+
+  test("save-time guard retains a changed review until explicit original-batch reconciliation", async () => {
+    const { ports, controller, calls } = createHarness({ text: "", reviewDraft: workoutReviewDraft() });
+    const batches: Parameters<CommandCenterPorts["backend"]["createWorkoutBatch"]>[0][] = [];
+    const committed = new Map<string, typeof batches[number]>();
+    ports.backend.createWorkoutBatch = async (batch) => {
+      batches.push(structuredClone(batch));
+      if (!committed.has(batch.requestId)) committed.set(batch.requestId, structuredClone(batch));
+      if (batches.length === 1) throw new Error("Committed, but response lost");
+    };
+    await controller.dispatch({ type: "review.save" });
+    // A stale provider/draft replacement must also fail closed at the write boundary.
+    const changed = { ...workoutReviewDraft(), transcript: "squat 3x6 at 100 kg", interpreted: { ...workoutInterpretation(), payload: { ...workoutInterpretation().payload, exerciseName: "Squat", weightKg: 100, reps: 6 } }, sets: Array.from({ length: 3 }, (_, index) => ({ id: `set-${index + 1}`, setNumber: index + 1, weightKg: "100", reps: "6", notes: "" })) };
+    ports.state.setReviewDraft(changed);
+    await controller.dispatch({ type: "review.save" });
+    expect(batches).toHaveLength(1);
+    expect(ports.state.getReviewDraft()).toEqual(changed);
+    expect(calls.commandToasts).toEqual([]);
+    expect(calls.closes).toBe(0);
+    expect(ports.state.getCommandErrorDetail()).toContain("changed entry");
+    expect(controller.getSnapshot().error.copy?.primary).toBe("Retry original");
+    await controller.dispatch({ type: "error.primary" });
+    expect(batches).toHaveLength(2);
+    expect(batches[1]).toEqual(batches[0]);
+    expect(committed.size).toBe(1);
+    expect(ports.state.getReviewDraft()).toEqual(changed);
+    expect(calls.closes).toBe(0);
+    expect(calls.commandToasts).toEqual(["Original Bench Press saved: 2 sets. Changed entry not saved."]);
+    expect(controller.getSnapshot().error.copy?.primary).toBe("Close");
+    await controller.dispatch({ type: "review.save" });
+    expect(batches).toHaveLength(2);
+    expect(ports.state.getReviewDraft()).toEqual(changed);
+    await controller.dispatch({ type: "error.primary" });
+    expect(calls.closes).toBe(1);
+  });
+
+  test("unconfirmed workout cannot be abandoned or mutated across controller recreation", async () => {
+    const { ports, calls } = createHarness({ text: "", reviewDraft: workoutReviewDraft() });
+    const operation = { generation: 0, saving: false };
+    const first = createCommandCenterController(ports, operation);
+    const batches: Parameters<CommandCenterPorts["backend"]["createWorkoutBatch"]>[0][] = [];
+    let requestIds = 0;
+    ports.clock.createRequestId = () => { requestIds++; return "d1262a00-1122-4333-8444-555566667777"; };
+    ports.backend.createWorkoutBatch = async (batch) => {
+      batches.push(structuredClone(batch));
+      if (batches.length === 1) throw new Error("Response lost");
+    };
+    await first.dispatch({ type: "review.save" });
+    const recreated = createCommandCenterController(ports, operation);
+    recreated.closeCommandCenter();
+    expect(calls.closes).toBe(0);
+    recreated.openCommandCenter();
+    expect(ports.state.getReviewDraft()).toEqual(workoutReviewDraft());
+    expect(ports.state.getCommandState()).toBe("cc_error");
+    recreated.updateWorkoutSet(0, { weightKg: "100" });
+    recreated.addWorkoutSet();
+    recreated.dispatch({ type: "text.edit" });
+    await recreated.interpretVoiceTranscript("squat 3x6 at 100 kg");
+    await recreated.routeInterpretedEntry(workoutInterpretation(), "bench press 3x12 at 90 kg", "text");
+    await recreated.runSaveAction({ kind: "entry", interpreted: workoutInterpretation(), transcript: "bench press 8 reps at 90 kg", source: "text" });
+    expect(ports.state.getReviewDraft()).toEqual(workoutReviewDraft());
+    expect(calls.workoutSets).toEqual([]);
+    expect(calls.interpreted).toEqual([]);
+    await recreated.dispatch({ type: "error.primary" });
+    expect(batches).toHaveLength(2);
+    expect(batches[1]).toEqual(batches[0]);
+    expect(requestIds).toBe(1);
+    expect(calls.ensuredSessions).toBe(1);
+    expect(calls.commandToasts).toEqual(["Saved 2 sets"]);
   });
 
   test("retry submits the exact workout batch and request ID after an uncertain response", async () => {

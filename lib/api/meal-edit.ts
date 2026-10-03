@@ -1,21 +1,17 @@
-import type { MealIngredient } from "@voicefit/contracts/types";
+import type { SavedMealIngredient } from "@/lib/api/meal-repeat";
 import { apiRequest } from "@/lib/api-client";
 
-export async function saveMealEdits(
+/** One transaction: composition, classification and review status commit together.
+ * Undefined preserves legacy scalar nutrition; [] explicitly removes all rows.
+ * Totals are calculated by the server, never sent by the editor.
+ */
+export async function saveMealEdits<T = { id: string }>(
   id: string,
   token: string,
-  edits: { ingredients?: MealIngredient[]; mealType?: string },
-) {
-  // Undefined means unchanged. An explicit empty array means the user removed
-  // every ingredient, and must still be sent to the nutrition endpoint.
-  if (edits.ingredients !== undefined) {
-    await apiRequest(`/api/meals/${id}/ingredients`, {
-      method: "PUT", token, body: JSON.stringify({ ingredients: edits.ingredients }),
-    });
-  }
-  // Mark reviewed only after the ingredient update succeeds.
-  await apiRequest(`/api/meals/${id}`, {
+  edits: { ingredients?: SavedMealIngredient[]; mealType?: string; expectedUpdatedAt?: string },
+): Promise<T> {
+  return apiRequest<T>(`/api/meals/${encodeURIComponent(id)}`, {
     method: "PUT", token,
-    body: JSON.stringify({ interpretationStatus: "reviewed", mealType: edits.mealType }),
+    body: JSON.stringify({ ...edits, interpretationStatus: "reviewed" }),
   });
 }

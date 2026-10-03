@@ -19,8 +19,9 @@ import type { ExerciseCardData, RenderRow, SetDraft } from "./types";
 
 export interface WorkoutExerciseCardProps {
   card: ExerciseCardData;
-  /** Whether the session is finished — disables all editing. */
+  /** Finished sessions hide Add Set; existing rows still allow corrections. */
   sessionFinished: boolean;
+  saving?: boolean;
   /** Whether this is a preview/demo session — hides interactive controls. */
   isPreview: boolean;
   /** Per-set draft values keyed by set id. */
@@ -44,6 +45,7 @@ export interface WorkoutExerciseCardProps {
 export function WorkoutExerciseCard({
   card,
   sessionFinished,
+  saving = false,
   isPreview,
   drafts,
   noteText,
@@ -126,6 +128,7 @@ export function WorkoutExerciseCard({
           row={row}
           draft={drafts[row.live?.id ?? ""]}
           sessionFinished={sessionFinished}
+          saving={saving}
           onChangeDraft={onChangeDraft}
           onToggleComplete={onToggleComplete}
           onLongPressChip={onLongPressChip}
@@ -137,6 +140,7 @@ export function WorkoutExerciseCard({
         <Pressable
           style={styles.addSetRow}
           onPress={() => onAddSet(card)}
+          disabled={saving}
           hitSlop={8}
         >
           <Text style={styles.addSetText}>＋ Add Set</Text>

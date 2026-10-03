@@ -6,14 +6,23 @@ declare module "bun:test" {
     toContainEqual(expected: unknown): void;
     toHaveLength(expected: number): void;
     toBeDefined(): void;
+    toBeUndefined(): void;
     toBeNull(): void;
     toThrow(expected?: unknown): void;
     not: Matchers;
+    rejects: RejectionMatchers;
+  }
+  interface RejectionMatchers {
+    toThrow(expected?: unknown): void;
   }
   export function describe(name: string, fn: () => void): void;
   export function test(name: string, fn: () => void | Promise<void>): void;
   export function beforeEach(fn: () => void | Promise<void>): void;
   export function expect(actual: unknown): Matchers;
+  export namespace expect {
+    // Bun's opaque asymmetric matcher is consumed by toEqual, not inspected.
+    function stringContaining(expected: string): unknown;
+  }
   export const mock: {
     module(specifier: string, factory: () => unknown): void;
   };

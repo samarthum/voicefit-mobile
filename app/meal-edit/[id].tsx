@@ -16,6 +16,7 @@ import { useAuth } from "@clerk/clerk-expo";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { MealIngredient } from "@voicefit/contracts/types";
 import { saveMealEdits } from "@/lib/api/meal-edit";
+import { retryMealEstimate } from "@/lib/api/meal-repeat";
 import { apiRequest } from "@/lib/api-client";
 import { fetchInterpretedIngredient } from "@/lib/api/ingredient";
 import {
@@ -31,9 +32,8 @@ import { type IngredientEditorMode } from "@/components/command-center/Ingredien
 import { IngredientEditorSheet } from "@/components/command-center/IngredientEditorSheet";
 import {
   generateIngredientId,
-  recalculateMealTotals,
 } from "@/components/command-center/helpers";
-import type { MealReviewIngredient, MealReviewDraft } from "@/components/command-center/types";
+import type { EditableIngredient } from "@/components/command-center/ingredient-edit";
 import { StatusNotice, MealSummaryCard, IngredientList, MealActionsBar } from "@/components/meal-edit";
 
 // ---------------------------------------------------------------------------
@@ -77,18 +77,16 @@ interface MealDetail {
 // ---------------------------------------------------------------------------
 
 function nutritionNumber(value: number | null | undefined) {
-  return isFiniteNumber(value) ? value : 0;
+  return isFiniteNumber(value) ? value : null;
 }
 
-function toReviewIngredients(rows: MealIngredientRow[]): MealReviewIngredient[] {
-  // Position-ordered → freshly-keyed for React. Server-side IDs are intentionally
-  // not reused — the editor only needs locally-stable keys, and a brand-new ID
-  // makes accidental ID collisions impossible across remount.
+function toReviewIngredients(rows: MealIngredientRow[]): EditableIngredient[] {
+  // Position-ordered saved rows keep stable IDs and unknown nutrition.
   return rows
     .slice()
     .sort((a, b) => a.position - b.position)
     .map((row) => ({
-      id: generateIngredientId(),
+      id: row.id,
       name: row.name,
       grams: nutritionNumber(row.grams),
       calories: nutritionNumber(row.calories),
@@ -98,45 +96,16 @@ function toReviewIngredients(rows: MealIngredientRow[]): MealReviewIngredient[] 
     }));
 }
 
-function toServerIngredients(rows: MealReviewIngredient[]): MealIngredient[] {
+function toServerIngredients(rows: EditableIngredient[]) {
   return rows.map(({ id: _id, ...rest }) => rest);
 }
 
-/**
- * Recomputes meal totals from a list of ingredient rows. We can't reuse
- * `recalculateMealTotals` directly because it operates on a `MealReviewDraft`
- * (which carries an `interpreted` payload we don't have for already-saved
- * meals) — so we wrap it with a synthetic minimal draft.
- */
-function computeTotals(ingredients: MealReviewIngredient[]) {
-  const stub: MealReviewDraft = {
-    kind: "meal",
-    interpreted: {
-      intent: "meal",
-      payload: {
-        mealType: "lunch",
-        description: "",
-        totalGrams: 0,
-        calories: 0,
-        proteinG: 0,
-        carbsG: 0,
-        fatG: 0,
-        ingredients: [],
-      },
-    },
-    transcript: "",
-    source: "text",
-    eatenAtLabel: "",
-    totalGrams: 0,
-    ingredients,
-    macros: { protein: 0, carbs: 0, fat: 0 },
-  };
-  const next = recalculateMealTotals(stub);
-  return {
-    totalGrams: next.totalGrams,
-    calories: next.interpreted.payload.calories,
-    macros: next.macros,
-  };
+/** Unknown component nutrition keeps the corresponding total unknown. */
+function computeTotals(ingredients: EditableIngredient[]) {
+  const sum = (key: "grams" | "calories" | "proteinG" | "carbsG" | "fatG") =>
+    ingredients.some(row => !isFiniteNumber(row[key])) ? null : ingredients.reduce((total, row) => total + (row[key] ?? 0), 0);
+  return { totalGrams: sum("grams"), calories: sum("calories"),
+    macros: { protein: sum("proteinG"), carbs: sum("carbsG"), fat: sum("fatG") } };
 }
 
 function scalarTotals(meal: MealDetail) {
@@ -156,18 +125,24 @@ function scalarTotals(meal: MealDetail) {
 // ---------------------------------------------------------------------------
 
 export default function MealEditScreen() {
-  const router = useRouter();
   const { id: rawId } = useLocalSearchParams<{ id: string }>();
   const id = typeof rawId === "string" ? rawId : "";
+  // A different route must never inherit the previous meal's local draft.
+  return <MealEditSession key={id} id={id} />;
+}
+
+function MealEditSession({ id }: { id: string }) {
+  const router = useRouter();
   const { getToken, isSignedIn } = useAuth();
   const queryClient = useQueryClient();
 
-  const [ingredients, setIngredients] = useState<MealReviewIngredient[]>([]);
+  const [ingredients, setIngredients] = useState<EditableIngredient[]>([]);
   const [editedMealType, setEditedMealType] = useState<MealType | null>(null);
   const [seeded, setSeeded] = useState(false);
+  const [loadedVersion, setLoadedVersion] = useState<string | undefined>();
   const [isDirty, setIsDirty] = useState(false);
   const [ingredientsDirty, setIngredientsDirty] = useState(false);
-  const [editorMode, setEditorMode] = useState<IngredientEditorMode | null>(null);
+  const [editorMode, setEditorMode] = useState<IngredientEditorMode<EditableIngredient> | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const mealQuery = useQuery({
@@ -189,12 +164,13 @@ export default function MealEditScreen() {
   // ingredients before Claude finishes; the seeded flag then prevents
   // clobbering unsaved edits on later refetches.
   useEffect(() => {
-    if (seeded || !mealQuery.data) return;
+    if (!mealQuery.data || (seeded && (isDirty || loadedVersion === mealQuery.data.updatedAt))) return;
     if (mealQuery.data.interpretationStatus === "interpreting") return;
     setIngredients(toReviewIngredients(mealQuery.data.ingredients ?? []));
-    setEditedMealType(mealQuery.data.mealType);
+    setEditedMealType((current) => isDirty ? current ?? mealQuery.data.mealType : mealQuery.data.mealType);
+    setLoadedVersion(mealQuery.data.updatedAt);
     setSeeded(true);
-  }, [seeded, mealQuery.data]);
+  }, [seeded, mealQuery.data, isDirty, loadedVersion]);
 
   const ingredientTotals = useMemo(() => computeTotals(ingredients), [ingredients]);
 
@@ -207,7 +183,7 @@ export default function MealEditScreen() {
     token: string,
     body: MealUpdatePayload,
   ) => apiRequest<MealDetail>(`/api/meals/${id}`, {
-    method: "PUT", token, body: JSON.stringify(body),
+    method: "PUT", token, body: JSON.stringify({ ...body, expectedUpdatedAt: loadedVersion }),
   });
 
   const saveMutation = useMutation({
@@ -215,12 +191,14 @@ export default function MealEditScreen() {
       const token = await getToken();
       if (!token) throw new Error("Not signed in");
 
-      await saveMealEdits(id, token, {
+      return saveMealEdits<MealDetail>(id, token, {
+        expectedUpdatedAt: loadedVersion,
         ingredients: ingredientsDirty ? toServerIngredients(ingredients) : undefined,
         mealType: editedMealType && editedMealType !== mealQuery.data?.mealType ? editedMealType : undefined,
       });
     },
-    onSuccess: async () => {
+    onSuccess: async (record: MealDetail) => {
+      queryClient.setQueryData(["meal", id], record);
       haptic.success();
       setErrorMessage(null);
       await Promise.all([
@@ -254,6 +232,24 @@ export default function MealEditScreen() {
     onError: (error) => {
       setErrorMessage(error instanceof Error ? error.message : "Failed to confirm meal.");
     },
+  });
+
+  const retryEstimateMutation = useMutation({
+    mutationFn: async () => {
+      const token = await getToken();
+      if (!token) throw new Error("Not signed in");
+      return retryMealEstimate(id, token);
+    },
+    onSuccess: async (record) => {
+      queryClient.setQueryData(["meal", id], record);
+      setErrorMessage(null);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["meal", id] }),
+        queryClient.invalidateQueries({ queryKey: ["meals"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+      ]);
+    },
+    onError: (error) => setErrorMessage(error instanceof Error ? error.message : "Could not retry estimate."),
   });
 
   const deleteMutation = useMutation({
@@ -300,7 +296,7 @@ export default function MealEditScreen() {
     ]);
   };
 
-  const handleLongPressIngredient = (ingredient: MealReviewIngredient) => {
+  const handleLongPressIngredient = (ingredient: EditableIngredient) => {
     Alert.alert("Delete ingredient?", `Remove "${ingredient.name}" from this meal.`, [
       { text: "Cancel", style: "cancel" },
       {
@@ -338,7 +334,7 @@ export default function MealEditScreen() {
     setEditorMode(null);
   };
 
-  const onSubmitEdit = (replacement: MealIngredient | MealReviewIngredient) => {
+  const onSubmitEdit = (replacement: MealIngredient | EditableIngredient) => {
     if (editorMode?.kind !== "edit") return;
     const targetId = editorMode.ingredient.id;
     setIngredients((prev) =>
@@ -439,6 +435,12 @@ export default function MealEditScreen() {
             keyboardShouldPersistTaps="handled"
           >
             <StatusNotice status={mealStatus} message={meal.errorMessage} />
+            {mealStatus === "failed" ? <Pressable testID="meal-edit-retry-estimate" disabled={retryEstimateMutation.isPending || isDirty} style={styles.retryButton} onPress={() => retryEstimateMutation.mutate()}>
+              <Text style={styles.retryButtonText}>{retryEstimateMutation.isPending ? "Retrying…" : "Retry nutrition estimate"}</Text>
+            </Pressable> : null}
+            {mealStatus === "reviewed" && !isDirty ? <Pressable testID="meal-edit-repeat" style={styles.retryButton} onPress={() => router.push({ pathname: "/meal-repeat", params: { id } })}>
+              <Text style={styles.retryButtonText}>Repeat this meal…</Text>
+            </Pressable> : null}
 
             <View style={styles.summaryCard}>
               <MealSummaryCard

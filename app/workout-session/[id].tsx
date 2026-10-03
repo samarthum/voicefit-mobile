@@ -5,6 +5,7 @@ import {
   Alert,
   Keyboard,
   Modal,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -17,6 +18,7 @@ import {
 } from "react-native-keyboard-controller";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useAuth } from "@clerk/clerk-expo";
+import { randomUUID } from "expo-crypto";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Svg, { Path } from "react-native-svg";
 import { FloatingCommandBar } from "@/components/FloatingCommandBar";
@@ -32,6 +34,8 @@ import {
   type SetDraft,
   type WorkoutSet,
 } from "@/components/workout";
+import { workoutEquipmentLabel } from "@/lib/workout-transcript";
+import { changedWorkoutSets, workoutDraftUpdate, workoutSetDraft } from "@/lib/workout-drafts";
 import { getExerciseCatalogItem } from "@/lib/exercise-catalog";
 import { apiRequest } from "@/lib/api-client";
 import { haptic } from "@/lib/haptics";
@@ -65,6 +69,22 @@ interface WorkoutSessionDetail {
   exerciseNotes?: Record<string, string> | null;
   previousSets?: Record<string, Array<{ weightKg: number | null; reps: number | null; durationMinutes: number | null }>>;
 }
+
+type ScreenContext = { sessionId: string | undefined; active: boolean };
+type StandaloneAddPayload = Readonly<{ requestId: string; sessionId: string; exerciseName: string; exerciseType: ExerciseType }>;
+type StandaloneAddAttempt = {
+  payload: StandaloneAddPayload;
+  context: ScreenContext;
+  inFlight: boolean;
+  optimisticStarted: boolean;
+  acknowledged: WorkoutSet | null;
+};
+const ADD_RETRY_MESSAGE = "The original Add Set is not reconciled. Use Retry original before adding anything else or finishing. Keep this screen open: retry details are held in memory only.";
+type WebFinishChoice = {
+  context: ScreenContext;
+  sessionId: string | undefined;
+  run: (choice: "save" | "discard") => Promise<void>;
+};
 
 type SessionViewModel = {
   id: string;
@@ -189,7 +209,7 @@ function makePreviewExerciseCard(exerciseName: string, exerciseType: ExerciseTyp
   const catalog = getExerciseCatalogItem(exerciseName);
   const meta = catalog
     ? `${catalog.equipment} · ${catalog.group}`
-    : `${exerciseType === "cardio" ? "Cardio" : "Barbell"} · ${exerciseType === "cardio" ? "Conditioning" : "Resistance"}`;
+    : `${workoutEquipmentLabel(exerciseName, exerciseType)} · ${exerciseType === "cardio" ? "Conditioning" : "Resistance"}`;
 
   return {
     name: exerciseName,
@@ -250,22 +270,6 @@ function formatClock(durationMs: number) {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
-function parseOptionalInt(value: string): number | null | undefined {
-  const trimmed = value.trim();
-  if (!trimmed) return undefined;
-  const parsed = Number(trimmed);
-  if (!Number.isInteger(parsed) || parsed < 0) return null;
-  return parsed;
-}
-
-function parseOptionalNumber(value: string): number | null | undefined {
-  const trimmed = value.trim();
-  if (!trimmed) return undefined;
-  const parsed = Number(trimmed);
-  if (!Number.isFinite(parsed) || parsed < 0) return null;
-  return parsed;
-}
-
 function isSetComplete(set: WorkoutSet) {
   if (set.exerciseType === "cardio") {
     return (set.durationMinutes ?? 0) > 0;
@@ -285,7 +289,7 @@ function buildLiveSession(session: WorkoutSessionDetail, currentTime: number = D
     const catalog = getExerciseCatalogItem(exerciseName);
     const meta = catalog
       ? `${catalog.equipment} · ${catalog.group}`
-      : `${sets[0]?.exerciseType === "cardio" ? "Cardio" : "Barbell"} · ${
+      : `${workoutEquipmentLabel(exerciseName, sets[0]?.exerciseType ?? "resistance")} · ${
           sets[0]?.exerciseType === "cardio" ? "Conditioning" : "Resistance"
         }`;
 
@@ -397,6 +401,31 @@ export default function WorkoutSessionScreen() {
   const [previewFinished, setPreviewFinished] = useState(false);
   const [previewSession, setPreviewSession] = useState<SessionViewModel | null>(() => getPreviewSession(sessionId));
   const [drafts, setDrafts] = useState<Record<string, SetDraft>>({});
+  const draftsRef = useRef(drafts);
+  draftsRef.current = drafts;
+  const [finishing, setFinishing] = useState(false);
+  const finishingRef = useRef(false);
+  const pendingSetChangeRef = useRef(false);
+  const [webFinishChoice, setWebFinishChoice] = useState<WebFinishChoice | null>(null);
+  const webFinishChoiceRef = useRef<WebFinishChoice | null>(null);
+  const currentSessionIdRef = useRef(sessionId);
+  currentSessionIdRef.current = sessionId;
+  const screenContextRef = useRef<ScreenContext>({ sessionId, active: true });
+  if (screenContextRef.current.sessionId !== sessionId) {
+    screenContextRef.current.active = false;
+    screenContextRef.current = { sessionId, active: true };
+    webFinishChoiceRef.current = null;
+  }
+  const isCurrentContext = (context: ScreenContext) => context.active && screenContextRef.current === context;
+  const renderContext = screenContextRef.current;
+  const addAttemptsRef = useRef(new Map<string, StandaloneAddAttempt>());
+  const [, setAddRevision] = useState(0);
+  const currentAddAttempt = sessionId ? addAttemptsRef.current.get(sessionId) : undefined;
+  const blockUnreconciledAdd = () => {
+    if (!sessionId || !addAttemptsRef.current.has(sessionId)) return false;
+    setLiveError(ADD_RETRY_MESSAGE);
+    return true;
+  };
   const [liveError, setLiveError] = useState<string | null>(null);
   const [pendingDeleteSet, setPendingDeleteSet] = useState<{ setId: string; previous: WorkoutSessionDetail | undefined } | null>(null);
   const [now, setNow] = useState(Date.now());
@@ -405,6 +434,16 @@ export default function WorkoutSessionScreen() {
   const [renameText, setRenameText] = useState("");
   const [exerciseNoteEditing, setExerciseNoteEditing] = useState<string | null>(null);
   const [exerciseNoteText, setExerciseNoteText] = useState("");
+
+  useEffect(() => {
+    const context = screenContextRef.current;
+    context.active = true;
+    finishingRef.current = false;
+    setFinishing(false);
+    webFinishChoiceRef.current = null;
+    setWebFinishChoice(null);
+    return () => { context.active = false; webFinishChoiceRef.current = null; };
+  }, [sessionId]);
 
   useEffect(() => {
     if (!isPreviewId) return;
@@ -435,86 +474,103 @@ export default function WorkoutSessionScreen() {
   }, [sessionQuery.data, isPreviewId]);
 
   const createSetMutation = useMutation({
-    mutationFn: async (payload: {
-      exerciseName: string;
-      exerciseType: ExerciseType;
-      reps?: number;
-      weightKg?: number;
-      durationMinutes?: number;
-    }) => {
-      if (!sessionId) throw new Error("Invalid session id");
+    mutationFn: async (attempt: StandaloneAddAttempt) => {
+      if (attempt.acknowledged) return attempt.acknowledged;
+      if (!isCurrentContext(attempt.context)) throw new Error("Screen changed before Add Set was sent.");
       const token = await getToken();
       if (!token) throw new Error("Not signed in");
-      return apiRequest<WorkoutSet>("/api/workout-sets", {
-        method: "POST",
-        token,
-        body: JSON.stringify({
-          sessionId,
-          ...payload,
-        }),
+      if (!isCurrentContext(attempt.context)) throw new Error("Screen changed before Add Set was sent.");
+      const created = await apiRequest<WorkoutSet>("/api/workout-sets", {
+        method: "POST", token, body: JSON.stringify(attempt.payload),
       });
+      if (!created || typeof created.id !== "string" || !created.id.trim() || created.id.startsWith("temp-") ||
+          created.sessionId !== attempt.payload.sessionId || created.exerciseName !== attempt.payload.exerciseName ||
+          created.exerciseType !== attempt.payload.exerciseType ||
+          ![created.performedAt, created.createdAt, created.updatedAt].every(value => typeof value === "string" && Number.isFinite(Date.parse(value))) ||
+          ![created.reps, created.weightKg, created.durationMinutes].every(value => value === null || (typeof value === "number" && Number.isFinite(value)))) {
+        throw new Error("Add Set was not confirmed by a valid saved row.");
+      }
+      // A canonical transport ACK survives any later cache callback failure.
+      attempt.acknowledged = created;
+      return created;
     },
-    onMutate: async (payload) => {
-      if (!sessionId) return undefined;
-      const queryKey = ["workout-session-detail", sessionId];
+    onMutate: async (attempt) => {
+      const payload = attempt.payload;
+      const queryKey = ["workout-session-detail", payload.sessionId];
       await queryClient.cancelQueries({ queryKey });
       const previous = queryClient.getQueryData<WorkoutSessionDetail>(queryKey);
-      const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+      const tempId = `temp-${payload.requestId}`;
+      if (attempt.acknowledged || attempt.optimisticStarted || !isCurrentContext(attempt.context)) return { previous, tempId };
+      attempt.optimisticStarted = true;
       const nowIso = new Date().toISOString();
       const optimisticSet: WorkoutSet = {
-        id: tempId,
-        sessionId,
-        performedAt: nowIso,
-        exerciseName: payload.exerciseName,
-        exerciseType: payload.exerciseType,
-        reps: payload.reps ?? null,
-        weightKg: payload.weightKg ?? null,
-        durationMinutes: payload.durationMinutes ?? null,
-        notes: null,
-        transcriptRaw: null,
-        createdAt: nowIso,
-        updatedAt: nowIso,
+        id: tempId, sessionId: payload.sessionId, performedAt: nowIso,
+        exerciseName: payload.exerciseName, exerciseType: payload.exerciseType,
+        reps: null, weightKg: null, durationMinutes: null, notes: null, transcriptRaw: null,
+        createdAt: nowIso, updatedAt: nowIso,
       };
-      if (previous) {
-        queryClient.setQueryData<WorkoutSessionDetail>(queryKey, {
-          ...previous,
-          sets: [...previous.sets, optimisticSet],
-        });
-      }
+      if (previous) queryClient.setQueryData<WorkoutSessionDetail>(queryKey, {
+        ...previous, sets: [...previous.sets.filter(set => set.id !== tempId), optimisticSet],
+      });
       return { previous, tempId };
     },
-    onError: (error, _vars, context) => {
-      if (sessionId && context?.previous) {
-        queryClient.setQueryData(["workout-session-detail", sessionId], context.previous);
+    onError: (_error, attempt, context) => {
+      if (!attempt.acknowledged && context?.previous) {
+        queryClient.setQueryData(["workout-session-detail", attempt.payload.sessionId], context.previous);
       }
-      setLiveError(error instanceof Error ? error.message : "Failed to add set.");
+      if (isCurrentContext(attempt.context)) setLiveError(ADD_RETRY_MESSAGE);
     },
-    onSuccess: (newSet, _vars, context) => {
-      if (!sessionId || !context) return;
-      const queryKey = ["workout-session-detail", sessionId];
-      // Replace the optimistic temp set with the real one from the server.
-      queryClient.setQueryData<WorkoutSessionDetail>(queryKey, (old) => {
-        if (!old) return old;
-        return {
-          ...old,
-          sets: old.sets.map((s) => (s.id === context.tempId ? newSet : s)),
-        };
-      });
-      // Migrate any draft the user already started typing under the temp id.
-      setDrafts((prev) => {
+    onSuccess: (newSet, attempt, context) => {
+      if (!context) return;
+      const queryKey = ["workout-session-detail", attempt.payload.sessionId];
+      queryClient.setQueryData<WorkoutSessionDetail>(queryKey, old => old ? {
+        ...old, sets: [...old.sets.filter(set => set.id !== context.tempId && set.id !== newSet.id), newSet],
+      } : old);
+      // Migrate input under the optimistic ID, but never into another screen.
+      if (isCurrentContext(attempt.context)) setDrafts(prev => {
         if (!prev[context.tempId]) return prev;
         const { [context.tempId]: tempDraft, ...rest } = prev;
         return { ...rest, [newSet.id]: tempDraft };
       });
     },
-    onSettled: () => {
-      if (sessionId) {
-        queryClient.invalidateQueries({ queryKey: ["workout-session-detail", sessionId] });
-      }
-      queryClient.invalidateQueries({ queryKey: ["workout-sessions"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    onSettled: async (_data, _error, attempt) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["workout-session-detail", attempt.payload.sessionId] }),
+        queryClient.invalidateQueries({ queryKey: ["workout-sessions"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+      ]);
     },
   });
+
+  const runStandaloneAdd = async (attempt: StandaloneAddAttempt) => {
+    if (attempt.inFlight || !isCurrentContext(attempt.context)) return;
+    attempt.inFlight = true; // synchronously before mutation's first await
+    setAddRevision(value => value + 1);
+    try {
+      await createSetMutation.mutateAsync(attempt);
+      if (addAttemptsRef.current.get(attempt.payload.sessionId) === attempt) addAttemptsRef.current.delete(attempt.payload.sessionId);
+      if (isCurrentContext(attempt.context)) setLiveError(null);
+    } catch {
+      if (isCurrentContext(attempt.context)) setLiveError(attempt.acknowledged
+        ? "Set saved, but local refresh failed. Retry original to refresh the saved row without creating another set. Retry details are held in memory only."
+        : ADD_RETRY_MESSAGE);
+    } finally {
+      attempt.inFlight = false;
+      if (isCurrentContext(attempt.context)) setAddRevision(value => value + 1);
+    }
+  };
+
+  const startStandaloneAdd = async (exerciseName: string, exerciseType: ExerciseType) => {
+    if (!isCurrentContext(renderContext) || renderContext.sessionId !== sessionId) return;
+    if (!sessionId || finishingRef.current || blockUnreconciledAdd()) return;
+    const attempt: StandaloneAddAttempt = {
+      payload: Object.freeze({ requestId: randomUUID(), sessionId, exerciseName, exerciseType }),
+      context: screenContextRef.current, inFlight: false, optimisticStarted: false, acknowledged: null,
+    };
+    addAttemptsRef.current.set(sessionId, attempt);
+    setLiveError(null);
+    await runStandaloneAdd(attempt);
+  };
 
   const updateSetMutation = useMutation({
     mutationFn: async ({
@@ -525,6 +581,7 @@ export default function WorkoutSessionScreen() {
       weightKg,
       durationMinutes,
       notes,
+      screenContext,
     }: {
       setId: string;
       exerciseName: string;
@@ -533,9 +590,12 @@ export default function WorkoutSessionScreen() {
       weightKg: number | null;
       durationMinutes: number | null;
       notes?: string | null;
+      screenContext?: ScreenContext;
     }) => {
+      if (screenContext && !isCurrentContext(screenContext)) throw new Error("Workout screen changed before saving.");
       const token = await getToken();
       if (!token) throw new Error("Not signed in");
+      if (screenContext && !isCurrentContext(screenContext)) throw new Error("Workout screen changed before saving.");
       return apiRequest<WorkoutSet>(`/api/workout-sets/${setId}`, {
         method: "PUT",
         token,
@@ -640,15 +700,21 @@ export default function WorkoutSessionScreen() {
   });
 
   const finishMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (context: ScreenContext) => {
+      if (!isCurrentContext(context)) throw new Error("Workout screen changed before finishing.");
       if (!sessionId) throw new Error("Invalid session id");
       const token = await getToken();
       if (!token) throw new Error("Not signed in");
-      return apiRequest<WorkoutSessionDetail>(`/api/workout-sessions/${sessionId}`, {
+      if (!isCurrentContext(context)) throw new Error("Workout screen changed before finishing.");
+      const updated = await apiRequest<WorkoutSessionDetail>(`/api/workout-sessions/${sessionId}`, {
         method: "PUT",
         token,
         body: JSON.stringify({ endedAt: new Date().toISOString() }),
       });
+      if (updated.id !== sessionId || !updated.endedAt || !Number.isFinite(new Date(updated.endedAt).getTime())) {
+        throw new Error("Finish was not confirmed. Your drafts are still here; try again.");
+      }
+      return updated;
     },
     onSuccess: (updated) => {
       haptic.success();
@@ -768,7 +834,10 @@ export default function WorkoutSessionScreen() {
     },
   });
 
+  pendingSetChangeRef.current = createSetMutation.isPending || updateSetMutation.isPending || deleteSetMutation.isPending || !!pendingDeleteSet;
+
   const handleSessionMenu = () => {
+    if (blockUnreconciledAdd()) return;
     if (isPreviewId || isWebPreview) return;
     Keyboard.dismiss();
     Alert.alert(
@@ -795,7 +864,7 @@ export default function WorkoutSessionScreen() {
                 {
                   text: "Delete",
                   style: "destructive",
-                  onPress: () => deleteSessionMutation.mutate(),
+                  onPress: () => { if (!blockUnreconciledAdd()) deleteSessionMutation.mutate(); },
                 },
               ]
             );
@@ -807,6 +876,7 @@ export default function WorkoutSessionScreen() {
   };
 
   const handleExerciseMenu = (exerciseName: string) => {
+    if (blockUnreconciledAdd()) return;
     if (isPreviewId || isWebPreview) return;
     Keyboard.dismiss();
     Alert.alert(
@@ -838,6 +908,7 @@ export default function WorkoutSessionScreen() {
   };
 
   const handleDeleteExercise = async (exerciseName: string) => {
+    if (blockUnreconciledAdd()) return;
     if (!sessionQuery.data || !sessionId) return;
     const setIds = sessionQuery.data.sets
       .filter((s) => s.exerciseName === exerciseName && !s.id.startsWith("temp-"))
@@ -890,11 +961,7 @@ export default function WorkoutSessionScreen() {
       const next = { ...prev };
       for (const set of sessionQuery.data.sets) {
         if (next[set.id]) continue;
-        next[set.id] = {
-          reps: set.reps == null ? "" : String(set.reps),
-          weightKg: set.weightKg == null ? "" : String(set.weightKg),
-          durationMinutes: set.durationMinutes == null ? "" : String(set.durationMinutes),
-        };
+        next[set.id] = workoutSetDraft(set);
         changed = true;
       }
       return changed ? next : prev;
@@ -925,10 +992,7 @@ export default function WorkoutSessionScreen() {
       return;
     }
 
-    void createSetMutation.mutateAsync({
-      exerciseName: addExerciseName,
-      exerciseType: addExerciseType === "cardio" ? "cardio" : "resistance",
-    });
+    void startStandaloneAdd(addExerciseName, addExerciseType === "cardio" ? "cardio" : "resistance");
     router.setParams({
       addExerciseName: undefined,
       addExerciseType: undefined,
@@ -964,14 +1028,93 @@ export default function WorkoutSessionScreen() {
   })();
 
   const handleFinish = async () => {
+    const context = screenContextRef.current;
+    if (!isCurrentContext(context) || context.sessionId !== sessionId) return;
+    if (blockUnreconciledAdd()) return;
     if (isPreviewId || isWebPreview) {
       setPreviewFinished(true);
       return;
     }
-    if (!finishMutation.isPending) finishMutation.mutate();
+    if (finishingRef.current || finishMutation.isPending) return;
+    if (createSetMutation.isPending || updateSetMutation.isPending || deleteSetMutation.isPending || pendingDeleteSet) {
+      setLiveError("Wait for the current set change to finish, or undo the deletion, then try Finish again.");
+      return;
+    }
+    const current = queryClient.getQueryData<WorkoutSessionDetail>(["workout-session-detail", sessionId]);
+    if (!current || current.endedAt) return;
+    const finishWith = async (choice: "save" | "discard") => {
+      if (!isCurrentContext(context) || finishingRef.current) return;
+      if (blockUnreconciledAdd()) return;
+      if (pendingSetChangeRef.current) {
+        setLiveError("Wait for the current set change to finish, then try Finish again.");
+        return;
+      }
+      finishingRef.current = true;
+      setFinishing(true);
+      setLiveError(null);
+      try {
+        const latest = queryClient.getQueryData<WorkoutSessionDetail>(["workout-session-detail", sessionId]);
+        if (!latest || latest.endedAt) return;
+        const changed = changedWorkoutSets(latest.sets, draftsRef.current);
+        if (changed.some((set) => set.id.startsWith("temp-"))) throw new Error("Wait for new sets to finish saving, then try again.");
+        if (choice === "save") {
+          const updates = changed.map((set) => workoutDraftUpdate(set, draftsRef.current[set.id]));
+          for (const update of updates) {
+            if (!isCurrentContext(context)) return;
+            await updateSetMutation.mutateAsync({ ...update, screenContext: context });
+            // A previously issued row request may commit after leaving. Do not
+            // follow it with more row writes or completion for the old screen.
+            if (!isCurrentContext(context)) return;
+          }
+        }
+        if (!isCurrentContext(context)) return;
+        await finishMutation.mutateAsync(context);
+        if (!isCurrentContext(context)) return;
+        // Discard only after the Finish request succeeds. Failure preserves input.
+        if (choice === "discard") {
+          setDrafts((prev) => {
+            const next = { ...prev };
+            for (const set of latest.sets) next[set.id] = workoutSetDraft(set);
+            return next;
+          });
+        }
+      } catch (error) {
+        if (isCurrentContext(context)) setLiveError(error instanceof Error ? error.message : "Could not finish. Your drafts are still here.");
+      } finally {
+        if (isCurrentContext(context)) {
+          finishingRef.current = false;
+          setFinishing(false);
+        }
+      }
+    };
+    if (changedWorkoutSets(current.sets, draftsRef.current).length) {
+      const choice = { context, sessionId, run: finishWith };
+      webFinishChoiceRef.current = choice;
+      if (Platform?.OS === "web") {
+        setWebFinishChoice(choice);
+        return;
+      }
+      Alert.alert("Unsaved set changes", "Save your typed changes before finishing, or explicitly discard them. Cancel keeps this workout open.", [
+        { text: "Cancel", style: "cancel", onPress: () => resolveWebFinishChoice(choice) },
+        { text: "Discard & Finish", style: "destructive", onPress: () => resolveWebFinishChoice(choice, "discard") },
+        { text: "Save & Finish", onPress: () => resolveWebFinishChoice(choice, "save") },
+      ], { onDismiss: () => resolveWebFinishChoice(choice) });
+      return;
+    }
+    await finishWith("save");
+  };
+
+  const resolveWebFinishChoice = (prompt: WebFinishChoice, choice?: "save" | "discard") => {
+    // Consume this exact prompt synchronously: double taps, dismissed callbacks,
+    // and callbacks from a previous route/prompt must never trigger a write.
+    if (webFinishChoiceRef.current !== prompt || !isCurrentContext(prompt.context) || currentSessionIdRef.current !== prompt.sessionId) return;
+    webFinishChoiceRef.current = null;
+    setWebFinishChoice(null);
+    if (choice) return prompt.run(choice);
   };
 
   const handleAddSet = async (card: ExerciseCardData) => {
+    if (finishingRef.current) return;
     if (isPreviewId || isWebPreview) {
       setPreviewSession((current) => {
         if (!current) return current;
@@ -994,14 +1137,12 @@ export default function WorkoutSessionScreen() {
       });
       return;
     }
-    setLiveError(null);
-    await createSetMutation.mutateAsync({
-      exerciseName: card.name,
-      exerciseType: card.exerciseType,
-    });
+    await startStandaloneAdd(card.name, card.exerciseType);
   };
 
   const handleDeleteSet = (set: WorkoutSet) => {
+    if (blockUnreconciledAdd()) return;
+    if (finishingRef.current) return;
     if (isPreviewId || isWebPreview) return;
     if (session?.finished) return;
     if (set.id.startsWith("temp-")) {
@@ -1039,24 +1180,15 @@ export default function WorkoutSessionScreen() {
   };
 
   const handleSaveLiveSet = async (set: WorkoutSet) => {
-    const draft = drafts[set.id] ?? { reps: "", weightKg: "", durationMinutes: "" };
-    const reps = parseOptionalInt(draft.reps);
-    const weightKg = parseOptionalNumber(draft.weightKg);
-    const durationMinutes = parseOptionalInt(draft.durationMinutes);
-    if (reps === null || weightKg === null || durationMinutes === null) {
-      setLiveError("Reps, weight, and duration must be non-negative numbers.");
-      return;
+    if (finishingRef.current || updateSetMutation.isPending || set.id.startsWith("temp-")) return;
+    try {
+      const update = workoutDraftUpdate(set, draftsRef.current[set.id] ?? workoutSetDraft(set));
+      setLiveError(null);
+      await updateSetMutation.mutateAsync(update);
+      haptic.success();
+    } catch (error) {
+      setLiveError(error instanceof Error ? error.message : "Failed to save set. Your draft is still here.");
     }
-    setLiveError(null);
-    await updateSetMutation.mutateAsync({
-      setId: set.id,
-      exerciseName: set.exerciseName,
-      exerciseType: set.exerciseType,
-      reps: reps ?? null,
-      weightKg: weightKg ?? null,
-      durationMinutes: durationMinutes ?? null,
-      notes: set.notes,
-    });
   };
 
   return (
@@ -1065,7 +1197,7 @@ export default function WorkoutSessionScreen() {
         title={session?.title ?? "Workout"}
         showMenu={!isPreviewId && !isWebPreview && !!session}
         showFinish={!!session && !session.finished}
-        saving={finishMutation.isPending}
+        saving={finishing || finishMutation.isPending || createSetMutation.isPending || updateSetMutation.isPending || deleteSetMutation.isPending}
         onMenu={handleSessionMenu}
         onFinish={handleFinish}
       />
@@ -1084,6 +1216,19 @@ export default function WorkoutSessionScreen() {
         />
 
         {liveError ? <Text selectable style={styles.errorBanner}>{liveError}</Text> : null}
+        {currentAddAttempt ? (
+          <View style={styles.errorBanner}>
+            <Text selectable>{ADD_RETRY_MESSAGE}</Text>
+            <Pressable accessibilityRole="button" accessibilityLabel="Retry original" disabled={currentAddAttempt.inFlight}
+              onPress={() => {
+                if (!isCurrentContext(renderContext) || currentSessionIdRef.current !== currentAddAttempt.payload.sessionId) return;
+                currentAddAttempt.context = renderContext;
+                return runStandaloneAdd(currentAddAttempt);
+              }}>
+              <Text>{currentAddAttempt.inFlight ? "Adding…" : "Retry original"}</Text>
+            </Pressable>
+          </View>
+        ) : null}
 
         {sessionQuery.isLoading && !session ? (
           <View style={styles.loadingWrap}>
@@ -1104,7 +1249,7 @@ export default function WorkoutSessionScreen() {
               <>
                 <Pressable
                   style={styles.addExerciseButton}
-                  onPress={() => router.push({ pathname: "/exercise-picker", params: { sessionId } })}
+                  onPress={() => { if (!blockUnreconciledAdd()) router.push({ pathname: "/exercise-picker", params: { sessionId } }); }}
                 >
                   <Text style={styles.addExerciseText}>＋ Add Exercise</Text>
                 </Pressable>
@@ -1132,19 +1277,22 @@ export default function WorkoutSessionScreen() {
                 key={card.name}
                 card={card}
                 sessionFinished={session.finished}
+                saving={finishing}
                 isPreview={isPreviewId || isWebPreview}
                 drafts={drafts}
                 noteText={sessionQuery.data?.exerciseNotes?.[card.name] ?? ""}
                 onExerciseMenu={handleExerciseMenu}
                 onOpenNoteEditor={openExerciseNoteEditor}
-                onChangeDraft={(setId, patch) =>
-                  setDrafts((prev) => ({
-                    ...prev,
-                    [setId]: { ...(prev[setId] ?? { reps: "", weightKg: "", durationMinutes: "" }), ...patch },
-                  }))
-                }
+                onChangeDraft={(setId, patch) => {
+                  if (finishingRef.current) return;
+                  setDrafts((prev) => {
+                    const next = { ...prev, [setId]: { ...(prev[setId] ?? { reps: "", weightKg: "", durationMinutes: "" }), ...patch } };
+                    draftsRef.current = next;
+                    return next;
+                  });
+                }}
                 onToggleComplete={(row) => {
-                  if (row.live) { haptic.success(); void handleSaveLiveSet(row.live); }
+                  if (row.live) void handleSaveLiveSet(row.live);
                 }}
                 onLongPressChip={(row) => {
                   if (row.live) handleDeleteSet(row.live);
@@ -1156,7 +1304,7 @@ export default function WorkoutSessionScreen() {
             {!session.finished && (
               <Pressable
                 style={styles.addExerciseGhostButton}
-                onPress={() => router.push({ pathname: "/exercise-picker", params: { sessionId } })}
+                onPress={() => { if (!blockUnreconciledAdd()) router.push({ pathname: "/exercise-picker", params: { sessionId } }); }}
               >
                 <Text style={styles.addExerciseGhostText}>＋ Add Exercise</Text>
               </Pressable>
@@ -1180,7 +1328,7 @@ export default function WorkoutSessionScreen() {
         ) : null}
       </KeyboardAwareScrollView>
 
-      {!session?.finished && (
+      {!session?.finished && !currentAddAttempt && (
         <FloatingCommandBar
           hint={session?.empty ? "Did 3 sets of squats at 100kg…" : "80 kilos for 10 reps…"}
           {...cc.launcherProps}
@@ -1194,6 +1342,56 @@ export default function WorkoutSessionScreen() {
         onUndo={handleUndoDelete}
         onDismiss={handleConfirmDelete}
       />
+      {Platform?.OS === "web" && webFinishChoice && webFinishChoice.sessionId === sessionId ? (
+        <Modal
+          visible
+          transparent
+          animationType="fade"
+          accessibilityLabel="Unsaved set changes"
+          onRequestClose={() => resolveWebFinishChoice(webFinishChoice)}
+        >
+          <View style={styles.modalOverlay}>
+            <Pressable
+              style={StyleSheet.absoluteFill}
+              accessibilityRole="button"
+              accessibilityLabel="Dismiss finish dialog"
+              onPress={() => resolveWebFinishChoice(webFinishChoice)}
+            />
+            <View style={styles.modalCard}>
+              <Text accessibilityRole="header" style={styles.modalTitle}>Unsaved set changes</Text>
+              <Text style={styles.finishChoiceBody}>
+                Save your typed changes before finishing, or explicitly discard them. Cancel keeps this workout open.
+              </Text>
+              <View style={styles.finishChoiceButtons}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Save & Finish"
+                  style={styles.modalButtonConfirm}
+                  onPress={() => resolveWebFinishChoice(webFinishChoice, "save")}
+                >
+                  <Text style={styles.modalButtonConfirmText}>Save & Finish</Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Discard & Finish"
+                  style={styles.modalButtonCancel}
+                  onPress={() => resolveWebFinishChoice(webFinishChoice, "discard")}
+                >
+                  <Text style={styles.finishChoiceDiscardText}>Discard & Finish</Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Cancel"
+                  style={styles.modalButtonCancel}
+                  onPress={() => resolveWebFinishChoice(webFinishChoice)}
+                >
+                  <Text style={styles.modalButtonCancelText}>Cancel</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      ) : null}
       <Modal
         visible={renameModalVisible}
         transparent
@@ -1465,6 +1663,20 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     padding: 32,
+  },
+  finishChoiceBody: {
+    fontFamily: font.sans[400],
+    fontSize: 14,
+    lineHeight: 21,
+    color: token.textSoft,
+    marginBottom: 20,
+  },
+  finishChoiceButtons: { gap: 8 },
+  finishChoiceDiscardText: {
+    fontFamily: font.sans[600],
+    fontSize: 14,
+    fontWeight: "600",
+    color: COLORS.error,
   },
   modalCard: {
     width: "100%",

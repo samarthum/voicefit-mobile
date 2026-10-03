@@ -1,5 +1,5 @@
 import { createContext, use, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { Alert, Keyboard, Linking } from "react-native";
 import { useAudioRecorder, RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync } from "expo-audio";
 import * as ImagePicker from "expo-image-picker";
@@ -31,6 +31,7 @@ import {
   createCommandCenterController,
   type CommandCenterVoiceRecording,
   type CommandCenterOperationState,
+  type MealCaptureIdentity,
   type PhotoPickerMode,
 } from "@/components/command-center/controller";
 import {
@@ -107,6 +108,7 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
   // Hoisted at top level — expo-audio recorder hook cannot be called inside
   // nested/async functions (rules of hooks).
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const router = useRouter();
 
   const { getToken, isSignedIn } = useAuth();
   const queryClient = useQueryClient();
@@ -209,7 +211,7 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
     void Promise.all([
       queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
       queryClient.invalidateQueries({ queryKey: ["meals"] }),
-    ]);
+    ]).catch(() => undefined);
   }, [queryClient]);
 
   const closeCommandCenter = useCallback(() => {
@@ -286,7 +288,7 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
     return token;
   }, [getToken]);
 
-  const createPendingMealFromText = useCallback(async (transcript: string, source: EntrySource) => {
+  const createPendingMealFromText = useCallback(async (transcript: string, source: EntrySource, identity: MealCaptureIdentity) => {
     if (isWebPreview) {
       await new Promise((resolve) => setTimeout(resolve, 650));
       await refreshAfterPendingMeal();
@@ -302,16 +304,18 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
         transcript,
         context: transcript,
         source,
-        timezone,
-        eatenAt: new Date().toISOString(),
+        ...identity,
       }),
       timeoutMs: 60_000,
     });
-    queryClient.setQueryData<PendingMealDashboard>(["dashboard", "home", timezone, toLocalDateString(new Date(meal.eatenAt))], (data) => insertAcknowledgedMeal(data, meal));
-    await refreshAfterPendingMeal();
+    // The HTTP acknowledgement is authoritative; a cache failure must not retry creation.
+    try {
+      queryClient.setQueryData<PendingMealDashboard>(["dashboard", "home", identity.timezone, toLocalDateString(new Date(meal.eatenAt))], (data) => insertAcknowledgedMeal(data, meal));
+      await refreshAfterPendingMeal();
+    } catch { /* Saved remotely; later queries can reconcile the cache. */ }
   }, [isWebPreview, getAuthToken, timezone, refreshAfterPendingMeal, queryClient]);
 
-  const createPendingMealFromPhoto = useCallback(async (photo: PhotoAttachment, context: string) => {
+  const createPendingMealFromPhoto = useCallback(async (photo: PhotoAttachment, context: string, identity: MealCaptureIdentity) => {
     if (isWebPreview) {
       await new Promise((resolve) => setTimeout(resolve, 650));
       await refreshAfterPendingMeal();
@@ -324,8 +328,9 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
     formData.append("photo", { uri: photo.uri, name: photo.name, type: photo.type } as unknown as Blob);
     formData.append("source", "photo");
     formData.append("context", context.trim());
-    formData.append("timezone", timezone);
-    formData.append("eatenAt", new Date().toISOString());
+    formData.append("timezone", identity.timezone);
+    formData.append("eatenAt", identity.eatenAt);
+    formData.append("requestId", identity.requestId);
     if (context.trim()) {
       formData.append("transcript", context.trim());
     }
@@ -335,8 +340,10 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
       token,
       timeoutMs: 60_000,
     });
-    queryClient.setQueryData<PendingMealDashboard>(["dashboard", "home", timezone, toLocalDateString(new Date(meal.eatenAt))], (data) => insertAcknowledgedMeal(data, meal));
-    await refreshAfterPendingMeal();
+    try {
+      queryClient.setQueryData<PendingMealDashboard>(["dashboard", "home", identity.timezone, toLocalDateString(new Date(meal.eatenAt))], (data) => insertAcknowledgedMeal(data, meal));
+      await refreshAfterPendingMeal();
+    } catch { /* HTTP acknowledged; cache failure must not create again. */ }
   }, [isWebPreview, getAuthToken, timezone, refreshAfterPendingMeal, queryClient]);
 
   const interpretEntry = useCallback(async (transcript: string, source: EntrySource, signal?: AbortSignal): Promise<InterpretEntryResponse> => {
@@ -463,6 +470,7 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
         const { transcript } = await apiFormRequest<{ transcript: string }>("/api/transcribe", formData, { token, signal });
         return transcript;
       },
+      selectRepeatedMeal: (id) => router.push({ pathname: "/meal-repeat", params: { id } }),
       createMeal: async (input) => {
         const token = await getAuthToken();
         await apiRequest("/api/meals", {
@@ -510,11 +518,19 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
     },
     cache: {
       refreshAfterSave,
+      // Meal acknowledgement must survive refresh rejection without a new create.
+      refreshAfterMealSave: async () => {
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+          queryClient.invalidateQueries({ queryKey: ["meals"] }),
+        ]);
+      },
       computeKcalLeftAfterMeal,
     },
     clock: {
       now: () => new Date(),
       createRequestId: randomUUID,
+      getTimezone: () => timezone,
     },
     preview: {
       isEnabled: () => isWebPreview,
@@ -614,6 +630,7 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
     isWebPreview,
     finishWithSaved,
     audioRecorder,
+    router,
   ]);
 
   const overlaySnapshot = useSyncExternalStore(
