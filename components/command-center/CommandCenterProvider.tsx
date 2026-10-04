@@ -1,7 +1,7 @@
 import { createContext, use, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Keyboard, Linking } from "react-native";
-import { useAudioRecorder, RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync } from "expo-audio";
+import { useAudioRecorder, RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync, type RecordingOptions } from "expo-audio";
 import * as ImagePicker from "expo-image-picker";
 import { randomUUID } from "expo-crypto";
 import { insertAcknowledgedMeal, type PendingMeal, type PendingMealDashboard } from "@/lib/pending-meal-cache";
@@ -35,6 +35,7 @@ import {
   type MealCaptureIdentity,
   type PhotoPickerMode,
 } from "@/components/command-center/controller";
+import type { MeteredRecorder } from "@/components/command-center/LiveWaveform";
 import {
   buildQuickAddItems,
   ensureQuickSession,
@@ -44,6 +45,16 @@ import {
   inferMealType,
   toLocalDateString,
 } from "@/components/command-center/helpers";
+
+// Speech-tuned capture: mono at 64 kbps is ~4x smaller than HIGH_QUALITY's
+// stereo 128 kbps, so uploads (and therefore transcription) start sooner with
+// no loss for a transcription model. Metering drives the live waveform.
+const VOICE_RECORDING_OPTIONS: RecordingOptions = {
+  ...RecordingPresets.HIGH_QUALITY,
+  numberOfChannels: 1,
+  bitRate: 64000,
+  isMeteringEnabled: true,
+};
 
 // ---------------------------------------------------------------------------
 // Public context — what screens see via useCommandCenter()
@@ -93,6 +104,8 @@ interface CommandCenterOverlayValue {
   dispatch: CommandCenterOverlayDispatch;
   showSavedFeedback: () => void;
   photoSourceChoice: { choose: (mode: PhotoPickerMode | null) => void } | null;
+  /** Live recorder, read only by the waveform for metering. */
+  recorder: MeteredRecorder | null;
 }
 
 const CommandCenterOverlayContext = createContext<CommandCenterOverlayValue | null>(null);
@@ -110,7 +123,7 @@ export function useCommandCenterOverlay() {
 export function CommandCenterProvider({ children }: { children: React.ReactNode }) {
   // Hoisted at top level — expo-audio recorder hook cannot be called inside
   // nested/async functions (rules of hooks).
-  const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const audioRecorder = useAudioRecorder(VOICE_RECORDING_OPTIONS);
   const router = useRouter();
 
   const { getToken, isSignedIn } = useAuth();
@@ -260,6 +273,7 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
   // Success starts sheet dismissal; the overlay shows this message afterward.
   const finishWithSaved = useCallback((toast: string, kcalLeft: number | null = null, kind: SavedFeedbackKind = "entry") => {
     Keyboard.dismiss();
+    haptic.success();
     setCommandToast(toast);
     setSavedFeedbackKind(kind);
     setSavedFeedbackReady(false);
@@ -269,9 +283,12 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
 
   useEffect(() => {
     if (commandState !== "cc_saved") return;
-    const timer = setTimeout(closeCommandCenter, 2200);
+    // Time the toast from when it actually appears (after the sheet finishes
+    // dismissing) so it is readable; the longer fallback covers a dismiss
+    // callback that never arrives.
+    const timer = setTimeout(closeCommandCenter, savedFeedbackReady ? 2600 : 6000);
     return () => clearTimeout(timer);
-  }, [commandState, closeCommandCenter]);
+  }, [commandState, savedFeedbackReady, closeCommandCenter]);
 
   // Snapshots dashboard cache to compute `kcal left today` after a meal save.
   // Reads pre-save consumed kcal so the math is stable even before the
@@ -715,9 +732,14 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
     clearScreenContext,
   }), [commandState, commandToast, openCommandCenter, startRecording, closeCommandCenterForConsumers, launcherProps, setScreenContext, clearScreenContext]);
 
+  // The sheet's dismiss-completion callback can be a closure from an earlier
+  // render (gorhom fires it from the close animation), so read the live state
+  // through a ref; a stale `commandState` here meant the toast never appeared.
+  const commandStateRef = useRef(commandState);
+  commandStateRef.current = commandState;
   const showSavedFeedback = useCallback(() => {
-    if (commandState === "cc_saved") setSavedFeedbackReady(true);
-  }, [commandState]);
+    if (commandStateRef.current === "cc_saved") setSavedFeedbackReady(true);
+  }, []);
 
   const overlayValue = useMemo<CommandCenterOverlayValue>(() => ({
     snapshot: overlaySnapshot,
@@ -727,7 +749,8 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
     },
     showSavedFeedback,
     photoSourceChoice,
-  }), [commandCenterController.dispatch, overlaySnapshot, showSavedFeedback, photoSourceChoice, cancelPhotoSource]);
+    recorder: audioRecorder as MeteredRecorder,
+  }), [commandCenterController.dispatch, overlaySnapshot, showSavedFeedback, photoSourceChoice, cancelPhotoSource, audioRecorder]);
 
   return (
     <CommandCenterPublicContext.Provider value={publicValue}>

@@ -8,7 +8,6 @@ export type CommandState =
   | "cc_expanded_typing"
   | "cc_photo_context"
   | "cc_submitting_typed"
-  | "cc_submitting_photo"
   | "cc_recording"
   | "cc_transcribing_voice"
   | "cc_interpreting_voice"

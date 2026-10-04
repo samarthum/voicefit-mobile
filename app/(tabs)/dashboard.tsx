@@ -12,6 +12,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import Animated, { FadeIn, useReducedMotion } from "react-native-reanimated";
 import { useAuth } from "@clerk/clerk-expo";
 import { useQuery, useIsRestoring, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
@@ -165,6 +166,7 @@ export default function DashboardScreen() {
   const cc = useCommandCenter();
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const isWebPreview = isWebPreviewMode();
+  const reducedMotion = useReducedMotion();
   const isRestoring = useIsRestoring();
   const queryClient = useQueryClient();
   const [isManualRefreshing, setIsManualRefreshing] = useState(false);
@@ -310,7 +312,7 @@ export default function DashboardScreen() {
     if (!dashboard?.recentMeals) return [];
     return dashboard.recentMeals
       .filter((meal) => toLocalDateString(new Date(meal.eatenAt)) === selectedDate)
-      .slice(0, 3);
+      .slice(0, 5);
   }, [dashboard?.recentMeals, selectedDate]);
 
   const metricCurrentValues = useMemo(
@@ -540,6 +542,76 @@ export default function DashboardScreen() {
               </View>
             </Pressable>
 
+            <View style={styles.sectionHeaderRow}>
+              <Text style={[styles.sectionTitle, styles.sectionTitleInRow]}>{selectedDate === today ? "Today’s meals" : `Meals · ${selectedDayLabel}`}</Text>
+              <Pressable hitSlop={12} accessibilityRole="button" accessibilityLabel="See all meals for selected day" onPress={() => { haptic.tap(); router.push({ pathname: "/meals", params: { date: selectedDate } }); }} testID="home-recent-meals-see-all">
+                <Text style={styles.sectionLink}>See all</Text>
+              </Pressable>
+            </View>
+
+            <View style={styles.mealsWrap}>
+              {isDashboardInitialLoading ? (
+                <View style={styles.mealsLoadingWrap}>
+                  <LoadingBlock width={"100%"} height={68} radius={16} />
+                  <LoadingBlock width={"100%"} height={68} radius={16} />
+                  <LoadingBlock width={"100%"} height={68} radius={16} />
+                </View>
+              ) : recentMeals.length > 0 ? (
+                recentMeals.map((meal, index) => {
+                  const eaten = new Date(meal.eatenAt);
+                  const hh = String(eaten.getHours()).padStart(2, "0");
+                  const mm = String(eaten.getMinutes()).padStart(2, "0");
+                  const status = normalizeMealStatus(meal.interpretationStatus, meal.calories);
+                  const calories = formatNullableCalories(meal.calories);
+                  return (
+                    <Pressable
+                      key={meal.id}
+                      style={[styles.mealRow, index === 0 && styles.mealRowFirst]}
+                      onPress={() => handleOpenMeal(meal.id)}
+                      testID={`home-meal-row-${meal.id}`}
+                    >
+                      <Text style={styles.mealTime}>{hh}:{mm}</Text>
+                      <View style={styles.mealInfo}>
+                        <Text style={styles.mealTitle} numberOfLines={1}>{meal.description}</Text>
+                        <View style={styles.mealMetaRow}>
+                          {status !== "interpreting" ? (
+                            <Text style={styles.mealMeta} numberOfLines={1}>{meal.mealType}</Text>
+                          ) : null}
+                          <MealStatusBadge status={status} />
+                        </View>
+                      </View>
+                      <View style={styles.mealKcalRow}>
+                        {status === "interpreting" || calories == null ? (
+                          <LoadingBlock width={44} height={14} radius={5} />
+                        ) : (
+                          // Keyed on status so an estimate landing (polling flips
+                          // the row out of "interpreting") fades its number in.
+                          <Animated.View key={status} entering={reducedMotion ? undefined : FadeIn.duration(400)} style={styles.mealKcalRow}>
+                            <Text style={styles.mealKcalNum} selectable>{calories}</Text>
+                            <Text style={styles.mealKcalUnit}>kcal</Text>
+                          </Animated.View>
+                        )}
+                      </View>
+                    </Pressable>
+                  );
+                })
+              ) : (
+                <View style={styles.emptyMeals}>
+                  <Text style={styles.emptyMealTitle}>No meals logged {selectedDate === today ? "today" : "for this day"}</Text>
+                  <Text style={styles.emptyText}>Your meals and nutrition estimates will appear here.</Text>
+                  {selectedDate === today ? (
+                    <Pressable
+                      onPress={() => cc.open()}
+                      accessibilityRole="button"
+                      style={({ pressed }) => [styles.emptyMealAction, pressed && { opacity: 0.65 }]}
+                    >
+                      <Icon name="plus" size={16} color={token.accent} />
+                      <Text style={styles.emptyMealActionText}>Log your first meal</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+              )}
+            </View>
             <View style={styles.metricsRow}>
               <Pressable
                 style={styles.metricCard}
@@ -618,74 +690,6 @@ export default function DashboardScreen() {
               <Icon name="chevronRight" size={16} color={token.textMute} />
             </Pressable>
 
-            <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionTitle}>{selectedDate === today ? "Today’s meals" : `Meals · ${selectedDayLabel}`}</Text>
-              <Pressable hitSlop={12} accessibilityRole="button" accessibilityLabel="See all meals for selected day" onPress={() => { haptic.tap(); router.push({ pathname: "/meals", params: { date: selectedDate } }); }} testID="home-recent-meals-see-all">
-                <Text style={styles.sectionLink}>See all</Text>
-              </Pressable>
-            </View>
-
-            <View style={styles.mealsWrap}>
-              {isDashboardInitialLoading ? (
-                <View style={styles.mealsLoadingWrap}>
-                  <LoadingBlock width={"100%"} height={68} radius={16} />
-                  <LoadingBlock width={"100%"} height={68} radius={16} />
-                  <LoadingBlock width={"100%"} height={68} radius={16} />
-                </View>
-              ) : recentMeals.length > 0 ? (
-                recentMeals.map((meal, index) => {
-                  const eaten = new Date(meal.eatenAt);
-                  const hh = String(eaten.getHours()).padStart(2, "0");
-                  const mm = String(eaten.getMinutes()).padStart(2, "0");
-                  const status = normalizeMealStatus(meal.interpretationStatus, meal.calories);
-                  const calories = formatNullableCalories(meal.calories);
-                  return (
-                    <Pressable
-                      key={meal.id}
-                      style={[styles.mealRow, index === 0 && styles.mealRowFirst]}
-                      onPress={() => handleOpenMeal(meal.id)}
-                      testID={`home-meal-row-${meal.id}`}
-                    >
-                      <Text style={styles.mealTime}>{hh}:{mm}</Text>
-                      <View style={styles.mealInfo}>
-                        <Text style={styles.mealTitle} numberOfLines={1}>{meal.description}</Text>
-                        <View style={styles.mealMetaRow}>
-                          {status !== "interpreting" ? (
-                            <Text style={styles.mealMeta} numberOfLines={1}>{meal.mealType}</Text>
-                          ) : null}
-                          <MealStatusBadge status={status} />
-                        </View>
-                      </View>
-                      <View style={styles.mealKcalRow}>
-                        {status === "interpreting" || calories == null ? (
-                          <Text style={styles.mealKcalPending}>--</Text>
-                        ) : (
-                          <>
-                            <Text style={styles.mealKcalNum} selectable>{calories}</Text>
-                            <Text style={styles.mealKcalUnit}>kcal</Text>
-                          </>
-                        )}
-                      </View>
-                    </Pressable>
-                  );
-                })
-              ) : (
-                <View style={styles.emptyMeals}>
-                  <Text style={styles.emptyMealTitle}>No meals logged {selectedDate === today ? "today" : "for this day"}</Text>
-                  <Text style={styles.emptyText}>Your meals and nutrition estimates will appear here.</Text>
-                  {selectedDate === today ? (
-                    <Pressable
-                      onPress={() => cc.open()}
-                      accessibilityRole="button"
-                      style={({ pressed }) => [styles.emptyMealAction, pressed && { opacity: 0.65 }]}
-                    >
-                      <Icon name="plus" size={16} color={token.accent} />
-                      <Text style={styles.emptyMealActionText}>Log your first meal</Text>
-                    </Pressable>
-                  ) : null}
-                </View>
-              )}
-            </View>
           </>
         )}
       </ScrollView>
@@ -898,7 +902,7 @@ const styles = StyleSheet.create({
     borderRadius: r.md,
     borderCurve: "continuous",
     padding: 16,
-    marginBottom: 24,
+    marginBottom: 8,
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
@@ -1025,11 +1029,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    marginTop: 14,
     marginBottom: 12,
   },
+  sectionTitleInRow: { marginBottom: 0 },
   sectionLink: {
     fontFamily: font.sans[600],
-    fontSize: 11,
+    fontSize: 13,
     color: token.accent,
     fontWeight: "600",
   },
@@ -1040,7 +1046,7 @@ const styles = StyleSheet.create({
     borderRadius: r.md,
     borderCurve: "continuous",
     overflow: "hidden",
-    marginBottom: 12,
+    marginBottom: 20,
   },
   mealsLoadingWrap: {
     gap: 12,

@@ -96,29 +96,62 @@ export function getErrorMessage(error: unknown) {
   return "Something went wrong. Please try again.";
 }
 
+// Words that only show up when describing food or drink. Anything matched
+// here skips the synchronous classifier and becomes a pending meal right away
+// (the "taking a look" path), so keep it specific: a false positive logs a
+// non-meal as a meal, while a miss only costs a slower round trip.
+const FOOD_WORDS = [
+  // proteins
+  "chicken", "beef", "pork", "lamb", "mutton", "goat", "fish", "salmon", "tuna", "prawn", "shrimp", "egg",
+  "omelette", "omelet", "tofu", "paneer", "turkey", "bacon", "sausage", "ham", "steak", "keema", "kebab",
+  "kabab", "tikka",
+  // grains, breads & mains
+  "rice", "pasta", "noodle", "bread", "toast", "roti", "chapati", "chapatti", "phulka", "naan", "paratha",
+  "parotta", "poori", "puri", "dosa", "idli", "idly", "upma", "poha", "uttapam", "vada", "khichdi", "biryani",
+  "pulao", "oats", "oatmeal", "porridge", "cereal", "granola", "muesli", "quinoa", "potato", "fries", "bagel",
+  "croissant", "muffin", "pancake", "waffle", "tortilla", "wrap", "sandwich", "burger", "pizza", "sushi",
+  "taco", "burrito", "bowl", "salad", "soup", "curry", "dal", "daal", "dhal", "sambar", "rasam", "chole",
+  "chana", "rajma", "sabzi", "sabji", "thali", "momo", "dumpling", "ramen", "pho",
+  // dairy
+  "yogurt", "yoghurt", "curd", "dahi", "raita", "cheese", "milk", "ghee", "lassi", "buttermilk", "chaas",
+  // fruit & veg
+  "apple", "banana", "orange", "mango", "grape", "berry", "berries", "strawberry", "blueberry", "watermelon", "papaya",
+  "pineapple", "avocado", "dates", "fruit", "vegetable", "veggie", "broccoli", "spinach",
+  // snacks & sweets
+  "biscuit", "cookie", "cracker", "nut", "almond", "cashew", "peanut", "chocolate", "cake", "brownie",
+  "ice cream", "ladoo", "laddu", "halwa", "jamun", "samosa", "pakora", "bhaji", "dhokla", "chaat", "bhel",
+  "popcorn", "chips",
+  // drinks
+  "smoothie", "shake", "coffee", "latte", "cappuccino", "espresso", "tea", "chai", "juice", "coke", "soda",
+  "beer", "wine", "kombucha",
+];
+const FOOD_PATTERN = new RegExp(`\\b(${FOOD_WORDS.join("|")})(s|es)?\\b`);
+
 export function isLikelyMealEntry(text: string) {
-  const value = text.toLowerCase().replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
+  const raw = text.trim();
+  const value = raw.toLowerCase().replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
   if (!value) return false;
 
+  // Anything that might be a workout or a metric goes to the classifier.
+  // Erring broad here is cheap: it only means a slower, still-correct path.
   const workoutOrMetricPatterns = [
-    /\b(bench|squat|deadlift|curl|press|row|pull[-\s]?up|push[-\s]?up|plank|run|ran|cardio|workout|exercise)\b/,
-    /\b(rep|reps|set|sets|kg|lb|lbs)\b/,
-    /\b(steps?|weigh(ed)?|weight)\b/,
-    /^(walked)\b/,
+    /\b(bench|squat|deadlift|curl|press|row|rowing|pull[-\s]?ups?|push[-\s]?ups?|chin[-\s]?ups?|plank|lunges?|dips|crunch(es)?|burpees?|sit[-\s]?ups?)\b/,
+    /\b(run|ran|running|jog|jogged|jogging|walk|walked|walking|hike|hiked|hiking|swim|swam|swimming|cycle|cycled|cycling|bike|biked|spin|yoga|pilates|elliptical|treadmill|stretch(ed|ing)?|hiit|zumba|gym|cardio|workout|exercise|trained|training)\b/,
+    /\b(rep|reps|set|sets|kg|kgs|lb|lbs|km|kms|miles?|mins?|minutes?)\b/,
+    /\b(steps?|weigh(ed)?|weight|bodyweight|slept|sleep)\b/,
   ];
   if (workoutOrMetricPatterns.some((pattern) => pattern.test(value))) return false;
 
-  const questionPatterns = [
-    /^(what|when|how|why|did|do|can|should)\b/,
-    /\b(yesterday|last week|today|goal|goals|progress|average|trend)\b.*\?/,
-  ];
-  if (questionPatterns.some((pattern) => pattern.test(value))) return false;
+  // Questions go to the classifier too. Punctuation is stripped from `value`,
+  // so look for the question mark on the raw text.
+  if (raw.endsWith("?")) return false;
+  if (/^(what|when|how|why|did|do|does|can|should|is|am|are|was|which|who)\b/.test(value)) return false;
 
   const mealPatterns = [
-    /\b(ate|eaten|had|having|drank|drink|logged|log)\b/,
-    /\b(breakfast|brunch|lunch|dinner|snack|meal|dessert)\b/,
+    /\b(ate|eaten|eat|had|having|drank|drink|drinking)\b/,
+    /\b(breakfast|brunch|lunch|dinner|supper|snack|meal|dessert)\b/,
     /\b(calorie|calories|kcal|protein|carbs|fat)\b/,
-    /\b(chicken|beef|pork|salmon|tuna|egg|eggs|rice|pasta|bread|oats|yogurt|salad|sandwich|burger|pizza|soup|cereal|banana|apple|smoothie|shake|coffee|latte|sushi|taco|burrito|fries|bowl)\b/,
+    FOOD_PATTERN,
   ];
 
   return mealPatterns.some((pattern) => pattern.test(value));
@@ -250,7 +283,40 @@ export function scaleIngredientByGrams(
 // Workout helpers
 // ---------------------------------------------------------------------------
 
-export function parseWorkoutSetsFromTranscript(transcript: string) {
+const UNIT_WORDS: Record<string, number> = {
+  zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+  eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17,
+  eighteen: 18, nineteen: 19,
+};
+const TENS_WORDS: Record<string, number> = {
+  twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90,
+};
+const UNIT_RE = Object.keys(UNIT_WORDS).join("|");
+const ONE_TO_NINE_RE = "one|two|three|four|five|six|seven|eight|nine";
+const SMALL_NUMBER_RE = `(?:(?:${Object.keys(TENS_WORDS).join("|")})(?:[\\s-]+(?:${ONE_TO_NINE_RE}))?|${UNIT_RE})`;
+// Deliberately narrow grammar ("sixty-five", "a hundred and ten") so adjacent
+// quantities such as "ten and two sets" are never merged into one number.
+const SPOKEN_NUMBER = new RegExp(
+  `\\b(?:(?:${ONE_TO_NINE_RE}|a)\\s+hundred(?:\\s+(?:and\\s+)?${SMALL_NUMBER_RE})?|${SMALL_NUMBER_RE})\\b`,
+  "gi",
+);
+
+/** Transcription often spells quantities out; the set parser reads digits. */
+export function spokenNumbersToDigits(text: string) {
+  return text.replace(SPOKEN_NUMBER, (phrase) => {
+    let value = 0;
+    for (const word of phrase.toLowerCase().split(/[\s-]+/)) {
+      if (word === "and") continue;
+      if (word === "a") value = 1;
+      else if (word === "hundred") value = (value || 1) * 100;
+      else value += TENS_WORDS[word] ?? UNIT_WORDS[word] ?? 0;
+    }
+    return String(value);
+  });
+}
+
+export function parseWorkoutSetsFromTranscript(rawTranscript: string) {
+  const transcript = spokenNumbersToDigits(rawTranscript);
   // Whole groups take precedence over nested rep/weight phrases. Unit
   // normalization happens ONLY here, on raw explicitly-unit-labelled weights;
   // interpreted.payload.weightKg is already normalized and is never converted.
@@ -271,7 +337,7 @@ export function parseWorkoutSetsFromTranscript(transcript: string) {
       const originalUnit = match[pattern.unit] ?? "";
       const pounds = /^(lb|pound)/i.test(originalUnit);
       const weightKg = !originalUnit ? "" : pounds ? String(Number((Number(weight) * 0.45359237).toPrecision(15))) : weight;
-      groups.push({ start, end, count: pattern.count ? Number(match[pattern.count]) : 1, reps: match[pattern.reps], weightKg, notes: originalUnit ? `Original: ${weight} ${originalUnit}` : "" });
+      groups.push({ start, end, count: pattern.count ? Number(match[pattern.count]) : 1, reps: match[pattern.reps], weightKg, notes: pounds ? `Original: ${weight} ${originalUnit}` : "" });
     }
   }
   if (groups.some((group) => group.count < 1 || !Number.isSafeInteger(group.count)) || groups.reduce((sum, group) => sum + group.count, 0) > 100) {
@@ -418,38 +484,38 @@ export const ERROR_COPY: Record<
   { title: string; body: string; primary: string; secondary: string | null; tertiary: string | null }
 > = {
   typed_interpret_failure: {
-    title: "Couldn't understand that entry",
-    body: "Edit your text and try again.",
-    primary: "Retry typed",
+    title: "Couldn't log that",
+    body: "Check the wording and try again.",
+    primary: "Try again",
     secondary: "Edit text",
     tertiary: "Discard",
   },
   voice_interpret_failure: {
-    title: "Couldn't understand your recording",
-    body: "Retry voice or edit the transcript.",
-    primary: "Retry voice",
+    title: "Didn't quite catch that",
+    body: "Try again, or edit what we heard.",
+    primary: "Try again",
     secondary: "Edit text",
     tertiary: "Discard",
   },
   photo_interpret_failure: {
     title: "Couldn't submit that photo",
     body: "Keep the photo and try again, or choose a different entry method.",
-    primary: "Retry photo",
-    secondary: "Use typing instead",
+    primary: "Try again",
+    secondary: "Type instead",
     tertiary: "Discard",
   },
   mic_permission_denied: {
-    title: "Microphone access is off",
-    body: "Enable microphone in Settings to log by voice.",
+    title: "Microphone is off",
+    body: "Turn on microphone access in Settings to log by voice.",
     primary: "Open Settings",
-    secondary: "Use typing instead",
+    secondary: "Type instead",
     tertiary: "Discard",
   },
   photo_permission_denied: {
     title: "Photo access is off",
-    body: "Enable camera or photo access in Settings to log meals by photo.",
+    body: "Turn on camera or photo access in Settings to log meals by photo.",
     primary: "Open Settings",
-    secondary: "Use typing instead",
+    secondary: "Type instead",
     tertiary: "Discard",
   },
   auto_save_failure: {

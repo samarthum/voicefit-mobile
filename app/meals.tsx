@@ -26,6 +26,7 @@ import {
 import { color as token, font, radius as r } from "@/lib/tokens";
 import { haptic } from "@/lib/haptics";
 import { Icon } from "@/components/Icon";
+import { MealStatusBadge } from "@/components/dashboard/MealStatusBadge";
 import { useAppPrompt } from "@/components/AppPrompt";
 
 type MealType = "breakfast" | "lunch" | "dinner" | "snack";
@@ -108,37 +109,6 @@ function getLastSevenDaysEndingToday(endDate: string) {
   return items;
 }
 
-
-function MealStatusBadge({ status }: { status: AsyncMealStatus }) {
-  if (status === "reviewed") return null;
-  const label =
-    status === "interpreting"
-      ? "Estimating"
-      : status === "needs_review"
-      ? "Review estimate"
-      : "Failed";
-  return (
-    <View
-      style={[
-        styles.statusBadge,
-        status === "failed" ? styles.statusBadgeFailed : null,
-      ]}
-    >
-      {status === "interpreting" ? (
-        <ActivityIndicator size="small" color={token.textMute} style={styles.statusSpinner} />
-      ) : null}
-      <Text
-        style={[
-          styles.statusBadgeText,
-          status === "failed" ? styles.statusBadgeTextFailed : null,
-        ]}
-        numberOfLines={1}
-      >
-        {label}
-      </Text>
-    </View>
-  );
-}
 
 function formatMealTime(value: string) {
   const date = new Date(value);
@@ -622,38 +592,6 @@ const styles = StyleSheet.create({
   mealChevron: {
     width: 8,
     alignItems: "center",
-  },
-  statusBadge: {
-    maxWidth: 104,
-    minHeight: 20,
-    borderRadius: r.pill,
-    borderWidth: 1,
-    borderColor: token.line,
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    flexShrink: 1,
-  },
-  statusBadgeFailed: {
-    borderColor: token.negative,
-  },
-  statusSpinner: {
-    transform: [{ scale: 0.65 }],
-    marginHorizontal: -3,
-  },
-  statusBadgeText: {
-    fontFamily: font.sans[600],
-    fontSize: 9,
-    fontWeight: "600",
-    letterSpacing: 0.35,
-    textTransform: "uppercase",
-    color: token.textMute,
-    flexShrink: 1,
-  },
-  statusBadgeTextFailed: {
-    color: token.negative,
   },
   failedDeleteButton: {
     minWidth: 54,

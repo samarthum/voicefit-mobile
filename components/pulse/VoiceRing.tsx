@@ -5,6 +5,8 @@ import Animated, {
   withTiming,
   withRepeat,
   withSpring,
+  withDelay,
+  withSequence,
   Easing,
 } from "react-native-reanimated";
 import { StyleSheet, View } from "react-native";
@@ -167,7 +169,7 @@ export function VoiceRing({ state, size = 200, reducedMotion = false }: VoiceRin
           </Svg>
         </Animated.View>
         <View style={[StyleSheet.absoluteFill, styles.center]}>
-          <Dots />
+          <Dots reducedMotion={reducedMotion} />
         </View>
       </Animated.View>
     );
@@ -223,20 +225,35 @@ function MicIcon({ size, stroke }: { size: number; stroke: string }) {
   );
 }
 
-function Dots() {
+function Dot({ index, reducedMotion }: { index: number; reducedMotion: boolean }) {
+  const lift = useSharedValue(0);
+  useEffect(() => {
+    if (reducedMotion) return;
+    lift.value = withDelay(
+      index * 140,
+      withRepeat(withSequence(
+        withTiming(1, { duration: 280, easing: easeStd }),
+        withTiming(0, { duration: 280, easing: easeStd }),
+        withTiming(0, { duration: 280 }),
+      ), -1, false),
+    );
+  }, [index, lift, reducedMotion]);
+  const style = useAnimatedStyle(() => ({
+    opacity: 0.35 + lift.value * 0.65,
+    transform: [{ translateY: -lift.value * 4 }],
+  }));
+  return (
+    <Animated.View
+      style={[{ width: 6, height: 6, borderRadius: 3, backgroundColor: color.accent }, style]}
+    />
+  );
+}
+
+function Dots({ reducedMotion = false }: { reducedMotion?: boolean }) {
   return (
     <View style={[styles.center, { flexDirection: "row", gap: 6 }]}>
       {[0, 1, 2].map((i) => (
-        <View
-          key={i}
-          style={{
-            width: 6,
-            height: 6,
-            borderRadius: 3,
-            backgroundColor: color.accent,
-            opacity: i === 1 ? 1 : 0.3,
-          }}
-        />
+        <Dot key={i} index={i} reducedMotion={reducedMotion} />
       ))}
     </View>
   );

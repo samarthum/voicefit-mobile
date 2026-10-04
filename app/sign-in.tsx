@@ -1,5 +1,4 @@
-import { useAppPrompt } from "@/components/AppPrompt";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -7,18 +6,54 @@ import {
   Text,
   View,
 } from "react-native";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { useSSO } from "@clerk/clerk-expo";
 import { router } from "expo-router";
+import * as WebBrowser from "expo-web-browser";
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from "react-native-reanimated";
 import Svg, { Path, Rect } from "react-native-svg";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { color, font, radius } from "@/lib/tokens";
 import { Wordmark } from "@/components/pulse";
 import { haptic } from "@/lib/haptics";
 
+// Sign in with Apple only exists on Apple platforms; App Review also requires
+// its button to stay black/white, never the brand accent.
+const SHOW_APPLE = process.env.EXPO_OS === "ios";
+
+// Clerk's recommended Android pre-warm: the Custom Tab opens instantly instead
+// of cold-starting Chrome after the tap.
+WebBrowser.maybeCompleteAuthSession();
+function useWarmUpBrowser() {
+  useEffect(() => {
+    if (process.env.EXPO_OS !== "android") return;
+    void WebBrowser.warmUpAsync();
+    return () => { void WebBrowser.coolDownAsync(); };
+  }, []);
+}
+
 function HeroOrb() {
+  const reducedMotion = useReducedMotion();
+  const breath = useSharedValue(0);
+  useEffect(() => {
+    if (reducedMotion) return;
+    breath.value = withRepeat(withTiming(1, { duration: 2400, easing: Easing.inOut(Easing.sin) }), -1, true);
+  }, [breath, reducedMotion]);
+  const glowStyle = useAnimatedStyle(() => ({
+    opacity: 0.12 + breath.value * 0.1,
+    transform: [{ scale: 0.92 + breath.value * 0.08 }],
+  }));
+
   return (
     <View style={styles.heroOrb}>
-      <View style={styles.heroOrbGlow} />
+      <Animated.View style={[styles.heroOrbGlow, glowStyle]} />
       <View style={styles.heroOrbCore}>
         <Svg width={32} height={40} viewBox="0 0 32 40" fill="none">
           <Rect x={10} y={1} width={12} height={20} rx={6} fill={color.accentInk} />
@@ -36,17 +71,6 @@ function HeroOrb() {
   );
 }
 
-function AppleGlyph() {
-  return (
-    <Svg width={14} height={16} viewBox="0 0 14 16">
-      <Path
-        d="M11.5 8.5c0-2 1.5-3 1.5-3s-1-1.8-3.2-1.8c-1.5 0-2.5 1-3.3 1s-1.8-1-3-1c-1.6 0-3.5 1.3-3.5 4.3 0 3.5 2.5 7 4.3 7 .9 0 1.5-.6 2.4-.6s1.4.6 2.3.6c1.5 0 3-2.7 3.5-4.2 0 0-1-.3-1-3.3zM8 2.5c.6-.7.9-1.7.8-2.5-.8 0-1.8.5-2.3 1.2-.5.6-.9 1.5-.8 2.4.8.1 1.7-.5 2.3-1.1z"
-        fill={color.accentInk}
-      />
-    </Svg>
-  );
-}
-
 function GoogleGlyph() {
   return (
     <Svg width={16} height={16} viewBox="0 0 20 20" fill="none">
@@ -59,8 +83,8 @@ function GoogleGlyph() {
 }
 
 export default function SignInScreen() {
+  useWarmUpBrowser();
   const { startSSOFlow } = useSSO();
-  const prompt = useAppPrompt();
   const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
   const [isAppleSubmitting, setIsAppleSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -87,11 +111,6 @@ export default function SignInScreen() {
   };
 
   const handleAppleSignIn = async () => {
-    if (process.env.EXPO_OS === "android" || process.env.EXPO_OS === "web") {
-      prompt.alert("Apple Sign In", "Apple sign in is only available on supported Apple platforms.");
-      return;
-    }
-
     setError(null);
     setIsAppleSubmitting(true);
     try {
@@ -116,7 +135,6 @@ export default function SignInScreen() {
 
   return (
     <SafeAreaView style={styles.root} edges={["top", "bottom"]}>
-      {prompt.dialog}
       <View style={styles.wordmarkRow}>
         <Wordmark size={22} />
       </View>
@@ -132,23 +150,29 @@ export default function SignInScreen() {
       </View>
 
       <View style={styles.authArea}>
-        <Pressable
-          style={[styles.appleButton, busy ? styles.disabled : null]}
-          onPress={() => { haptic.press(); void handleAppleSignIn(); }}
-          disabled={busy}
-        >
-          {isAppleSubmitting ? (
-            <ActivityIndicator color={color.accentInk} />
-          ) : (
-            <View style={styles.buttonContent}>
-              <AppleGlyph />
-              <Text style={styles.appleButtonText}>Continue with Apple</Text>
-            </View>
-          )}
-        </Pressable>
+        {SHOW_APPLE ? (
+          <Pressable
+            style={({ pressed }) => [styles.appleButton, busy ? styles.disabled : null, pressed && styles.pressed]}
+            onPress={() => { haptic.press(); void handleAppleSignIn(); }}
+            disabled={busy}
+            accessibilityRole="button"
+            accessibilityLabel="Continue with Apple"
+          >
+            {isAppleSubmitting ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <View style={styles.buttonContent}>
+                <Ionicons name="logo-apple" size={19} color="#FFFFFF" style={styles.appleLogo} />
+                <Text style={styles.appleButtonText}>Continue with Apple</Text>
+              </View>
+            )}
+          </Pressable>
+        ) : null}
 
         <Pressable
-          style={[styles.googleButton, busy ? styles.disabled : null]}
+          style={({ pressed }) => [styles.googleButton, !SHOW_APPLE && styles.googleButtonFirst, busy ? styles.disabled : null, pressed && styles.pressed]}
+          accessibilityRole="button"
+          accessibilityLabel="Continue with Google"
           onPress={() => { haptic.press(); void handleGoogleSignIn(); }}
           disabled={busy}
         >
@@ -245,13 +269,16 @@ const styles = StyleSheet.create({
     height: 56,
     borderRadius: radius.sm,
     borderCurve: "continuous",
-    backgroundColor: color.accent,
+    backgroundColor: "#000000",
     alignItems: "center",
     justifyContent: "center",
   },
+  // Ionicons' apple glyph sits low in its em box; lift it onto the text's
+  // optical center.
+  appleLogo: { marginTop: -3 },
   appleButtonText: {
     fontFamily: font.sans[700],
-    color: color.accentInk,
+    color: "#FFFFFF",
     fontSize: 15,
     fontWeight: "700",
     letterSpacing: 0.3,
@@ -267,6 +294,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  googleButtonFirst: { marginTop: 0 },
   googleButtonText: {
     fontFamily: font.sans[600],
     color: color.text,
@@ -295,6 +323,10 @@ const styles = StyleSheet.create({
   },
   disabled: {
     opacity: 0.6,
+  },
+  pressed: {
+    opacity: 0.8,
+    transform: [{ scale: 0.99 }],
   },
   error: {
     marginTop: 16,

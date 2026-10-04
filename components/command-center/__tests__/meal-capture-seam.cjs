@@ -53,7 +53,7 @@ async function harness() {
     'expo-crypto':{randomUUID:()=>`00000000-0000-4000-8000-${String(++uuid).padStart(12,'0')}`},
     '@clerk/clerk-expo':{useAuth:()=>({getToken:token,isSignedIn:true})},
     '@tanstack/react-query':{useQuery:()=>({data:[]}),useQueryClient:()=>queryClient},
-    '@/lib/haptics':{haptic:{press(){},tap(){}}},
+    '@/lib/haptics':{haptic:{press(){},tap(){},success(){}}},
     '@/lib/web-preview-mode':{isWebPreviewMode:()=>false},
     '@/lib/api/ingredient':{fetchInterpretedIngredient:async()=>({})},
     '@/lib/api-client':{apiRequest:(url,options)=>http(url,options),apiFormRequest:(url,form,options)=>http(url,options,form)},

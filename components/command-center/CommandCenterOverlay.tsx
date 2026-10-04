@@ -3,11 +3,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MealIngredient } from "@voicefit/contracts/types";
 import {
-
   StyleSheet,
   Text,
   View,
-
+  useWindowDimensions,
 } from "react-native";
 import {
   BottomSheetBackdrop,
@@ -43,15 +42,37 @@ import { useAppPrompt } from "@/components/AppPrompt";
 
 // Saving stays in the action surface; the review never changes detent.
 const REVIEW_SNAP_POINTS = ["92%"];
+// Recording and the voice hand-off are a single focused moment; a short sheet
+// keeps the dashboard visible behind it instead of a mostly-empty 92% panel.
+const VOICE_SHEET_CONTENT_HEIGHT = 452;
+// The photo source choice is two rows; size the sheet to them.
+const PHOTO_SOURCE_SHEET_HEIGHT = 292;
+// How long the "Got it" check stays up before the sheet slides away.
+const VOICE_SUCCESS_HOLD_MS = 900;
 
 export function CommandCenterOverlay() {
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
 
   const { snapshot, dispatch, showSavedFeedback, photoSourceChoice } = useCommandCenterOverlay();
 
-  const { state: commandState, review: reviewDraft, error, toast } = snapshot;
+  const { state: commandState, review: reviewDraft, error, toast, input } = snapshot;
   const isSaving = isSavingState(commandState);
-  const snapPoints = REVIEW_SNAP_POINTS;
+  // A voice capture with nothing left for the user to decide: no review draft,
+  // no photo, and the words came from the transcript rather than the keyboard.
+  const isVoiceCapture = !reviewDraft && !input.selectedMealPhoto && !input.text.trim() && !!input.voiceTranscript.trim();
+  const isVoiceProgress =
+    commandState === "cc_transcribing_voice" ||
+    commandState === "cc_interpreting_voice" ||
+    ((isSaving || commandState === "cc_saved") && isVoiceCapture);
+  const compactHeight = photoSourceChoice
+    ? PHOTO_SOURCE_SHEET_HEIGHT
+    : commandState === "cc_recording" || isVoiceProgress
+    ? VOICE_SHEET_CONTENT_HEIGHT
+    : null;
+  const snapPoints = compactHeight
+    ? [Math.min(Math.round(windowHeight * 0.92), compactHeight + insets.bottom)]
+    : REVIEW_SNAP_POINTS;
   const isVisible = commandState !== "cc_collapsed";
   const canCloseViaBackdrop =
     commandState === "cc_expanded_empty" || commandState === "cc_expanded_typing";
@@ -76,7 +97,22 @@ export function CommandCenterOverlay() {
   // never syncs state back to collapsed, leaving the app "open" while the sheet
   // is closed (so later taps can't re-open it).
   const hasPresentedRef = useRef(false);
-  const shouldPresentSheet = isVisible && commandState !== "cc_saved";
+  // Voice saves hold the sheet open briefly on a success check so the hand-off
+  // lands ("Got it") before the sheet slides away to the toast.
+  // Tracked as "elapsed" (false by default) so the very first cc_saved render
+  // already keeps the sheet up; a "holding" flag set from an effect would let
+  // that first render dismiss the sheet before the hold began.
+  const [voiceSuccessElapsed, setVoiceSuccessElapsed] = useState(false);
+  const voiceSaved = commandState === "cc_saved" && isVoiceCapture;
+  useEffect(() => {
+    if (!voiceSaved) {
+      setVoiceSuccessElapsed(false);
+      return;
+    }
+    const timer = setTimeout(() => setVoiceSuccessElapsed(true), VOICE_SUCCESS_HOLD_MS);
+    return () => clearTimeout(timer);
+  }, [voiceSaved]);
+  const shouldPresentSheet = isVisible && (commandState !== "cc_saved" || (voiceSaved && !voiceSuccessElapsed));
   // Match retained content and actions through acknowledgement dismissal.
   const lastSheetSnapPoints = useRef(snapPoints);
   const presentedSnapPoints = shouldPresentSheet
@@ -186,13 +222,18 @@ export function CommandCenterOverlay() {
       return <PhotoState onClose={closeCommandCenter} />;
     }
 
-    if (
-      commandState === "cc_submitting_typed" ||
-      commandState === "cc_submitting_photo" ||
-      commandState === "cc_transcribing_voice" ||
-      commandState === "cc_interpreting_voice"
-    ) {
+    if (isVoiceProgress) {
       return <InterpretingState />;
+    }
+
+    // Typed entries stay in the editor while they send, with the busy state
+    // on the send button, instead of swapping to a separate screen.
+    if (commandState === "cc_submitting_typed") {
+      return (
+        <SheetShell title="Log anything" onClose={closeCommandCenter} showCloseButton={false} scrollable>
+          <IdleState />
+        </SheetShell>
+      );
     }
 
     if (commandState === "cc_recording") {

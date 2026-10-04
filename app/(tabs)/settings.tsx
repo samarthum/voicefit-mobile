@@ -1,4 +1,5 @@
 import { diagnosticsEnabled } from "@/lib/performance-log";
+import Constants from "expo-constants";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -98,18 +99,6 @@ function HeartGlyph() {
 
 function HealthConnectGlyph() {
   return <Icon name="checkCircle" size={16} color={COLORS.green} />;
-}
-
-function PlayGlyph() {
-  return <Icon name="play" size={14} color={token.accent} />;
-}
-
-function CalendarGlyph() {
-  return <Icon name="calendar" size={14} color={token.accent} />;
-}
-
-function BellGlyph() {
-  return <Icon name="bell" size={14} color={token.accent} />;
 }
 
 function SettingsRow({
@@ -488,18 +477,6 @@ export default function SettingsScreen() {
               <RowChevron />
             </View>
           </Pressable>
-          <SettingsRow
-            iconBackground={token.surface2}
-            icon={<PlayGlyph />}
-            label="Voice feedback"
-            value="Coming soon"
-          />
-          <SettingsRow
-            iconBackground={token.surface2}
-            icon={<CalendarGlyph />}
-            label="Weekly summary"
-            value="Coming soon"
-          />
         </View>
 
         <Modal
@@ -529,12 +506,6 @@ export default function SettingsScreen() {
             icon={<TimeGlyph />}
             label="Timezone"
             value="Auto"
-          />
-          <SettingsRow
-            iconBackground={token.surface2}
-            icon={<BellGlyph />}
-            label="Notifications"
-            value="Coming soon"
           />
         </View>
 
@@ -613,7 +584,7 @@ export default function SettingsScreen() {
             <Icon name="chevronRight" size={18} color={token.textMute} />
           </Pressable>
         ) : null}
-        <Text style={styles.version}>VoiceFit Mobile · v0.1</Text>
+        <Text style={styles.version}>VoiceFit · {Constants.expoConfig?.version ?? ""}</Text>
       </ScrollView>
 
       {Platform.OS === "ios" ? (

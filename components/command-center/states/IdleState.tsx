@@ -9,10 +9,12 @@ import { isSavingState, isReviewLocked } from "./saving-ui";
 export function IdleState() {
   const { snapshot, dispatch } = useCommandCenterOverlay();
   const { input, quickAddItems, screenContext } = snapshot;
-  const busy = isSavingState(snapshot.state) || snapshot.state === "cc_saved";
-  const locked = isReviewLocked(snapshot);
+  const busy = isSavingState(snapshot.state) || snapshot.state === "cc_saved" || snapshot.state === "cc_submitting_typed";
+  const locked = isReviewLocked(snapshot) || snapshot.state === "cc_submitting_typed";
   const failure = snapshot.state === "cc_error" ? snapshot.error.copy : null;
   const sendDisabled = busy || (!failure && !input.text.trim());
+  // Classification can take a few seconds before anything is written.
+  const busyLabel = snapshot.state === "cc_submitting_typed" ? "Taking a look…" : "Saving…";
   const isWorkout = screenContext.screen === "workout";
   const placeholder = isWorkout
     ? 'Try "3 sets of squats, 8 reps at 80 kg"'
@@ -29,6 +31,8 @@ export function IdleState() {
           value={locked && !input.text.trim() ? input.voiceTranscript : input.text}
           onChangeText={(text) => dispatch({ type: "text.change", text })}
           multiline
+          // Opening the sheet from the text bar means "I want to type".
+          autoFocus={snapshot.state === "cc_expanded_empty"}
           testID="cc-input-text"
           accessibilityLabel="Describe your entry"
         />
@@ -71,11 +75,11 @@ export function IdleState() {
           aria-busy={busy}
           onPress={() => { if (!sendDisabled) void dispatch({ type: failure ? "error.primary" : "text.submit" }); }}
           accessibilityRole="button"
-          accessibilityLabel={busy ? "Saving" : failure ? failure.primary : "Submit entry"}
+          accessibilityLabel={busy ? busyLabel : failure ? failure.primary : "Submit entry"}
           testID="cc-send"
         >
           {busy ? <ActivityIndicator size="small" color={t.accentInk} /> : failure ? null : <Icon name="sparkSend" size={20} color={sendDisabled ? t.textMute : t.accentInk} />}
-          {busy || failure ? <Text style={styles.savingCopy}>{busy ? "Saving…" : failure?.primary}</Text> : null}
+          {busy || failure ? <Text style={styles.savingCopy}>{busy ? busyLabel : failure?.primary}</Text> : null}
         </Pressable>
       </View>
 
