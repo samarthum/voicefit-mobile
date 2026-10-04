@@ -27,7 +27,7 @@ export function DayPicker({ dayOptions, selectedDate, loggedDates, onSelectDate 
           <Pressable
             key={day.date}
             accessibilityRole="button"
-            accessibilityLabel={new Date(`${day.date}T12:00:00`).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
+            accessibilityLabel={`${new Date(`${day.date}T12:00:00`).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}${hasData ? ", logged activity" : ""}`}
             accessibilityState={{ selected: active }}
             style={[styles.dayItem, active && styles.dayItemActive]}
             testID={`home-day-${day.date}`}
@@ -46,7 +46,7 @@ export function DayPicker({ dayOptions, selectedDate, loggedDates, onSelectDate 
               style={[
                 styles.dayDot,
                 active && styles.dayDotActive,
-                !active && !hasData && styles.dayDotEmpty,
+                !hasData && styles.dayDotEmpty,
               ]}
             />
           </Pressable>
