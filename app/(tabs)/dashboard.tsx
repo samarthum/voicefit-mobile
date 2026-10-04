@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "@clerk/clerk-expo";
-import { useQuery, useIsRestoring } from "@tanstack/react-query";
+import { useQuery, useIsRestoring, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import type { DashboardData } from "@voicefit/contracts/types";
 import { apiRequest } from "@/lib/api-client";
@@ -166,6 +166,7 @@ export default function DashboardScreen() {
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const isWebPreview = isWebPreviewMode();
   const isRestoring = useIsRestoring();
+  const queryClient = useQueryClient();
   const [isManualRefreshing, setIsManualRefreshing] = useState(false);
 
   const today = useLocalDay();
@@ -190,6 +191,23 @@ export default function DashboardScreen() {
     });
     return unsubscribe;
   }, []);
+
+  // Home deliberately omits trends. Keep strip history anchored to today,
+  // independently of the fast, complete selected-day meal/summary request.
+  // Sharing Trends' key also reuses its persisted cache and save invalidations.
+  const historyQuery = useQuery<DashboardHomeData>({
+    queryKey: ["dashboard", "full", timezone, today],
+    enabled: !isRestoring,
+    queryFn: async () => {
+      if (isWebPreview) return mockDashboardData(today);
+      const token = await measureToken("/api/dashboard", getToken);
+      if (!token) throw new Error("Not signed in");
+      return apiRequest<DashboardHomeData>(
+        `/api/dashboard?${new URLSearchParams({ timezone, date: today, scope: "full" })}`,
+        { token }
+      );
+    },
+  });
 
   const dashboardQuery = useQuery<DashboardHomeData>({
     queryKey: ["dashboard", "home", timezone, selectedDate],
@@ -229,9 +247,34 @@ export default function DashboardScreen() {
   const weeklyCurrent = weeklyFull.slice(-7);
   const weeklyPrior = weeklyFull.slice(-14, -7);
 
+  const [homeCacheRevision, setHomeCacheRevision] = useState(0);
+  useEffect(() => {
+    const cache = queryClient.getQueryCache?.();
+    if (!cache) return;
+    const unsubscribe = cache.subscribe((event) => {
+      const key = event.query.queryKey;
+      if (key[0] !== "dashboard" || key[1] !== "home" || key[2] !== timezone) return;
+      // Observer options/results change on our own renders. Only cache evidence
+      // changes should trigger another derivation, including inactive results.
+      if (event.type !== "added" && event.type !== "removed" && !(
+        event.type === "updated" && (
+          event.action.type === "success" ||
+          event.action.type === "error" ||
+          event.action.type === "invalidate" ||
+          event.action.type === "setState"
+        )
+      )) return;
+      setHomeCacheRevision((revision) => revision + 1);
+    });
+    // Reconcile evidence changed between the render and subscribing (hydration
+    // or a fast request); the primitive revision stays stable between events.
+    setHomeCacheRevision((revision) => revision + 1);
+    return unsubscribe;
+  }, [queryClient, timezone]);
+
   const loggedDates = useMemo(() => {
     const dates = new Set<string>();
-    for (const trend of weeklyFull) {
+    for (const trend of historyQuery.data?.weeklyTrends ?? []) {
       const hasData =
         trend.calories > 0 ||
         (trend.steps ?? 0) > 0 ||
@@ -239,8 +282,29 @@ export default function DashboardScreen() {
         trend.workouts > 0;
       if (hasData) dates.add(trend.date);
     }
+    // A captured meal is logged even before nutrition is known. Full history
+    // only includes a capped recent-meal list; retain additional evidence from
+    // visited Home days without replacing their complete meal queries.
+    const cachedDays = queryClient.getQueriesData<DashboardHomeData>({
+      queryKey: ["dashboard", "home", timezone],
+      predicate: (query) => !query.state.isInvalidated,
+    });
+    for (const [key, data] of cachedDays) {
+      const summary = data?.today;
+      if (summary && typeof key[3] === "string" && (
+        summary.calories.consumed > 0 ||
+        (summary.steps.count ?? 0) > 0 ||
+        summary.weight != null ||
+        (summary.workoutSessions ?? 0) > 0
+      )) dates.add(key[3]);
+    }
+    for (const data of [historyQuery.data, ...cachedDays.map(([, data]) => data)]) {
+      for (const meal of data?.recentMeals ?? []) {
+        dates.add(toLocalDateString(new Date(meal.eatenAt)));
+      }
+    }
     return dates;
-  }, [weeklyFull]);
+  }, [historyQuery.data, historyQuery.dataUpdatedAt, dashboard, dashboardQuery.dataUpdatedAt, selectedDate, timezone, queryClient, homeCacheRevision]);
 
   const recentMeals = useMemo(() => {
     if (!dashboard?.recentMeals) return [];
@@ -377,7 +441,10 @@ export default function DashboardScreen() {
             onRefresh={async () => {
               setIsManualRefreshing(true);
               try {
-                await dashboardQuery.refetch();
+                await Promise.all([
+                  queryClient.invalidateQueries({ queryKey: ["dashboard", "home", timezone] }),
+                  historyQuery.refetch(),
+                ]);
               } finally {
                 setIsManualRefreshing(false);
               }
