@@ -27,10 +27,14 @@ import { color as token, font, radius as rad } from "@/lib/tokens";
 
 type CoachComposerProps = {
   placeholder?: string;
+  /** Pre-fills the composer once on mount (e.g. a question typed into the
+   * logging bar) so the user can review it and send. */
+  initialText?: string;
 };
 
 export function CoachComposer({
   placeholder = "Ask your coach…",
+  initialText,
 }: CoachComposerProps) {
   const aui = useAui();
   const insets = useSafeAreaInsets();
@@ -76,6 +80,14 @@ export function CoachComposer({
       inputRef.current?.setNativeProps({ text });
     }
   }, [text]);
+
+  const prefilled = useRef(false);
+  useEffect(() => {
+    if (prefilled.current || !initialText?.trim()) return;
+    prefilled.current = true;
+    aui.composer().setText(initialText.trim());
+    inputRef.current?.focus();
+  }, [aui, initialText]);
 
   const handleTranscript = useCallback(
     (transcript: string) => {

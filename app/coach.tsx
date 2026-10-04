@@ -6,7 +6,7 @@ import { useAppPrompt } from "@/components/AppPrompt";
 import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
 import Reanimated, { useAnimatedStyle } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useAuth } from "@clerk/clerk-expo";
 import { Chat, useChat } from "@ai-sdk/react";
 import { TimedCoachTransport } from "@/lib/timed-chat-transport";
@@ -44,6 +44,8 @@ const STARTER_PROMPTS = [
 // ---------------------------------------------------------------------------
 
 export default function CoachScreen() {
+  // A question asked from the logging bar arrives pre-filled.
+  const { prompt: prefillQuestion } = useLocalSearchParams<{ prompt?: string }>();
   const { getToken, userId, isSignedIn } = useAuth();
   const historyKey = ["coach-messages", userId] as const;
   const router = useRouter();
@@ -210,7 +212,7 @@ export default function CoachScreen() {
           ) : null}
 
           <View>
-            {historyReady && !clearMutation.isPending ? <CoachComposer /> : null}
+            {historyReady && !clearMutation.isPending ? <CoachComposer initialText={prefillQuestion} /> : null}
           </View>
 
           <Modal

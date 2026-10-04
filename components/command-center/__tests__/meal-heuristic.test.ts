@@ -38,6 +38,8 @@ describe("isLikelyMealEntry", () => {
     "how much protein did I eat today",
     "What should I eat for dinner",
     "slept 7 hours",
+    "calories left today",
+    "remaining protein",
     "",
   ];
   for (const text of notMeals) {

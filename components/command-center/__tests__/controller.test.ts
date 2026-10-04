@@ -160,7 +160,7 @@ function createHarness(options: {
     meals: [] as unknown[],
     workoutSets: [] as unknown[],
     dailyMetrics: [] as unknown[],
-    conversations: [] as unknown[],
+    coach: [] as string[],
     refreshed: 0,
     finished: [] as Array<{ toast: string; kcalLeft: number | null | undefined }>,
     states: [] as CommandState[],
@@ -297,9 +297,6 @@ function createHarness(options: {
       upsertDailyMetrics: async (input) => {
         calls.dailyMetrics.push(input);
       },
-      createConversation: async (input) => {
-        calls.conversations.push(input);
-      },
       fetchInterpretedIngredient: async (name, grams) => {
         calls.fetchedIngredients.push({ name, grams });
         return options.interpretedIngredient ?? {
@@ -351,7 +348,7 @@ function createHarness(options: {
       },
     },
     platform: {
-      isWeb: () => false,
+      isWeb: () => false, openCoach: (prompt: string) => { calls.coach.push(prompt); },
       openSettings: async () => {
         calls.openedSettings += 1;
         if (options.openSettingsReject) throw new Error("Settings unavailable");
@@ -559,7 +556,7 @@ describe("CommandCenterController typed entry boundary", () => {
     expect(calls.finished).toEqual([{ toast: "Saved", kcalLeft: null }]);
   });
 
-  test("question intent saves a conversation event and shows the answer", async () => {
+  test("questions open Coach pre-filled without calling the server", async () => {
     const { controller, calls } = createHarness({
       text: "How am I doing this week?",
       interpreted: questionInterpretation(),
@@ -567,21 +564,23 @@ describe("CommandCenterController typed entry boundary", () => {
 
     await controller.submitTypedText();
 
-    expect(calls.conversations).toEqual([
-      {
-        kind: "question",
-        userText: "How am I doing this week?",
-        systemText: "You are trending on target.",
-        source: "text",
-        referenceType: null,
-        referenceId: null,
-        metadata: { answer: "You are trending on target." },
-      },
-    ]);
-    expect(calls.refreshed).toBe(1);
-    expect(calls.finished).toEqual([
-      { toast: "You are trending on target.", kcalLeft: undefined },
-    ]);
+    expect(calls.interpreted).toEqual([]);
+    expect(calls.coach).toEqual(["How am I doing this week?"]);
+    expect(calls.closes).toBe(1);
+    expect(calls.finished).toEqual([]);
+  });
+
+  test("a question only the classifier recognises still opens Coach", async () => {
+    const { controller, calls } = createHarness({
+      text: "remaining calories for today",
+      interpreted: questionInterpretation(),
+    });
+
+    await controller.submitTypedText();
+
+    expect(calls.interpreted).toEqual([{ transcript: "remaining calories for today", source: "text" }]);
+    expect(calls.coach).toEqual(["remaining calories for today"]);
+    expect(calls.pendingMeals).toEqual([]);
   });
 });
 
@@ -1188,5 +1187,65 @@ describe('media cancellation and recovery', () => {
     await controller.stopRecording();
     expect(calls.pendingMeals).toEqual([]);
     expect(calls.errors).toContainEqual({subtype:'voice_interpret_failure',detail:'Network unavailable'});
+  });
+});
+
+describe("CommandCenterController deferred meal classification", () => {
+  const pendingRow = {
+    id: "meal-pending", eatenAt: "2026-10-04T10:30:00.000Z", mealType: "snack", description: "kadhi",
+    interpretationStatus: "interpreting" as const, calories: null, proteinG: null, carbsG: null, fatG: null, transcriptRaw: "kadhi",
+  };
+
+  // "kadhi" is not in the on-device food list, so it reaches the classifier.
+  function deferredHarness(responses: Array<InterpretEntryResponse | Error>) {
+    const { ports, calls } = createHarness({ text: "kadhi" });
+    const operation = { generation: 0, saving: false };
+    const controller = createCommandCenterController(ports, operation);
+    const requests: Array<{ transcript: string; deferMeal?: { requestId: string; eatenAt: string } }> = [];
+    let minted = 0;
+    ports.clock.createRequestId = () => `00000000-0000-4000-8000-${String(++minted).padStart(12, "0")}`;
+    ports.backend.interpretEntry = async (transcript, _source, _signal, deferMeal) => {
+      requests.push({ transcript, deferMeal });
+      const next = responses.shift();
+      if (!next) throw new Error("No response configured");
+      if (next instanceof Error) throw next;
+      return next;
+    };
+    return { controller, calls, ports, requests };
+  }
+
+  test("a meal the classifier defers is acknowledged without a second create", async () => {
+    const { controller, calls, requests } = deferredHarness([{ intent: "meal_pending", payload: pendingRow }]);
+
+    await controller.submitTypedText();
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0].deferMeal?.requestId).toBe("00000000-0000-4000-8000-000000000001");
+    expect(calls.pendingMeals).toEqual([]);
+    expect(calls.finished).toEqual([{ toast: "Logged — estimating calories", kcalLeft: null }]);
+  });
+
+  test("retrying the same text reuses its identity; edited text gets a new one", async () => {
+    const { controller, requests } = deferredHarness([
+      new Error("Response lost"),
+      { intent: "meal_pending", payload: pendingRow },
+    ]);
+
+    await controller.submitTypedText();
+    await controller.handleErrorPrimary();
+    // Same request ID: the server replays the receipt instead of logging twice.
+    expect(requests.map((r) => r.deferMeal?.requestId)).toEqual([
+      "00000000-0000-4000-8000-000000000001",
+      "00000000-0000-4000-8000-000000000001",
+    ]);
+
+    const edited = deferredHarness([new Error("Response lost"), { intent: "meal_pending", payload: pendingRow }]);
+    await edited.controller.submitTypedText();
+    edited.ports.state.setCommandText("kadhi with jeera");
+    await edited.controller.submitTypedText();
+    expect(edited.requests.map((r) => r.deferMeal?.requestId)).toEqual([
+      "00000000-0000-4000-8000-000000000001",
+      "00000000-0000-4000-8000-000000000002",
+    ]);
   });
 });

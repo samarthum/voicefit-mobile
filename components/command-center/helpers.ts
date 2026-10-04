@@ -127,6 +127,15 @@ const FOOD_WORDS = [
 ];
 const FOOD_PATTERN = new RegExp(`\\b(${FOOD_WORDS.join("|")})(s|es)?\\b`);
 
+/** Questions go to Coach (pre-filled), never through the logger. */
+export function isLikelyQuestion(text: string) {
+  const raw = text.trim();
+  if (!raw) return false;
+  if (raw.endsWith("?")) return true;
+  const value = raw.toLowerCase().replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
+  return /^(what|when|how|why|did|do|does|can|could|should|would|is|am|are|was|were|which|who|where|tell me|show me|give me|explain|compare|remind me)\b/.test(value);
+}
+
 export function isLikelyMealEntry(text: string) {
   const raw = text.trim();
   const value = raw.toLowerCase().replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
@@ -142,15 +151,13 @@ export function isLikelyMealEntry(text: string) {
   ];
   if (workoutOrMetricPatterns.some((pattern) => pattern.test(value))) return false;
 
-  // Questions go to the classifier too. Punctuation is stripped from `value`,
-  // so look for the question mark on the raw text.
-  if (raw.endsWith("?")) return false;
-  if (/^(what|when|how|why|did|do|does|can|should|is|am|are|was|which|who)\b/.test(value)) return false;
+  if (isLikelyQuestion(raw)) return false;
 
   const mealPatterns = [
     /\b(ate|eaten|eat|had|having|drank|drink|drinking)\b/,
     /\b(breakfast|brunch|lunch|dinner|supper|snack|meal|dessert)\b/,
-    /\b(calorie|calories|kcal|protein|carbs|fat)\b/,
+    // Macro words alone ("calories left today") are not a meal; let the
+    // (fast) classifier decide those.
     FOOD_PATTERN,
   ];
 

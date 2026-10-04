@@ -26,7 +26,9 @@ function boundary(transcript: string, name = 'Bench Press') {
   const batches: Parameters<CommandCenterPorts['backend']['createWorkoutBatch']>[0][] = [];
   const singles: Parameters<CommandCenterPorts['backend']['createWorkoutSet']>[0][] = [];
   const errors: Array<{ subtype: string; detail?: string }> = [];
-  let sessions = 0, closed = 0, refreshed = 0, requestIds = 0, successes = 0;
+  // classifierIds: identities sent as deferMeal with the classifier call. They can
+  // only ever create a pending meal, so they are tracked apart from write identities.
+  let sessions = 0, closed = 0, refreshed = 0, requestIds = 0, successes = 0, classifierIds = 0;
   const operation: CommandCenterOperationState = { generation: 0, saving: false };
   const ports: CommandCenterPorts = {
     state: {
@@ -45,12 +47,12 @@ function boundary(transcript: string, name = 'Bench Press') {
       clearCommandError: () => {},
     },
     backend: {
-      interpretEntry: async (transcript, source) => { interpretations.push({ transcript, source }); return interpretation(name); }, createPendingMealFromText: async () => {},
+      interpretEntry: async (transcript, source, _signal, deferMeal) => { interpretations.push({ transcript, source }); if (deferMeal?.requestId) classifierIds++; return interpretation(name); }, createPendingMealFromText: async () => {},
       createPendingMealFromPhoto: async () => {}, transcribeAudio: async () => '', createMeal: async () => {},
       ensureQuickSession: async () => { sessions++; return 'synthetic-session'; },
       createWorkoutBatch: async input => { batches.push(structuredClone(input)); },
       createWorkoutSet: async input => { singles.push(structuredClone(input)); },
-      upsertDailyMetrics: async () => {}, createConversation: async () => {},
+      upsertDailyMetrics: async () => {},
       fetchInterpretedIngredient: async () => { throw new Error('Unexpected ingredient lookup'); },
     },
     auth: { getToken: async () => 'synthetic-token' },
@@ -62,11 +64,12 @@ function boundary(transcript: string, name = 'Bench Press') {
     feedback: { finishWithSaved: () => { successes++; } },
     media: { requestMicrophonePermission: async () => false, startVoiceRecording: async () => { throw new Error('Unexpected recording'); },
       requestPhotoPermission: async () => false, pickMealPhoto: async () => null },
-    platform: { isWeb: () => false, openSettings: async () => {}, selectPhotoSource: async () => null },
+    platform: { isWeb: () => false, openCoach: () => {}, openSettings: async () => {}, selectPhotoSource: async () => null },
   };
   return { controller: createCommandCenterController(ports, operation), operation, batches, singles, errors,
     originalDraft, draft: () => draft, setDraft: (value: WorkoutReviewDraft) => { draft = value; },
-    text: () => text, voice: () => voice, interpretations, counts: () => ({ sessions, closed, refreshed, requestIds, successes }) };
+    text: () => text, voice: () => voice, interpretations, counts: () => ({ sessions, closed, refreshed, requestIds: requestIds - classifierIds, successes }),
+    classifierIds: () => classifierIds };
 }
 
 

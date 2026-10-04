@@ -11,7 +11,6 @@ export function SavedToastState() {
   if (snapshot.state !== "cc_saved" || !snapshot.toast.ready || !snapshot.toast.message) return null;
   // "processing" = a meal row now exists and the estimate is on its way.
   const processing = snapshot.toast.kind === "processing";
-  const message = snapshot.toast.kind === "answer" ? "Answer saved" : snapshot.toast.message;
   return (
     <Animated.View
       entering={reducedMotion ? undefined : FadeInDown.duration(240)}
@@ -22,7 +21,7 @@ export function SavedToastState() {
       accessibilityLiveRegion="polite"
     >
       <Icon name={processing ? "sparkle" : "checkCircle"} size={16} color={t.accent} />
-      <Text style={styles.copy}>{message}</Text>
+      <Text style={styles.copy}>{snapshot.toast.message}</Text>
     </Animated.View>
   );
 }
