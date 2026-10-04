@@ -26,6 +26,7 @@ import {
   normalizeMealStatus,
   roundNullable,
 } from "@/lib/meal-status";
+import { Icon } from "@/components/Icon";
 import { color as t, font, radius as r } from "@/lib/tokens";
 import { haptic } from "@/lib/haptics";
 import { type IngredientEditorMode } from "@/components/command-center/IngredientEditor";
@@ -385,18 +386,20 @@ function MealEditSession({ id }: { id: string }) {
   const insets = useSafeAreaInsets();
 
   const renderHeaderDone = useCallback(() => (
+    // A plain close, not "Done": the bottom action is what saves or confirms,
+    // and closing with unsaved edits still asks before discarding.
     <Pressable
       onPress={handleClose}
       hitSlop={12}
+      style={({ pressed }) => [styles.headerClose, pressed && { opacity: 0.6 }]}
       accessibilityRole="button"
-      accessibilityLabel="Done"
+      accessibilityLabel="Close"
     >
-      <Text style={styles.headerDoneText}>Done</Text>
+      <Icon name="close" size={18} color={t.text} />
     </Pressable>
   ), [handleClose]);
 
   const screenOptions = useMemo(() => ({
-    headerShown: true,
     title: "Edit meal",
     headerRight: renderHeaderDone,
   }), [renderHeaderDone]);
@@ -515,12 +518,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: t.bg,
   },
-  headerDoneText: {
-    fontFamily: font.sans[500],
-    fontSize: 14.5,
-    fontWeight: "500",
-    color: t.accent,
-    letterSpacing: -0.07,
+  headerClose: {
+    width: 32,
+    height: 32,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
   },
   loadingWrap: {
     paddingVertical: 48,

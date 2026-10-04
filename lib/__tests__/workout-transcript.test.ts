@@ -116,3 +116,26 @@ test('missing weights stay empty and nine sets are not silently reduced to eight
   expect(values('2 sets of 8 reps')).toEqual([['','8'],['','8']]);
   expect(values('9 sets of 3 at 10 kg')).toHaveLength(9);
 });
+test('spoken number words are quantities, not a second exercise', () => {
+  for (const transcript of [
+    'Bench press, three sets of eight at sixty kilos.',
+    'bench press four sets of ten at sixty-five kg',
+    'bench press two sets of twelve',
+  ]) {
+    expect(() => buildWorkoutReviewDraft(interpreted, transcript, 'voice')).not.toThrow();
+  }
+  // Number words never make an unknown second lift safe.
+  expect(() => buildWorkoutReviewDraft(interpreted, 'bench press three sets of eight then donkey kicks', 'voice')).toThrow('one exercise');
+});
+test('spoken set groups expand into one row per set', () => {
+  const draft = buildWorkoutReviewDraft(interpreted, 'Bench press, three sets of eight at sixty kilos.', 'voice');
+  expect(draft.sets.length).toBe(3);
+  expect(draft.sets.every((set) => set.reps === '8')).toBe(true);
+});
+test('spoken numbers convert narrowly', async () => {
+  const { spokenNumbersToDigits } = await import('../../components/command-center/helpers');
+  expect(spokenNumbersToDigits('sixty-five kg')).toBe('65 kg');
+  expect(spokenNumbersToDigits('a hundred and ten pounds')).toBe('110 pounds');
+  expect(spokenNumbersToDigits('three sets of ten and two sets of eight')).toBe('3 sets of 10 and 2 sets of 8');
+  expect(spokenNumbersToDigits('twenty one reps')).toBe('21 reps');
+});

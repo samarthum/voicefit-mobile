@@ -1,4 +1,5 @@
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { Icon } from "@/components/Icon";
 import type { AsyncMealStatus } from "@/lib/meal-status";
 import { color as t, font, radius as r } from "@/lib/tokens";
 
@@ -12,17 +13,17 @@ export function StatusNotice({ status, message }: Props) {
 
   const title =
     status === "interpreting"
-      ? "Estimating nutrition"
+      ? "Estimating nutrition…"
       : status === "needs_review"
-      ? "Review estimate"
-      : "Estimate failed";
+      ? "AI estimate"
+      : "Couldn't estimate this meal";
 
   const body =
     status === "interpreting"
-      ? "This meal is still being interpreted. Nutrition will appear when it finishes."
+      ? "This usually takes a few seconds. Nutrition appears here when it's ready."
       : status === "needs_review"
-      ? "Check the estimate, adjust anything that looks off, then confirm it."
-      : message || "The estimate could not be completed. You can delete this meal or try logging it again.";
+      ? "Tap an ingredient to fix anything that looks off."
+      : message || "Delete it and log it again, or add the ingredients yourself.";
 
   return (
     <View
@@ -34,6 +35,8 @@ export function StatusNotice({ status, message }: Props) {
       <View style={styles.statusNoticeTitleRow}>
         {status === "interpreting" ? (
           <ActivityIndicator size="small" color={t.textMute} />
+        ) : status === "needs_review" ? (
+          <Icon name="sparkle" size={14} color={t.accent} />
         ) : null}
         <Text
           style={[

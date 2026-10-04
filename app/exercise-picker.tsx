@@ -140,7 +140,6 @@ export default function ExercisePickerScreen() {
     <View style={styles.root}>
       <Stack.Screen
         options={{
-          headerShown: true,
           title: "Add exercise",
           headerLeft: HeaderClose,
         }}

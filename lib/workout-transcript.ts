@@ -60,7 +60,9 @@ export function assertSingleWorkoutExercise(transcript: string, interpretedName?
   // Only full preserved identities above may consume arbitrary name tokens.
   const unknownNames = remainder.split(/[,;\r\n]|\b(?:then|and)\b/).flatMap((clause) => {
     const value = clause.trim().replace(/^i\s+did\s+/, "");
-    const scaffold = /(?:#+|\d+(?:\.\d+)?|[\s:.!?@()[\]\/×]+|(?:sets?|reps?|of|at|for|x|kgs?|kilograms?|kilos?|lbs?|pounds?|another|backoff|warmup)(?![a-z]))/gy;
+    // Transcription often spells quantities out ("three sets of eight at
+    // sixty kilos"); number words are scaffold exactly like digits, never a name.
+    const scaffold = /(?:#+|\d+(?:\.\d+)?|[\s:.!?@()[\]\/×]+|(?:sets?|reps?|of|at|for|x|kgs?|kilograms?|kilos?|lbs?|pounds?|another|backoff|warmup|zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|half|each|times)(?![a-z]))/gy;
     const unconsumed: string[] = [];
     let offset = 0;
     while (offset < value.length) {

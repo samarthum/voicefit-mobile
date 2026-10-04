@@ -69,6 +69,7 @@ async function screen({ response = () => empty(), restoring = false, seed, devic
     '@/lib/haptics': { haptic: { tap() {}, selection: () => haptics.push('selection') } },
     '@/hooks/use-health-steps': { useHealthSteps: () => ({ steps: null }), useHealthStepsSync() {} },
     '@/components/Icon': { Icon: 'Icon' },
+    'react-native-reanimated': { __esModule: true, default: { View: 'View' }, FadeIn: { duration() { return this; } }, useReducedMotion: () => true },
   };
   const load = fixtureLoader(shims);
   if (deviceSteps != null) {

@@ -446,7 +446,7 @@ describe("CommandCenterController lifecycle boundary", () => {
     expect(snapshot.input.selectedMealPhoto).toBe(photo);
     expect(snapshot.review).toBe(draft);
     expect(snapshot.screenContext).toEqual({ screen: "workout", sessionId: "active-session-1" });
-    expect(snapshot.error.copy?.primary).toBe("Retry voice");
+    expect(snapshot.error.copy?.primary).toBe("Try again");
   });
 
   test("dispatch routes overlay events and notifies subscribers", () => {

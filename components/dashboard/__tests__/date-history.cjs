@@ -204,7 +204,7 @@ test('Home uses selected-day metric evidence immediately while history is unavai
 
 test('Date taps fetch the actual day summary and complete Home meal payload, not capped full recent meals', async () => {
   const history = { ...empty(), today: { ...empty().today, calories: { consumed: 999, goal: 2000 } }, recentMeals: [meal('2026-10-04')] };
-  const selected = { ...empty(), today: { ...empty().today, calories: { consumed: 432, goal: 2000 } }, recentMeals: [meal('2026-10-03'), { ...meal('2026-10-03', null, 'interpreting'), id: 'pending' }, { ...meal('2026-10-03'), id: 'third' }, { ...meal('2026-10-03'), id: 'fourth' }] };
+  const selected = { ...empty(), today: { ...empty().today, calories: { consumed: 432, goal: 2000 } }, recentMeals: [meal('2026-10-03'), { ...meal('2026-10-03', null, 'interpreting'), id: 'pending' }, { ...meal('2026-10-03'), id: 'third' }, { ...meal('2026-10-03'), id: 'fourth' }, { ...meal('2026-10-03'), id: 'fifth' }, { ...meal('2026-10-03'), id: 'sixth' }] };
   const s = await screen({ response: ({ scope, date }) => scope === 'full' ? history : date === '2026-10-03' ? selected : empty() });
   try {
     await s.select('2026-10-03');
@@ -214,10 +214,10 @@ test('Date taps fetch the actual day summary and complete Home meal payload, not
     assert.equal(s.r.root.findByType('CalorieRing').props.consumed, 432);
     assert.match(s.text(), /Nutrition · Oct 3/);
     assert.match(s.text(), /Meals · Oct 3/);
-    for (const id of ['meal-2026-10-03', 'pending', 'third']) assert.equal(Boolean(s.byId(`home-meal-row-${id}`)), true);
+    for (const id of ['meal-2026-10-03', 'pending', 'third', 'fourth', 'fifth']) assert.equal(Boolean(s.byId(`home-meal-row-${id}`)), true);
     assert.equal(Boolean(s.byId('home-meal-row-meal-2026-10-04')), false);
-    assert.equal(Boolean(s.byId('home-meal-row-fourth')), false, 'only existing three-row presentation is capped');
-    assert.equal(s.qc.getQueryData(['dashboard', 'home', s.timezone, '2026-10-03']).recentMeals.length, 4, 'Home payload is not truncated by full history');
+    assert.equal(Boolean(s.byId('home-meal-row-sixth')), false, 'Home shows up to five meals; See all has the rest');
+    assert.equal(s.qc.getQueryData(['dashboard', 'home', s.timezone, '2026-10-03']).recentMeals.length, 6, 'Home payload is not truncated by full history');
     await act(async () => s.byId('home-recent-meals-see-all').props.onPress());
     assert.deepEqual(s.routes.at(-1), { pathname: '/meals', params: { date: '2026-10-03' } });
     await act(async () => s.byId('home-meal-row-pending').props.onPress());

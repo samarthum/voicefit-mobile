@@ -358,7 +358,9 @@ function WorkoutScreenHeader({ title, showMenu, showFinish, saving, onMenu, onFi
   const options = useMemo(() => ({
     headerShown: true,
     title,
-    headerRight: () => (
+    // While the session loads there is nothing to show; an empty custom view
+    // still gets an (empty) iOS 26 glass bubble, so omit it until then.
+    headerRight: !showMenu && !showFinish ? undefined : () => (
       <View collapsable={false} style={[styles.headerActions, { width: showFinish ? 148 : 44 }]}>
         {showMenu ? (
           <Pressable style={styles.iconButton} onPress={() => actions.current.onMenu()} hitSlop={8} accessibilityRole="button" accessibilityLabel="Session options">

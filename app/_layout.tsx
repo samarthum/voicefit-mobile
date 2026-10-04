@@ -178,11 +178,15 @@ export default function RootLayout() {
                   >
                     <Stack.Screen name="index" />
                     <Stack.Screen name="(tabs)" />
+                    {/* Modal headers must be declared here, not toggled from
+                        inside the screen: react-native-screens remounts a
+                        modal whose header visibility changes, wiping its
+                        local state (typed text, edits). */}
                     <Stack.Screen
                       name="meal-edit/[id]"
-                      options={{ presentation: "fullScreenModal" }}
+                      options={{ presentation: "fullScreenModal", headerShown: true }}
                     />
-                    <Stack.Screen name="exercise-picker" options={{ presentation: "modal" }} />
+                    <Stack.Screen name="exercise-picker" options={{ presentation: "modal", headerShown: true }} />
                     <Stack.Screen name="workout-session/[id]" />
                     <Stack.Screen name="meals" />
                     <Stack.Screen name="trends" />
@@ -190,8 +194,10 @@ export default function RootLayout() {
                     <Stack.Screen name="feed" />
                     <Stack.Screen name="log" />
                     <Stack.Screen name="sign-in" />
-                    <Stack.Screen name="sign-up-email" options={{ presentation: "modal" }} />
-                    <Stack.Screen name="oauth-native-callback" />
+                    <Stack.Screen name="sign-up-email" options={{ presentation: "modal", headerShown: true }} />
+                    {/* Android delivers the Clerk SSO redirect (voicefit://sso-callback) as a
+                        deep link; without this route it flashed +not-found. */}
+                    <Stack.Screen name="sso-callback" options={{ animation: "fade" }} />
                     <Stack.Screen name="+not-found" />
                   </Stack>
                   <CommandCenterOverlay />

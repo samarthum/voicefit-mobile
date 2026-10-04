@@ -310,7 +310,7 @@ export function createCommandCenterController(
       }
       operation.mealAcknowledged = true;
       operation.mealCapture = undefined;
-      ports.feedback.finishWithSaved(capture.kind === "photo" ? "Photo added" : "Meal received", null, "processing");
+      ports.feedback.finishWithSaved(capture.kind === "photo" ? "Photo logged — estimating calories" : "Logged — estimating calories", null, "processing");
     } catch (error) {
       ports.state.setCommandError("auto_save_failure", getErrorMessage(error));
     } finally {
@@ -679,6 +679,10 @@ export function createCommandCenterController(
     const { generation, signal } = beginInterpretation();
     ports.state.clearCommandError();
     ports.state.setVoiceTranscript("");
+    // A recording replaces any earlier typed draft (often the last entry,
+    // still in state after close); leaving it would surface stale text in the
+    // voice hand-off and make the capture look typed.
+    ports.state.setCommandText("");
 
     try {
       if (ports.preview.isEnabled()) {

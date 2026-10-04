@@ -140,6 +140,7 @@ async function savedEditor(initial) {
     'react-native-gesture-handler':{GestureHandlerRootView:'View'},
     '@gorhom/bottom-sheet':{...sheet,BottomSheetModalProvider:'View'},
     '@/lib/haptics':{haptic:{success(){},warning(){}}},
+    '@/components/Icon':{Icon:'Icon'},
     '@/lib/api/meal-edit':{saveMealEdits:async(id,token,edits)=>{requests.push({id,edits});if(failure)throw failure;return data;}},
     '@/lib/api/ingredient':{fetchInterpretedIngredient:async()=>ingredient()},
     '@/lib/api-client':{apiRequest:async(url,options)=>{requests.push({url,...options});return data;}},

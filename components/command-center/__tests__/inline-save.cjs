@@ -61,7 +61,7 @@ test('actual photo submit stays on the photo action until upload ACK and failure
  await act(async()=>submit());assert.equal(h.requests.length,1);await h.reject();
  assert.ok(byId(h.r,'cc-photo-preview'));assert.match(textOf(h.r),/Retry original/);
  h.defer();await h.start(byId(h.r,'cc-photo-submit').props.onPress);await h.release({id:'canonical-photo',eatenAt:new Date().toISOString(),calories:null,interpretationStatus:'interpreting'});await h.dismiss();
- const toast=byId(h.r,'cc-saved-toast');assert.ok(toast);assert.equal(toast.findByType('Icon').props.name,'sparkSend');assert.match(textOf(h.r),/Photo added/);assert.doesNotMatch(textOf(h.r),/LOGGED|ENTRY SAVED|KCAL LEFT/);
+ const toast=byId(h.r,'cc-saved-toast');assert.ok(toast);assert.equal(toast.findByType('Icon').props.name,'sparkle');assert.match(textOf(h.r),/Photo logged — estimating calories/);assert.doesNotMatch(textOf(h.r),/LOGGED|ENTRY SAVED|KCAL LEFT/);
  }finally{await h.close()}
 });
 test('all no-review saving command states keep a disabled input/action surface, never blank or a saving sheet',async()=>{
@@ -80,13 +80,13 @@ test('actual dashboard canonical pending row persists after feedback expiry and 
  await h.dashboard(base);assert.equal(byId(h.r,'home-meal-row-canonical-photo'),undefined);
  const pending={id:'canonical-photo',description:'Meal photo',calories:null,mealType:'snack',eatenAt,interpretationStatus:'interpreting'};
  await h.dashboard({...base,recentMeals:[pending]});
- const row=byId(h.r,'home-meal-row-canonical-photo');assert.ok(row);assert.match(row.findAllByType('Text').map(n=>n.props.children).join(' '),/Analyzing meal…/);
+ const row=byId(h.r,'home-meal-row-canonical-photo');assert.ok(row);assert.match(row.findAllByType('Text').map(n=>n.props.children).join(' '),/Estimating…/);
  assert.equal(h.queryConfig().refetchInterval({state:{data:{recentMeals:[pending]}}}),2000);
  await act(async()=>row.props.onPress());assert.deepEqual(h.pushes.at(-1),{pathname:'/meal-edit/[id]',params:{id:'canonical-photo'}});
  await h.dispatch({type:'close'});assert.ok(byId(h.r,'home-meal-row-canonical-photo'));
  await h.dashboard({...base,recentMeals:[{...pending,description:'Rice and tofu',calories:450,interpretationStatus:'needs_review'}]});
  assert.match(textOf(h.r),/Rice and tofu/);assert.doesNotMatch(textOf(h.r),/Analyzing/);assert.match(textOf(h.r),/450/);
- await h.dashboard({...base,recentMeals:[{...pending,interpretationStatus:'failed'}]});assert.match(textOf(h.r),/Analysis failed/);assert.doesNotMatch(textOf(h.r),/450/);
+ await h.dashboard({...base,recentMeals:[{...pending,interpretationStatus:'failed'}]});assert.match(textOf(h.r),/Couldn't estimate/);assert.doesNotMatch(textOf(h.r),/450/);
  await act(async()=>byId(h.r,'home-meal-row-canonical-photo').props.onPress());assert.equal(h.pushes.at(-1).params.id,'canonical-photo');
  }finally{await h.close()}
 });
@@ -114,8 +114,8 @@ for(const capture of ['photo','text','voice'])test(`actual ${capture} capture AC
  h.defer();await h.start(()=>capture==='photo'?byId(h.r,'cc-photo-submit').props.onPress():capture==='voice'?h.controller().interpretVoiceTranscript('I ate rice'):byId(h.r,'cc-send').props.onPress());
  assert.equal(byId(h.r,'home-meal-row-canonical-ack'),undefined,'No invented optimistic record before ACK');
  const row={id:'canonical-ack',description:capture==='photo'?'Meal photo':'I ate rice',calories:null,mealType:'snack',eatenAt:day+'T12:00:00.000Z',interpretationStatus:'interpreting'};
- await h.release(row);await h.dismiss();assert.ok(byId(h.r,'home-meal-row-canonical-ack'));assert.match(textOf(h.r),/Analyzing meal…/);
- assert.equal(byId(h.r,'cc-saved-toast').findByType('Icon').props.name,'sparkSend');
+ await h.release(row);await h.dismiss();assert.ok(byId(h.r,'home-meal-row-canonical-ack'));assert.match(textOf(h.r),/Estimating…/);
+ assert.equal(byId(h.r,'cc-saved-toast').findByType('Icon').props.name,'sparkle');
  await act(async()=>new Promise(resolve=>setTimeout(resolve,2300)));assert.equal(byId(h.r,'cc-saved-toast'),undefined);assert.ok(byId(h.r,'home-meal-row-canonical-ack'));
  await h.dashboard({...base,recentMeals:[{...row,description:'Rice and tofu',calories:450,interpretationStatus:'needs_review'}]});assert.equal(h.r.root.findAll(n=>n.type==='Pressable'&&n.props.testID==='home-meal-row-canonical-ack').length,1);assert.match(textOf(h.r),/450/);assert.doesNotMatch(textOf(h.r),/Analyzing/);
  }finally{await h.close()}
@@ -137,10 +137,11 @@ test('a new workout opened after acknowledged dismissal can save normally',async
  }finally{await h.close()}
 });
 
-test('voice meal capture retains its actual transcript on the busy action surface',async()=>{
+test('voice meal capture hands off on the progress view, never the editor, and keeps its transcript if the save fails',async()=>{
  const h=await harness();try{
  await h.dispatch({type:'open'});await h.dispatch({type:'voice.transcript.change',text:'I ate rice'});h.defer();await h.start(()=>h.controller().interpretVoiceTranscript('I ate rice'));
- assert.equal(byId(h.r,'cc-input-text').props.value,'I ate rice');assert.equal(byId(h.r,'cc-input-text').props.editable,false);assert.match(textOf(h.r),/Saving…/);await h.reject();assert.equal(byId(h.r,'cc-input-text').props.value,'I ate rice');
+ assert.ok(byId(h.r,'cc-voice-progress'));assert.equal(byId(h.r,'cc-input-text'),undefined);assert.equal(h.modal().snapPoints[0]<844,true);
+ await h.reject();assert.equal(byId(h.r,'cc-input-text').props.value,'I ate rice');assert.equal(byId(h.r,'cc-input-text').props.editable,false);
  }finally{await h.close()}
 });
 

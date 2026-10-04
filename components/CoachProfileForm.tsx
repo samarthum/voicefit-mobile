@@ -9,17 +9,20 @@ import {
   View,
 } from "react-native";
 import { haptic } from "@/lib/haptics";
+import { color as token } from "@/lib/tokens";
 
+// Same light palette as the rest of the app (this form predated the token
+// migration and still rendered the retired dark theme on a light sheet).
 const COLORS = {
-  bg: "#0A0B0A",
-  surface: "#141614",
-  surface2: "#1C1F1C",
-  border: "rgba(255,255,255,0.08)",
-  textPrimary: "#F3F4F1",
-  textSecondary: "rgba(243,244,241,0.68)",
-  textTertiary: "rgba(243,244,241,0.42)",
-  accent: "#C7FB41",
-  accentInk: "#0A0B0A",
+  bg: token.bg,
+  surface: token.surface,
+  surface2: token.surface2,
+  border: token.line2,
+  textPrimary: token.text,
+  textSecondary: token.textSoft,
+  textTertiary: token.textMute,
+  accent: token.accent,
+  accentInk: token.accentInk,
 };
 
 const GOAL_OPTIONS = ["lose", "gain", "recomp", "maintain"] as const;
@@ -324,7 +327,7 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: 13,
     lineHeight: 18,
-    color: "#FF6B6B",
+    color: token.negative,
   },
   saveButton: {
     backgroundColor: COLORS.accent,
