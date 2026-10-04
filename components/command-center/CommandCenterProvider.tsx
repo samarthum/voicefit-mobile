@@ -566,14 +566,6 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
           body: JSON.stringify(input),
         });
       },
-      createConversation: async (input) => {
-        const token = await getAuthToken();
-        await apiRequest("/api/conversation", {
-          method: "POST",
-          token,
-          body: JSON.stringify(input),
-        });
-      },
       fetchInterpretedIngredient: async (name, grams) => {
         const token = await getAuthToken();
         return fetchInterpretedIngredientApi(token, name, grams);
@@ -657,6 +649,7 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
     },
     platform: {
       isWeb: () => process.env.EXPO_OS === "web",
+      openCoach: (prompt) => router.push({ pathname: "/coach", params: { prompt } }),
       openSettings: () => Linking.openSettings(),
       selectPhotoSource,
     },

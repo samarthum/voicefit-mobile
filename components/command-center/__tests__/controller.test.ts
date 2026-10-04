@@ -160,7 +160,7 @@ function createHarness(options: {
     meals: [] as unknown[],
     workoutSets: [] as unknown[],
     dailyMetrics: [] as unknown[],
-    conversations: [] as unknown[],
+    coach: [] as string[],
     refreshed: 0,
     finished: [] as Array<{ toast: string; kcalLeft: number | null | undefined }>,
     states: [] as CommandState[],
@@ -297,9 +297,6 @@ function createHarness(options: {
       upsertDailyMetrics: async (input) => {
         calls.dailyMetrics.push(input);
       },
-      createConversation: async (input) => {
-        calls.conversations.push(input);
-      },
       fetchInterpretedIngredient: async (name, grams) => {
         calls.fetchedIngredients.push({ name, grams });
         return options.interpretedIngredient ?? {
@@ -351,7 +348,7 @@ function createHarness(options: {
       },
     },
     platform: {
-      isWeb: () => false,
+      isWeb: () => false, openCoach: (prompt: string) => { calls.coach.push(prompt); },
       openSettings: async () => {
         calls.openedSettings += 1;
         if (options.openSettingsReject) throw new Error("Settings unavailable");
@@ -559,7 +556,7 @@ describe("CommandCenterController typed entry boundary", () => {
     expect(calls.finished).toEqual([{ toast: "Saved", kcalLeft: null }]);
   });
 
-  test("question intent saves a conversation event and shows the answer", async () => {
+  test("questions open Coach pre-filled without calling the server", async () => {
     const { controller, calls } = createHarness({
       text: "How am I doing this week?",
       interpreted: questionInterpretation(),
@@ -567,21 +564,23 @@ describe("CommandCenterController typed entry boundary", () => {
 
     await controller.submitTypedText();
 
-    expect(calls.conversations).toEqual([
-      {
-        kind: "question",
-        userText: "How am I doing this week?",
-        systemText: "You are trending on target.",
-        source: "text",
-        referenceType: null,
-        referenceId: null,
-        metadata: { answer: "You are trending on target." },
-      },
-    ]);
-    expect(calls.refreshed).toBe(1);
-    expect(calls.finished).toEqual([
-      { toast: "You are trending on target.", kcalLeft: undefined },
-    ]);
+    expect(calls.interpreted).toEqual([]);
+    expect(calls.coach).toEqual(["How am I doing this week?"]);
+    expect(calls.closes).toBe(1);
+    expect(calls.finished).toEqual([]);
+  });
+
+  test("a question only the classifier recognises still opens Coach", async () => {
+    const { controller, calls } = createHarness({
+      text: "remaining calories for today",
+      interpreted: questionInterpretation(),
+    });
+
+    await controller.submitTypedText();
+
+    expect(calls.interpreted).toEqual([{ transcript: "remaining calories for today", source: "text" }]);
+    expect(calls.coach).toEqual(["remaining calories for today"]);
+    expect(calls.pendingMeals).toEqual([]);
   });
 });
 

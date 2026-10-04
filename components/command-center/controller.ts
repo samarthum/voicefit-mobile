@@ -20,6 +20,7 @@ import {
   generateIngredientId,
   getErrorMessage,
   isLikelyMealEntry,
+  isLikelyQuestion,
   MIN_RECORDING_DURATION_MS,
   parsePositiveNumber,
   recalculateMealTotals,
@@ -67,16 +68,6 @@ type DailyMetricsSaveInput = {
   date: string;
   steps?: number;
   weightKg?: number;
-};
-
-type ConversationSaveInput = {
-  kind: "question";
-  userText: string;
-  systemText: string;
-  source: EntrySource;
-  referenceType: null;
-  referenceId: null;
-  metadata: { answer: string };
 };
 
 export interface CommandCenterStatePort {
@@ -136,7 +127,6 @@ export interface CommandCenterBackendPort {
   createWorkoutSet: (input: WorkoutSetSaveInput) => Promise<void>;
   createWorkoutBatch: (input: { requestId: string; sets: WorkoutSetSaveInput[] }) => Promise<void>;
   upsertDailyMetrics: (input: DailyMetricsSaveInput) => Promise<void>;
-  createConversation: (input: ConversationSaveInput) => Promise<void>;
   fetchInterpretedIngredient: (name: string, grams?: number) => Promise<MealIngredient>;
 }
 
@@ -175,6 +165,8 @@ export interface CommandCenterMediaPort {
 
 export interface CommandCenterPlatformPort {
   isWeb: () => boolean;
+  /** Opens Coach with the question pre-filled in its composer. */
+  openCoach: (prompt: string) => void;
   openSettings: () => Promise<void>;
   selectPhotoSource: () => Promise<PhotoPickerMode | null>;
 }
@@ -271,6 +263,12 @@ export function createCommandCenterController(
     return { generation: operation.generation, signal: operation.abort.signal };
   };
   const isCurrent = (generation: number) => generation === operation.generation;
+  // Questions belong to Coach, which answers with the full conversation.
+  const openCoachWith = (question: string) => {
+    operation.entryIdentity = undefined;
+    ports.state.closeCommandCenter();
+    ports.platform.openCoach(question);
+  };
   const deferredMealIdentity = (transcript: string): DeferredMealIdentity => {
     if (operation.entryIdentity?.transcript !== transcript) {
       operation.entryIdentity = {
@@ -592,19 +590,6 @@ export function createCommandCenterController(
             date: toLocalDateString(now),
             weightKg: interpreted.payload.value,
           });
-        } else if (interpreted.intent === "question") {
-          await ports.backend.createConversation({
-            kind: "question",
-            userText: transcript,
-            systemText: interpreted.payload.answer,
-            source,
-            referenceType: null,
-            referenceId: null,
-            metadata: { answer: interpreted.payload.answer },
-          });
-          await ports.cache.refreshAfterSave();
-          ports.feedback.finishWithSaved(interpreted.payload.answer, undefined, "answer");
-          return;
         }
       }
 
@@ -628,6 +613,10 @@ export function createCommandCenterController(
     if (operation.saving || blockFrozenMealEdit()) return;
     if (interpreted.intent === "workout_set" && blockFrozenWorkoutEdit()) return;
     operation.entryIdentity = undefined;
+    if (interpreted.intent === "question") {
+      openCoachWith(transcript);
+      return;
+    }
     if (interpreted.intent === "meal_pending") {
       // The server already created the pending row (and the provider put it in
       // the dashboard cache); this is the same acknowledgement as a direct capture.
@@ -656,6 +645,10 @@ export function createCommandCenterController(
     ports.state.clearCommandError();
 
     try {
+      if (isLikelyQuestion(trimmed)) {
+        openCoachWith(trimmed);
+        return;
+      }
       if (isLikelyMealEntry(trimmed)) {
         await savePendingMeal(trimmed, "text");
         return;
@@ -685,6 +678,10 @@ export function createCommandCenterController(
     ports.state.clearCommandError();
 
     try {
+      if (isLikelyQuestion(transcript)) {
+        openCoachWith(transcript);
+        return;
+      }
       if (isLikelyMealEntry(transcript)) {
         await savePendingMeal(transcript, "voice");
         return;

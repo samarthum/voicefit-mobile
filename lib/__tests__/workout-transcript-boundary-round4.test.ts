@@ -52,7 +52,7 @@ function boundary(transcript: string, name = 'Bench Press') {
       ensureQuickSession: async () => { sessions++; return 'synthetic-session'; },
       createWorkoutBatch: async input => { batches.push(structuredClone(input)); },
       createWorkoutSet: async input => { singles.push(structuredClone(input)); },
-      upsertDailyMetrics: async () => {}, createConversation: async () => {},
+      upsertDailyMetrics: async () => {},
       fetchInterpretedIngredient: async () => { throw new Error('Unexpected ingredient lookup'); },
     },
     auth: { getToken: async () => 'synthetic-token' },
@@ -64,7 +64,7 @@ function boundary(transcript: string, name = 'Bench Press') {
     feedback: { finishWithSaved: () => { successes++; } },
     media: { requestMicrophonePermission: async () => false, startVoiceRecording: async () => { throw new Error('Unexpected recording'); },
       requestPhotoPermission: async () => false, pickMealPhoto: async () => null },
-    platform: { isWeb: () => false, openSettings: async () => {}, selectPhotoSource: async () => null },
+    platform: { isWeb: () => false, openCoach: () => {}, openSettings: async () => {}, selectPhotoSource: async () => null },
   };
   return { controller: createCommandCenterController(ports, operation), operation, batches, singles, errors,
     originalDraft, draft: () => draft, setDraft: (value: WorkoutReviewDraft) => { draft = value; },

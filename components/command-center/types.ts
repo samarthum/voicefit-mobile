@@ -1,6 +1,6 @@
 import type { DashboardData, InterpretEntryResponse, MealIngredient } from "@voicefit/contracts/types";
 
-export type SavedFeedbackKind = "meal" | "workout" | "processing" | "entry" | "answer";
+export type SavedFeedbackKind = "meal" | "workout" | "processing" | "entry";
 
 export type CommandState =
   | "cc_collapsed"
