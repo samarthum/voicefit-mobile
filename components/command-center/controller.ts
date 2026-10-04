@@ -116,8 +116,16 @@ export interface CommandCenterStatePort {
 
 export type MealCaptureIdentity = { requestId: string; eatenAt: string; timezone: string };
 
+/** Opt-in server fast path: a meal is created pending instead of interpreted inline. */
+export type DeferredMealIdentity = { requestId: string; eatenAt: string };
+
 export interface CommandCenterBackendPort {
-  interpretEntry: (transcript: string, source: EntrySource, signal?: AbortSignal) => Promise<InterpretEntryResponse>;
+  interpretEntry: (
+    transcript: string,
+    source: EntrySource,
+    signal?: AbortSignal,
+    deferMeal?: DeferredMealIdentity,
+  ) => Promise<InterpretEntryResponse>;
   createPendingMealFromText: (transcript: string, source: EntrySource, identity: MealCaptureIdentity) => Promise<void>;
   createPendingMealFromPhoto: (photo: PhotoAttachment, context: string, identity: MealCaptureIdentity) => Promise<void>;
   transcribeAudio: (audio: { uri: string; name: string; type: string }, signal?: AbortSignal) => Promise<string>;
@@ -240,6 +248,10 @@ export interface CommandCenterOperationState {
   /** Confirmed original awaiting dismissal when a different review was retained. */
   workoutBatchAcknowledged?: boolean;
   photoSourcePending?: number;
+  /** Request identity for a classifier call that may create a pending meal.
+   * Reused while the transcript is unchanged so a retry after a lost response
+   * replays the server receipt instead of logging the meal twice. */
+  entryIdentity?: DeferredMealIdentity & { transcript: string };
 }
 
 export function createCommandCenterController(
@@ -259,6 +271,16 @@ export function createCommandCenterController(
     return { generation: operation.generation, signal: operation.abort.signal };
   };
   const isCurrent = (generation: number) => generation === operation.generation;
+  const deferredMealIdentity = (transcript: string): DeferredMealIdentity => {
+    if (operation.entryIdentity?.transcript !== transcript) {
+      operation.entryIdentity = {
+        transcript,
+        requestId: ports.clock.createRequestId(),
+        eatenAt: ports.clock.now().toISOString(),
+      };
+    }
+    return { requestId: operation.entryIdentity.requestId, eatenAt: operation.entryIdentity.eatenAt };
+  };
   const workoutSetsForSave = (draft: Extract<ReviewDraft, { kind: "workout" }>) => {
     const filled = draft.sets.filter((set) => set.weightKg.trim() || set.reps.trim() || set.notes.trim());
     return filled.length > 0 ? filled : [draft.sets[0]];
@@ -570,7 +592,7 @@ export function createCommandCenterController(
             date: toLocalDateString(now),
             weightKg: interpreted.payload.value,
           });
-        } else {
+        } else if (interpreted.intent === "question") {
           await ports.backend.createConversation({
             kind: "question",
             userText: transcript,
@@ -605,6 +627,14 @@ export function createCommandCenterController(
   ) => {
     if (operation.saving || blockFrozenMealEdit()) return;
     if (interpreted.intent === "workout_set" && blockFrozenWorkoutEdit()) return;
+    operation.entryIdentity = undefined;
+    if (interpreted.intent === "meal_pending") {
+      // The server already created the pending row (and the provider put it in
+      // the dashboard cache); this is the same acknowledgement as a direct capture.
+      operation.mealAcknowledged = true;
+      ports.feedback.finishWithSaved("Logged — estimating calories", null, "processing");
+      return;
+    }
     if (interpreted.intent === "meal") {
       await savePendingMeal(transcript, source);
     } else if (interpreted.intent === "workout_set") {
@@ -631,7 +661,7 @@ export function createCommandCenterController(
         return;
       }
 
-      const interpreted = await ports.backend.interpretEntry(trimmed, "text", signal);
+      const interpreted = await ports.backend.interpretEntry(trimmed, "text", signal, deferredMealIdentity(trimmed));
       if (!isCurrent(generation)) return;
       await routeInterpretedEntry(interpreted, trimmed, "text");
     } catch (error) {
@@ -660,7 +690,7 @@ export function createCommandCenterController(
         return;
       }
 
-      const interpreted = await ports.backend.interpretEntry(transcript, "voice", signal);
+      const interpreted = await ports.backend.interpretEntry(transcript, "voice", signal, deferredMealIdentity(transcript));
       if (!isCurrent(generation)) return;
       await routeInterpretedEntry(interpreted, transcript, "voice");
     } catch (error) {

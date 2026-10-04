@@ -1190,3 +1190,63 @@ describe('media cancellation and recovery', () => {
     expect(calls.errors).toContainEqual({subtype:'voice_interpret_failure',detail:'Network unavailable'});
   });
 });
+
+describe("CommandCenterController deferred meal classification", () => {
+  const pendingRow = {
+    id: "meal-pending", eatenAt: "2026-10-04T10:30:00.000Z", mealType: "snack", description: "kadhi",
+    interpretationStatus: "interpreting" as const, calories: null, proteinG: null, carbsG: null, fatG: null, transcriptRaw: "kadhi",
+  };
+
+  // "kadhi" is not in the on-device food list, so it reaches the classifier.
+  function deferredHarness(responses: Array<InterpretEntryResponse | Error>) {
+    const { ports, calls } = createHarness({ text: "kadhi" });
+    const operation = { generation: 0, saving: false };
+    const controller = createCommandCenterController(ports, operation);
+    const requests: Array<{ transcript: string; deferMeal?: { requestId: string; eatenAt: string } }> = [];
+    let minted = 0;
+    ports.clock.createRequestId = () => `00000000-0000-4000-8000-${String(++minted).padStart(12, "0")}`;
+    ports.backend.interpretEntry = async (transcript, _source, _signal, deferMeal) => {
+      requests.push({ transcript, deferMeal });
+      const next = responses.shift();
+      if (!next) throw new Error("No response configured");
+      if (next instanceof Error) throw next;
+      return next;
+    };
+    return { controller, calls, ports, requests };
+  }
+
+  test("a meal the classifier defers is acknowledged without a second create", async () => {
+    const { controller, calls, requests } = deferredHarness([{ intent: "meal_pending", payload: pendingRow }]);
+
+    await controller.submitTypedText();
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0].deferMeal?.requestId).toBe("00000000-0000-4000-8000-000000000001");
+    expect(calls.pendingMeals).toEqual([]);
+    expect(calls.finished).toEqual([{ toast: "Logged — estimating calories", kcalLeft: null }]);
+  });
+
+  test("retrying the same text reuses its identity; edited text gets a new one", async () => {
+    const { controller, requests } = deferredHarness([
+      new Error("Response lost"),
+      { intent: "meal_pending", payload: pendingRow },
+    ]);
+
+    await controller.submitTypedText();
+    await controller.handleErrorPrimary();
+    // Same request ID: the server replays the receipt instead of logging twice.
+    expect(requests.map((r) => r.deferMeal?.requestId)).toEqual([
+      "00000000-0000-4000-8000-000000000001",
+      "00000000-0000-4000-8000-000000000001",
+    ]);
+
+    const edited = deferredHarness([new Error("Response lost"), { intent: "meal_pending", payload: pendingRow }]);
+    await edited.controller.submitTypedText();
+    edited.ports.state.setCommandText("kadhi with jeera");
+    await edited.controller.submitTypedText();
+    expect(edited.requests.map((r) => r.deferMeal?.requestId)).toEqual([
+      "00000000-0000-4000-8000-000000000001",
+      "00000000-0000-4000-8000-000000000002",
+    ]);
+  });
+});

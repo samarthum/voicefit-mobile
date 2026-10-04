@@ -32,6 +32,7 @@ import {
   createCommandCenterController,
   type CommandCenterVoiceRecording,
   type CommandCenterOperationState,
+  type DeferredMealIdentity,
   type MealCaptureIdentity,
   type PhotoPickerMode,
 } from "@/components/command-center/controller";
@@ -334,6 +335,16 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
     return token;
   }, [getToken]);
 
+  // Insert a server-acknowledged pending row so it shows (as "Estimating…")
+  // before the dashboard refetch lands. The HTTP acknowledgement is
+  // authoritative; a cache failure must never trigger another create.
+  const acknowledgePendingMeal = useCallback(async (meal: PendingMeal, mealTimezone: string) => {
+    try {
+      queryClient.setQueryData<PendingMealDashboard>(["dashboard", "home", mealTimezone, toLocalDateString(new Date(meal.eatenAt))], (data) => insertAcknowledgedMeal(data, meal));
+      await refreshAfterPendingMeal();
+    } catch { /* Saved remotely; later queries can reconcile the cache. */ }
+  }, [queryClient, refreshAfterPendingMeal]);
+
   const createPendingMealFromText = useCallback(async (transcript: string, source: EntrySource, identity: MealCaptureIdentity) => {
     if (isWebPreview) {
       await new Promise((resolve) => setTimeout(resolve, 650));
@@ -354,12 +365,8 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
       }),
       timeoutMs: 60_000,
     });
-    // The HTTP acknowledgement is authoritative; a cache failure must not retry creation.
-    try {
-      queryClient.setQueryData<PendingMealDashboard>(["dashboard", "home", identity.timezone, toLocalDateString(new Date(meal.eatenAt))], (data) => insertAcknowledgedMeal(data, meal));
-      await refreshAfterPendingMeal();
-    } catch { /* Saved remotely; later queries can reconcile the cache. */ }
-  }, [isWebPreview, getAuthToken, timezone, refreshAfterPendingMeal, queryClient]);
+    await acknowledgePendingMeal(meal, identity.timezone);
+  }, [isWebPreview, getAuthToken, refreshAfterPendingMeal, acknowledgePendingMeal]);
 
   const createPendingMealFromPhoto = useCallback(async (photo: PhotoAttachment, context: string, identity: MealCaptureIdentity) => {
     if (isWebPreview) {
@@ -386,13 +393,15 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
       token,
       timeoutMs: 60_000,
     });
-    try {
-      queryClient.setQueryData<PendingMealDashboard>(["dashboard", "home", identity.timezone, toLocalDateString(new Date(meal.eatenAt))], (data) => insertAcknowledgedMeal(data, meal));
-      await refreshAfterPendingMeal();
-    } catch { /* HTTP acknowledged; cache failure must not create again. */ }
-  }, [isWebPreview, getAuthToken, timezone, refreshAfterPendingMeal, queryClient]);
+    await acknowledgePendingMeal(meal, identity.timezone);
+  }, [isWebPreview, getAuthToken, refreshAfterPendingMeal, acknowledgePendingMeal]);
 
-  const interpretEntry = useCallback(async (transcript: string, source: EntrySource, signal?: AbortSignal): Promise<InterpretEntryResponse> => {
+  const interpretEntry = useCallback(async (
+    transcript: string,
+    source: EntrySource,
+    signal?: AbortSignal,
+    deferMeal?: DeferredMealIdentity,
+  ): Promise<InterpretEntryResponse> => {
     if (isWebPreview) {
       if (hasWebPreviewFlag("typed_fail") && source === "text") throw new Error("Mock typed interpret failure.");
       if (hasWebPreviewFlag("voice_fail") && source === "voice") throw new Error("Mock voice interpret failure.");
@@ -447,16 +456,22 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
     }
 
     const token = await getAuthToken();
-    return apiRequest<InterpretEntryResponse>("/api/interpret/entry", {
+    const response = await apiRequest<InterpretEntryResponse>("/api/interpret/entry", {
       signal,
       method: "POST",
       token,
-      body: JSON.stringify({ transcript, source, timezone }),
-      // Meal interpretation runs the agentic Anthropic + USDA + IFCT loop
-      // server-side; 15s default isn't enough.
+      // With deferMeal a meal returns as soon as it is classified (pending row);
+      // only legacy callers wait on the inline meal interpretation.
+      body: JSON.stringify({ transcript, source, timezone, ...(deferMeal ? { deferMeal } : {}) }),
+      // Non-meal intents still run their interpreter inline (and older
+      // backends interpret meals inline), so keep the long timeout.
       timeoutMs: 60_000,
     });
-  }, [isWebPreview, getAuthToken, timezone]);
+    if (response.intent === "meal_pending") {
+      await acknowledgePendingMeal(response.payload, timezone);
+    }
+    return response;
+  }, [isWebPreview, getAuthToken, timezone, acknowledgePendingMeal]);
 
   const operationRef = useRef<CommandCenterOperationState>({ generation: 0, saving: false });
   useEffect(() => () => {

@@ -26,7 +26,9 @@ function boundary(transcript: string, name = 'Bench Press') {
   const batches: Parameters<CommandCenterPorts['backend']['createWorkoutBatch']>[0][] = [];
   const singles: Parameters<CommandCenterPorts['backend']['createWorkoutSet']>[0][] = [];
   const errors: Array<{ subtype: string; detail?: string }> = [];
-  let sessions = 0, closed = 0, refreshed = 0, requestIds = 0, successes = 0;
+  // classifierIds: identities sent as deferMeal with the classifier call. They can
+  // only ever create a pending meal, so they are tracked apart from write identities.
+  let sessions = 0, closed = 0, refreshed = 0, requestIds = 0, successes = 0, classifierIds = 0;
   const operation: CommandCenterOperationState = { generation: 0, saving: false };
   const ports: CommandCenterPorts = {
     state: {
@@ -45,7 +47,7 @@ function boundary(transcript: string, name = 'Bench Press') {
       clearCommandError: () => {},
     },
     backend: {
-      interpretEntry: async (transcript, source) => { interpretations.push({ transcript, source }); return interpretation(name); }, createPendingMealFromText: async () => {},
+      interpretEntry: async (transcript, source, _signal, deferMeal) => { interpretations.push({ transcript, source }); if (deferMeal?.requestId) classifierIds++; return interpretation(name); }, createPendingMealFromText: async () => {},
       createPendingMealFromPhoto: async () => {}, transcribeAudio: async () => '', createMeal: async () => {},
       ensureQuickSession: async () => { sessions++; return 'synthetic-session'; },
       createWorkoutBatch: async input => { batches.push(structuredClone(input)); },
@@ -66,7 +68,8 @@ function boundary(transcript: string, name = 'Bench Press') {
   };
   return { controller: createCommandCenterController(ports, operation), operation, batches, singles, errors,
     originalDraft, draft: () => draft, setDraft: (value: WorkoutReviewDraft) => { draft = value; },
-    text: () => text, voice: () => voice, interpretations, counts: () => ({ sessions, closed, refreshed, requestIds, successes }) };
+    text: () => text, voice: () => voice, interpretations, counts: () => ({ sessions, closed, refreshed, requestIds: requestIds - classifierIds, successes }),
+    classifierIds: () => classifierIds };
 }
 
 const paths = ['typed', 'voice', 'route', 'direct', 'review'] as const;
@@ -90,6 +93,8 @@ async function acceptAtBoundary(transcript: string, name: string, path: typeof p
   expect(h.counts().sessions).toBe(1);
   expect(h.counts().requestIds).toBe(1);
   expect(h.counts().refreshed).toBe(1);
+  // Typed and voice entries reach the classifier with a deferred-meal identity.
+  expect(h.classifierIds()).toBe(path === 'typed' || path === 'voice' ? 1 : 0);
 }
 for (const [canonical, transcript] of exact) for (const name of [canonical, `Barbell ${canonical}`]) {
   test(`round4 matching equipment draft: ${name}: ${transcript}`, () => {

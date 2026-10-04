@@ -251,6 +251,11 @@ export default function FeedScreen() {
         return { message: `Saved weight ${interpreted.payload.value} kg.` };
       }
 
+      // Only returned for requests that opt into deferMeal, which this screen never sends.
+      if (interpreted.intent === "meal_pending") {
+        return { message: "Meal saved to feed." };
+      }
+
       await apiRequest("/api/conversation", {
         method: "POST",
         token,
