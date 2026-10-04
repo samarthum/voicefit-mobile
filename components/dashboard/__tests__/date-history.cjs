@@ -15,7 +15,8 @@ test('Home shows prior logged days when its fast selected-day payload has no tre
   const s = await screen({ response: ({ scope }) => scope === 'full' ? history : empty() });
   try {
     assert.equal(s.hasDot('2026-09-28'), true, 'prior logged meal day must show a dot despite home weeklyTrends=[]');
-    for (const date of ['2026-09-29', '2026-09-30', '2026-10-01']) assert.equal(s.hasDot(date), true, `logged ${date}`);
+    assert.equal(s.hasDot('2026-09-29'), false, 'imported step-only day is not a logged entry');
+    for (const date of ['2026-09-30', '2026-10-01']) assert.equal(s.hasDot(date), true, `logged ${date}`);
     assert.equal(s.hasDot('2026-10-02'), false, 'empty prior day');
     assert.equal(s.requests.filter(r => r.scope === 'full').length, 1);
     const full = s.requests.find(r => r.scope === 'full');
@@ -195,7 +196,7 @@ test('Home uses selected-day metric evidence immediately while history is unavai
     Object.assign(selected.today, todayPatch);
     const s = await screen({ response: ({ scope }) => { if (scope === 'full') throw Error('History unavailable'); return selected; } });
     try {
-      assert.equal(s.hasDot('2026-10-04'), true, `selected metric ${Object.keys(todayPatch)[0]} is logged`);
+      assert.equal(s.hasDot('2026-10-04'), !todayPatch.steps, `selected ${Object.keys(todayPatch)[0]} has logged-entry evidence only when it is not imported steps`);
       assert.equal(s.text().includes('Could not load Home'), false, 'history errors do not block day details');
     } finally { await s.close(); }
   }
@@ -296,7 +297,8 @@ test('Actual health-step sync invalidation refreshes the history query', async (
     assert.equal(writes[0].url, '/api/daily-metrics');
     assert.deepEqual(JSON.parse(writes[0].body), { date: '2026-10-04', steps: 300 });
     assert.equal(s.requests.filter(r => r.scope === 'full').length, 2);
-    assert.equal(s.hasDot('2026-10-04'), true);
+    assert.equal(s.hasDot('2026-10-04'), false, 'today step sync still works without claiming a logged entry');
+    assert.equal(s.qc.getQueryData(['dashboard', 'home', s.timezone, '2026-10-04']).today.steps.count, 300);
   } finally { await s.close(); }
 });
 

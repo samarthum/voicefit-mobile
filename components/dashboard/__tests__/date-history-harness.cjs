@@ -57,7 +57,7 @@ async function screen({ response = () => empty(), restoring = false, seed, devic
     'react-native-safe-area-context': { SafeAreaView: 'View' },
     '@clerk/clerk-expo': { useAuth: () => ({ getToken }) },
     'expo-router': { useRouter: () => ({ push: target => routes.push(target) }) },
-    '@/lib/api-client': { apiRequest: async (url, options) => { const params = Object.fromEntries(new URL(url, 'https://fixture.invalid').searchParams); requests.push({ url, ...params, ...options }); return response(params); } },
+    '@/lib/api-client': { apiRequest: async (url, options) => { const params = Object.fromEntries(new URL(url, 'https://fixture.invalid').searchParams); requests.push({ url, ...params, ...options }); return response(params, options); } },
     '@/lib/performance-log': { appTimingStarted: 0, measureToken: (route, token) => token(), monotonicNow: () => 0, recordTiming() {} },
     '@/hooks/use-screen-timing': { useScreenTiming() {} },
     '@/components/command-center': { useCommandCenter: () => ({ open() {}, startRecording() {} }), toLocalDateString: localDate, COLORS: { bg: '#FAFAFA' } },

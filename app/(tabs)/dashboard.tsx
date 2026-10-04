@@ -274,10 +274,11 @@ export default function DashboardScreen() {
 
   const loggedDates = useMemo(() => {
     const dates = new Set<string>();
+    // Dots mean logged entries, not automatically imported device steps.
+    // Keep step data for display/trends without making a visit look like a log.
     for (const trend of historyQuery.data?.weeklyTrends ?? []) {
       const hasData =
         trend.calories > 0 ||
-        (trend.steps ?? 0) > 0 ||
         trend.weight != null ||
         trend.workouts > 0;
       if (hasData) dates.add(trend.date);
@@ -293,7 +294,6 @@ export default function DashboardScreen() {
       const summary = data?.today;
       if (summary && typeof key[3] === "string" && (
         summary.calories.consumed > 0 ||
-        (summary.steps.count ?? 0) > 0 ||
         summary.weight != null ||
         (summary.workoutSessions ?? 0) > 0
       )) dates.add(key[3]);
@@ -335,7 +335,9 @@ export default function DashboardScreen() {
 
   const serverSteps = dashboard?.today.steps.count ?? null;
   const healthSteps = useHealthSteps(selectedDate);
-  useHealthStepsSync(selectedDate, healthSteps.steps, serverSteps, Boolean(dashboard));
+  // Browsing history must be read-only. Device steps can still be displayed
+  // for the selected day, but only today's steps are automatically persisted.
+  useHealthStepsSync(selectedDate, healthSteps.steps, serverSteps, Boolean(dashboard) && selectedDate === today);
   const todaySteps = mergeSteps(healthSteps.steps, serverSteps) ?? 0;
   const todayStepsGoal = dashboard?.today.steps.goal ?? 0;
 
