@@ -43,15 +43,6 @@ export const COLORS = {
 
 export const MIN_RECORDING_DURATION_MS = 1000;
 export const WEB_PREVIEW_FLAGS_KEY = "__vf_home_preview_flags";
-export const WAVE_BAR_COUNT = 20;
-export const WAVE_MIN = 8;
-export const WAVE_MAX = 56;
-
-export const DEFAULT_QUICK_ADD: QuickAddItem[] = [
-  { id: "default-1", description: "Chicken Salad", calories: 420, mealType: "lunch" },
-  { id: "default-2", description: "Overnight Oats", calories: 320, mealType: "breakfast" },
-  { id: "default-3", description: "Grilled Salmon & Rice", calories: 580, mealType: "dinner" },
-];
 
 // ---------------------------------------------------------------------------
 // Pure helpers

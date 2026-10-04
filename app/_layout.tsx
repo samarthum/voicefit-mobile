@@ -191,8 +191,6 @@ export default function RootLayout() {
                     <Stack.Screen name="meals" />
                     <Stack.Screen name="trends" />
                     <Stack.Screen name="coach" />
-                    <Stack.Screen name="feed" />
-                    <Stack.Screen name="log" />
                     <Stack.Screen name="sign-in" />
                     <Stack.Screen name="sign-up-email" options={{ presentation: "modal", headerShown: true }} />
                     {/* Android delivers the Clerk SSO redirect (voicefit://sso-callback) as a

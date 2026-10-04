@@ -118,7 +118,3 @@ export const elevation = {
   primaryCTA: { boxShadow: "0 4px 12px rgba(15,20,25,0.10)" },
   accentGlow: { boxShadow: "0 0 16px rgba(94,140,122,0.18)" },
 } as const;
-
-export type ColorToken = keyof typeof color;
-export type SpaceToken = keyof typeof space;
-export type RadiusToken = keyof typeof radius;
