@@ -1,5 +1,4 @@
 export { CalorieRing } from "./CalorieRing";
-export { MiniStepsRing } from "./MiniStepsRing";
 export { WeightSparkline } from "./WeightSparkline";
 export { StepsTrendIcon } from "./StepsTrendIcon";
 export { CoachBadge } from "./CoachBadge";

@@ -1,9 +1,6 @@
 import type { DashboardData } from "@voicefit/contracts/types";
-import { COLORS } from "@/components/command-center";
 
 export type TrendMetric = "calories" | "steps" | "weight";
-
-export const TREND_TABS: TrendMetric[] = ["calories", "steps", "weight"];
 
 export function safeNumber(value: number | null | undefined): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
@@ -16,12 +13,6 @@ export function metricValueFromPoint(
   if (metric === "calories") return point.calories;
   if (metric === "steps") return point.steps;
   return point.weight;
-}
-
-export function metricColor(metric: TrendMetric): string {
-  if (metric === "calories") return COLORS.calories;
-  if (metric === "steps") return COLORS.steps;
-  return COLORS.weight;
 }
 
 export type ChartPoint = { x: number; y: number; value: number };
