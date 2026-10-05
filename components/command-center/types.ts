@@ -1,4 +1,4 @@
-import type { DashboardData, InterpretEntryResponse, MealIngredient } from "@voicefit/contracts/types";
+import type { DashboardData, InterpretEntryResponse } from "@voicefit/contracts/types";
 
 export type SavedFeedbackKind = "meal" | "workout" | "processing" | "entry";
 
@@ -11,7 +11,6 @@ export type CommandState =
   | "cc_recording"
   | "cc_transcribing_voice"
   | "cc_interpreting_voice"
-  | "cc_review_meal"
   | "cc_review_workout"
   | "cc_saving"
   | "cc_auto_saving"
@@ -69,31 +68,6 @@ export type SaveAction =
       item: QuickAddItem;
     };
 
-export interface MealReviewIngredient {
-  id: string;
-  name: string;
-  grams: number;
-  calories: number;
-  proteinG: number;
-  carbsG: number;
-  fatG: number;
-}
-
-export interface MealReviewDraft {
-  kind: "meal";
-  interpreted: Extract<InterpretEntryResponse, { intent: "meal" }>;
-  transcript: string;
-  source: EntrySource;
-  eatenAtLabel: string;
-  totalGrams: number;
-  ingredients: MealReviewIngredient[];
-  macros: {
-    protein: number;
-    carbs: number;
-    fat: number;
-  };
-}
-
 export interface WorkoutReviewSet {
   id: string;
   setNumber: number;
@@ -113,7 +87,7 @@ export interface WorkoutReviewDraft {
   sets: WorkoutReviewSet[];
 }
 
-export type ReviewDraft = MealReviewDraft | WorkoutReviewDraft;
+export type ReviewDraft = WorkoutReviewDraft;
 
 export interface ScreenContext {
   /** Active workout session ID — sets get added to this session */
@@ -159,7 +133,6 @@ export interface CommandCenterSnapshot {
   review: ReviewDraft | null;
   toast: {
     message: string | null;
-    lastSavedKcalLeft: number | null;
     kind?: SavedFeedbackKind;
     ready?: boolean;
   };
@@ -195,10 +168,5 @@ export type CommandCenterEvent =
       patch: Partial<Pick<WorkoutReviewSet, "weightKg" | "reps" | "notes">>;
     }
   | { type: "workout-set.add" }
-  | { type: "ingredient.edit-grams"; id: string; grams: number }
-  | { type: "ingredient.replace"; id: string; replacement: MealIngredient }
-  | { type: "ingredient.add"; ingredient: MealIngredient }
-  | { type: "ingredient.remove"; id: string }
-  | { type: "ingredient.lookup"; name: string; grams?: number }
   | { type: "error.primary" }
   | { type: "error.secondary" };

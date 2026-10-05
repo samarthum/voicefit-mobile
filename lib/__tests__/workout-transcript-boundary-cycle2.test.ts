@@ -31,7 +31,7 @@ function boundary(transcript: string, name = 'Bench Press') {
       getCommandState: () => state, getCommandText: () => text, getVoiceTranscript: () => '',
       getRecordingSeconds: () => 0, getIsInterpretingVoice: () => false, getScreenContext: () => ({}),
       getSelectedMealPhoto: () => null, getActiveRecording: () => null, getReviewDraft: () => draft,
-      getCommandToast: () => null, getLastSavedKcalLeft: () => null,
+      getCommandToast: () => null,
       getCommandErrorSubtype: () => null, getCommandErrorDetail: () => null,
       getQuickAddItems: () => [], getIsWebPreview: () => false, getPendingSaveAction: () => null,
       setCommandState: value => { state = value; },
@@ -44,15 +44,14 @@ function boundary(transcript: string, name = 'Bench Press') {
     },
     backend: {
       interpretEntry: async () => interpretation(name), createPendingMealFromText: async () => {},
-      createPendingMealFromPhoto: async () => {}, transcribeAudio: async () => '', createMeal: async () => {},
+      createPendingMealFromPhoto: async () => {}, transcribeAudio: async () => '',
       ensureQuickSession: async () => { sessions++; return 'synthetic-session'; },
       createWorkoutBatch: async input => { batches.push(structuredClone(input)); },
       createWorkoutSet: async input => { singles.push(structuredClone(input)); },
       upsertDailyMetrics: async () => {},
-      fetchInterpretedIngredient: async () => { throw new Error('Unexpected ingredient lookup'); },
     },
     auth: { getToken: async () => 'synthetic-token' },
-    cache: { refreshAfterSave: async () => { refreshed++; }, computeKcalLeftAfterMeal: () => null },
+    cache: { refreshAfterSave: async () => { refreshed++; } },
     clock: { now: () => new Date('2026-10-02T12:00:00Z'), createRequestId: () => {
       requestIds++; return '00000000-0000-4000-8000-000000000001';
     } },

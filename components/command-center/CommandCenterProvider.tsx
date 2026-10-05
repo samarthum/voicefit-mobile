@@ -8,10 +8,9 @@ import { insertAcknowledgedMeal, type PendingMeal, type PendingMealDashboard } f
 import { haptic } from "@/lib/haptics";
 import { useAuth } from "@clerk/clerk-expo";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { DashboardData, InterpretEntryResponse, MealIngredient } from "@voicefit/contracts/types";
+import type { InterpretEntryResponse } from "@voicefit/contracts/types";
 import { apiFormRequest, apiRequest } from "@/lib/api-client";
 import { isWebPreviewMode } from "@/lib/web-preview-mode";
-import { fetchInterpretedIngredient as fetchInterpretedIngredientApi } from "@/lib/api/ingredient";
 import type {
   CommandErrorSubtype,
   CommandCenterContext,
@@ -98,7 +97,7 @@ export function useCommandCenter(context?: CommandCenterContext): CommandCenterP
 
 type CommandCenterOverlayDispatch = (
   event: CommandCenterEvent,
-) => void | Promise<void> | Promise<MealIngredient>;
+) => void | Promise<void>;
 
 interface CommandCenterOverlayValue {
   snapshot: CommandCenterSnapshot;
@@ -144,7 +143,6 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
   const [commandToast, setCommandToast] = useState<string | null>(null);
   const [savedFeedbackKind, setSavedFeedbackKind] = useState<SavedFeedbackKind>("entry");
   const [savedFeedbackReady, setSavedFeedbackReady] = useState(false);
-  const [lastSavedKcalLeft, setLastSavedKcalLeft] = useState<number | null>(null);
   const [commandErrorSubtype, setCommandErrorSubtype] = useState<CommandErrorSubtype>(null);
   const [commandErrorDetail, setCommandErrorDetail] = useState<string | null>(null);
   const [screenContext, setScreenContextState] = useState<ScreenContext>({});
@@ -267,18 +265,16 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
     setIsInterpretingVoice(false);
     setReviewDraft(null);
     setSelectedMealPhoto(null);
-    setLastSavedKcalLeft(null);
     setSavedFeedbackReady(false);
   }, [recording]);
 
   // Success starts sheet dismissal; the overlay shows this message afterward.
-  const finishWithSaved = useCallback((toast: string, kcalLeft: number | null = null, kind: SavedFeedbackKind = "entry") => {
+  const finishWithSaved = useCallback((toast: string, kind: SavedFeedbackKind = "entry") => {
     Keyboard.dismiss();
     haptic.success();
     setCommandToast(toast);
     setSavedFeedbackKind(kind);
     setSavedFeedbackReady(false);
-    setLastSavedKcalLeft(kcalLeft);
     setCommandState("cc_saved");
   }, []);
 
@@ -290,19 +286,6 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
     const timer = setTimeout(closeCommandCenter, savedFeedbackReady ? 2600 : 6000);
     return () => clearTimeout(timer);
   }, [commandState, savedFeedbackReady, closeCommandCenter]);
-
-  // Snapshots dashboard cache to compute `kcal left today` after a meal save.
-  // Reads pre-save consumed kcal so the math is stable even before the
-  // invalidated dashboard query refetches.
-  const computeKcalLeftAfterMeal = useCallback((justSavedKcal: number): number | null => {
-    const dashboardCaches = queryClient.getQueriesData<DashboardData>({ queryKey: ["dashboard"] });
-    const today = toLocalDateString(new Date());
-    const cached = dashboardCaches.find(([key, data]) =>
-      key[1] === "home" && key[2] === timezone && key[3] === today && data != null,
-    )?.[1];
-    if (!cached) return null;
-    return Math.max(0, cached.today.calories.goal - cached.today.calories.consumed - justSavedKcal);
-  }, [queryClient, timezone]);
 
   const getPhotoFileName = useCallback((uri: string, fileName?: string | null) => {
     if (fileName?.trim()) return fileName.trim();
@@ -493,7 +476,6 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
       getCommandToast: () => commandToast,
       getSavedFeedbackKind: () => savedFeedbackKind,
       getSavedFeedbackReady: () => savedFeedbackReady,
-      getLastSavedKcalLeft: () => lastSavedKcalLeft,
       getCommandErrorSubtype: () => commandErrorSubtype,
       getCommandErrorDetail: () => commandErrorDetail,
       getQuickAddItems: () => quickAddItems,
@@ -534,14 +516,6 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
         return transcript;
       },
       selectRepeatedMeal: (id) => router.push({ pathname: "/meal-repeat", params: { id } }),
-      createMeal: async (input) => {
-        const token = await getAuthToken();
-        await apiRequest("/api/meals", {
-          method: "POST",
-          token,
-          body: JSON.stringify(input),
-        });
-      },
       ensureQuickSession: async () => {
         const token = await getAuthToken();
         return ensureQuickSession(token);
@@ -566,21 +540,9 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
           body: JSON.stringify(input),
         });
       },
-      fetchInterpretedIngredient: async (name, grams) => {
-        const token = await getAuthToken();
-        return fetchInterpretedIngredientApi(token, name, grams);
-      },
     },
     cache: {
       refreshAfterSave,
-      // Meal acknowledgement must survive refresh rejection without a new create.
-      refreshAfterMealSave: async () => {
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
-          queryClient.invalidateQueries({ queryKey: ["meals"] }),
-        ]);
-      },
-      computeKcalLeftAfterMeal,
     },
     clock: {
       now: () => new Date(),
@@ -666,7 +628,6 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
     commandToast,
     savedFeedbackKind,
     savedFeedbackReady,
-    lastSavedKcalLeft,
     commandErrorSubtype,
     commandErrorDetail,
     quickAddItems,
@@ -678,7 +639,6 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
     getAuthToken,
     buildPhotoAttachment,
     refreshAfterSave,
-    computeKcalLeftAfterMeal,
     isWebPreview,
     finishWithSaved,
     audioRecorder,

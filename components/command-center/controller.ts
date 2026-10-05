@@ -1,11 +1,10 @@
-import type { InterpretEntryResponse, MealIngredient } from "@voicefit/contracts/types";
+import type { InterpretEntryResponse } from "@voicefit/contracts/types";
 import type {
   CommandErrorSubtype,
   CommandCenterEvent,
   CommandCenterSnapshot,
   CommandState,
   EntrySource,
-  MealReviewIngredient,
   PhotoAttachment,
   QuickAddItem,
   ReviewDraft,
@@ -17,14 +16,11 @@ import type {
 import {
   buildWorkoutReviewDraft,
   ERROR_COPY,
-  generateIngredientId,
   getErrorMessage,
   isLikelyMealEntry,
   isLikelyQuestion,
   MIN_RECORDING_DURATION_MS,
   parsePositiveNumber,
-  recalculateMealTotals,
-  scaleIngredientByGrams,
   toLocalDateString,
 } from "@/components/command-center/helpers";
 
@@ -38,19 +34,6 @@ export interface CommandCenterVoiceRecording {
   getDurationMillis: () => Promise<number>;
   getUri: () => string | null;
 }
-
-type MealSaveInput = {
-  requestId: string;
-  eatenAt: string;
-  mealType: string;
-  description: string;
-  calories: number;
-  proteinG?: number;
-  carbsG?: number;
-  fatG?: number;
-  ingredients?: Extract<InterpretEntryResponse, { intent: "meal" }>["payload"]["ingredients"];
-  transcriptRaw: string;
-};
 
 type WorkoutSetSaveInput = {
   sessionId: string;
@@ -83,7 +66,6 @@ export interface CommandCenterStatePort {
   getCommandToast: () => string | null;
   getSavedFeedbackKind?: () => SavedFeedbackKind;
   getSavedFeedbackReady?: () => boolean;
-  getLastSavedKcalLeft: () => number | null;
   getCommandErrorSubtype: () => CommandErrorSubtype;
   getCommandErrorDetail: () => string | null;
   getQuickAddItems: () => QuickAddItem[];
@@ -120,14 +102,12 @@ export interface CommandCenterBackendPort {
   createPendingMealFromText: (transcript: string, source: EntrySource, identity: MealCaptureIdentity) => Promise<void>;
   createPendingMealFromPhoto: (photo: PhotoAttachment, context: string, identity: MealCaptureIdentity) => Promise<void>;
   transcribeAudio: (audio: { uri: string; name: string; type: string }, signal?: AbortSignal) => Promise<string>;
-  createMeal: (input: MealSaveInput) => Promise<void>;
   /** Opens full-source repeat confirmation; summaries must never create meals. */
   selectRepeatedMeal?: (sourceMealId: string) => void;
   ensureQuickSession: () => Promise<string>;
   createWorkoutSet: (input: WorkoutSetSaveInput) => Promise<void>;
   createWorkoutBatch: (input: { requestId: string; sets: WorkoutSetSaveInput[] }) => Promise<void>;
   upsertDailyMetrics: (input: DailyMetricsSaveInput) => Promise<void>;
-  fetchInterpretedIngredient: (name: string, grams?: number) => Promise<MealIngredient>;
 }
 
 export interface CommandCenterAuthPort {
@@ -136,8 +116,6 @@ export interface CommandCenterAuthPort {
 
 export interface CommandCenterCachePort {
   refreshAfterSave: () => Promise<void>;
-  refreshAfterMealSave?: () => Promise<void>;
-  computeKcalLeftAfterMeal: (justSavedKcal: number) => number | null;
 }
 
 export interface CommandCenterClockPort {
@@ -153,7 +131,7 @@ export interface CommandCenterPreviewPort {
 }
 
 export interface CommandCenterFeedbackPort {
-  finishWithSaved: (toast: string, kcalLeft?: number | null, kind?: SavedFeedbackKind) => void;
+  finishWithSaved: (toast: string, kind?: SavedFeedbackKind) => void;
 }
 
 export interface CommandCenterMediaPort {
@@ -186,17 +164,12 @@ export interface CommandCenterPorts {
 export interface CommandCenterController {
   getSnapshot: () => CommandCenterSnapshot;
   subscribe: (listener: () => void) => () => void;
-  dispatch: (event: CommandCenterEvent) => void | Promise<void> | Promise<MealIngredient>;
+  dispatch: (event: CommandCenterEvent) => void | Promise<void>;
   openCommandCenter: () => void;
   closeCommandCenter: () => void;
   handleCommandInputChange: (text: string) => void;
   updateWorkoutSet: (idx: number, patch: Partial<Pick<WorkoutReviewSet, "weightKg" | "reps" | "notes">>) => void;
   addWorkoutSet: () => void;
-  editIngredientGrams: (id: string, grams: number) => void;
-  replaceIngredient: (id: string, replacement: MealIngredient) => void;
-  addIngredient: (ingredient: MealIngredient) => void;
-  removeIngredient: (id: string) => void;
-  fetchInterpretedIngredient: (name: string, grams?: number) => Promise<MealIngredient>;
   startRecording: () => Promise<void>;
   stopRecording: () => Promise<void>;
   interpretVoiceTranscript: (text: string) => Promise<void>;
@@ -216,24 +189,12 @@ export interface CommandCenterController {
   runSaveAction: (action: SaveAction) => Promise<void>;
 }
 
-function isMealSave(action: SaveAction) {
-  return action.kind === "quick_add" ||
-    (action.kind === "entry" && action.interpreted.intent === "meal");
-}
-
-function savedMealCalories(action: SaveAction) {
-  if (action.kind === "quick_add") return action.item.calories;
-  if (action.interpreted.intent === "meal") return action.interpreted.payload.calories;
-  return 0;
-}
-
 export interface CommandCenterOperationState {
   generation: number;
   saving: boolean;
   abort?: AbortController;
   /** Memory only: retained across renders, not process restart/offline storage. */
   mealCapture?: ({ kind: "text"; transcript: string; source: EntrySource } | { kind: "photo"; photo: PhotoAttachment; context: string }) & { identity: MealCaptureIdentity };
-  mealSave?: { input: MealSaveInput; kcalLeft: number | null; acknowledged?: boolean };
   /** Consumes trailing save taps until open starts a new logical draft. */
   mealAcknowledged?: boolean;
   workoutBatch?: { requestId: string; sets: WorkoutSetSaveInput[] };
@@ -312,7 +273,7 @@ export function createCommandCenterController(
     return true;
   };
   const blockFrozenMealEdit = () => {
-    if (!operation.mealCapture && !operation.mealSave) return false;
+    if (!operation.mealCapture) return false;
     ports.state.setCommandError("auto_save_failure", "The original meal may already be saved. Retry original to confirm its outcome before starting another meal. This retry is kept in memory only; closing the app loses it.");
     return true;
   };
@@ -330,7 +291,7 @@ export function createCommandCenterController(
       }
       operation.mealAcknowledged = true;
       operation.mealCapture = undefined;
-      ports.feedback.finishWithSaved(capture.kind === "photo" ? "Photo logged — estimating calories" : "Logged — estimating calories", null, "processing");
+      ports.feedback.finishWithSaved(capture.kind === "photo" ? "Photo logged — estimating calories" : "Logged — estimating calories", "processing");
     } catch (error) {
       ports.state.setCommandError("auto_save_failure", getErrorMessage(error));
     } finally {
@@ -400,120 +361,8 @@ export function createCommandCenterController(
     });
   };
 
-  const editIngredientGrams = (id: string, grams: number) => {
-    const reviewDraft = ports.state.getReviewDraft();
-    if (!reviewDraft || reviewDraft.kind !== "meal") return;
-    const ingredients = reviewDraft.ingredients.map((ingredient) =>
-      ingredient.id === id ? scaleIngredientByGrams(ingredient, grams) : ingredient,
-    );
-    ports.state.setReviewDraft(recalculateMealTotals({ ...reviewDraft, ingredients }));
-  };
-
-  const replaceIngredient = (id: string, replacement: MealIngredient) => {
-    const reviewDraft = ports.state.getReviewDraft();
-    if (!reviewDraft || reviewDraft.kind !== "meal") return;
-    const ingredients = reviewDraft.ingredients.map<MealReviewIngredient>((ingredient) =>
-      ingredient.id === id
-        ? {
-            id: ingredient.id,
-            name: replacement.name,
-            grams: replacement.grams,
-            calories: replacement.calories,
-            proteinG: replacement.proteinG,
-            carbsG: replacement.carbsG,
-            fatG: replacement.fatG,
-          }
-        : ingredient,
-    );
-    ports.state.setReviewDraft(recalculateMealTotals({ ...reviewDraft, ingredients }));
-  };
-
-  const addIngredient = (ingredient: MealIngredient) => {
-    const reviewDraft = ports.state.getReviewDraft();
-    if (!reviewDraft || reviewDraft.kind !== "meal") return;
-    const next: MealReviewIngredient = {
-      id: generateIngredientId(),
-      name: ingredient.name,
-      grams: ingredient.grams,
-      calories: ingredient.calories,
-      proteinG: ingredient.proteinG,
-      carbsG: ingredient.carbsG,
-      fatG: ingredient.fatG,
-    };
-    ports.state.setReviewDraft(recalculateMealTotals({ ...reviewDraft, ingredients: [...reviewDraft.ingredients, next] }));
-  };
-
-  const removeIngredient = (id: string) => {
-    const reviewDraft = ports.state.getReviewDraft();
-    if (!reviewDraft || reviewDraft.kind !== "meal") return;
-    const ingredients = reviewDraft.ingredients.filter((ingredient) => ingredient.id !== id);
-    ports.state.setReviewDraft(recalculateMealTotals({ ...reviewDraft, ingredients }));
-  };
-
-  const fetchInterpretedIngredient = async (name: string, grams?: number): Promise<MealIngredient> => {
-    const trimmedName = name.trim();
-    if (!trimmedName) throw new Error("Name is required");
-
-    if (ports.preview.isEnabled()) {
-      await ports.preview.delay(700);
-      const g = grams && Number.isFinite(grams) && grams > 0 ? Math.round(grams) : 100;
-      const calories = Math.round((g / 100) * 150);
-      return {
-        name: trimmedName,
-        grams: g,
-        calories,
-        proteinG: Math.round(calories * 0.06),
-        carbsG: Math.round(calories * 0.04),
-        fatG: Math.round(calories * 0.02),
-      };
-    }
-
-    return ports.backend.fetchInterpretedIngredient(trimmedName, grams);
-  };
-
-  const retryLegacyMeal = async () => {
-    if (operation.saving || !operation.mealSave) return;
-    const frozen = operation.mealSave;
-    operation.saving = true;
-    ports.state.clearCommandError();
-    ports.state.setCommandState("cc_saving");
-    try {
-      if (!frozen.acknowledged) {
-        if (ports.preview.isEnabled()) {
-          if (ports.preview.hasFlag("save_fail")) throw new Error("Mock auto-save failure.");
-          await ports.preview.delay(550);
-        } else {
-          await ports.backend.createMeal(frozen.input);
-        }
-        frozen.acknowledged = true;
-      }
-      try { await (ports.cache.refreshAfterMealSave ?? ports.cache.refreshAfterSave)(); } catch { /* Acknowledged, never create again. */ }
-      operation.mealAcknowledged = true;
-      operation.mealSave = undefined;
-      ports.feedback.finishWithSaved("Meal added", frozen.kcalLeft, "meal");
-    } catch (error) {
-      ports.state.setCommandError("auto_save_failure", getErrorMessage(error));
-    } finally {
-      operation.saving = false;
-    }
-  };
   const runSaveAction = async (action: SaveAction) => {
     if (operation.mealAcknowledged || operation.saving || blockFrozenMealEdit()) return;
-    if (action.kind === "entry" && action.interpreted.intent === "meal") {
-      const { payload } = action.interpreted;
-      operation.mealSave = {
-        input: {
-          requestId: ports.clock.createRequestId(), eatenAt: ports.clock.now().toISOString(),
-          mealType: payload.mealType, description: payload.description, calories: payload.calories,
-          proteinG: payload.proteinG, carbsG: payload.carbsG, fatG: payload.fatG,
-          ingredients: payload.ingredients?.map((ingredient) => ({ ...ingredient })), transcriptRaw: action.transcript,
-        },
-        kcalLeft: ports.cache.computeKcalLeftAfterMeal(payload.calories),
-      };
-      ports.state.setPendingSaveAction(action);
-      await retryLegacyMeal();
-      return;
-    }
     if (action.kind === "entry" && action.interpreted.intent === "workout_set") {
       if (blockFrozenWorkoutEdit()) return;
       try {
@@ -544,10 +393,6 @@ export function createCommandCenterController(
     ports.state.clearCommandError();
     ports.state.setCommandState("cc_saving");
 
-    const kcalLeftAfterSave = isMealSave(action)
-      ? ports.cache.computeKcalLeftAfterMeal(savedMealCalories(action))
-      : null;
-
     try {
       if (ports.preview.isEnabled()) {
         if (action.kind === "entry" && ports.preview.hasFlag("save_fail")) {
@@ -555,7 +400,7 @@ export function createCommandCenterController(
         }
         await ports.preview.delay(550);
         await ports.cache.refreshAfterSave();
-        ports.feedback.finishWithSaved("Saved", kcalLeftAfterSave);
+        ports.feedback.finishWithSaved("Saved");
         return;
       }
 
@@ -564,10 +409,7 @@ export function createCommandCenterController(
       {
         const { interpreted, transcript, source } = action;
 
-        if (interpreted.intent === "meal") {
-          await retryLegacyMeal();
-          return;
-        } else if (interpreted.intent === "workout_set") {
+        if (interpreted.intent === "workout_set") {
           const sessionId = ports.state.getScreenContext().sessionId ?? await ports.backend.ensureQuickSession();
           await ports.backend.createWorkoutSet({
             sessionId,
@@ -594,7 +436,7 @@ export function createCommandCenterController(
       }
 
       await ports.cache.refreshAfterSave();
-      ports.feedback.finishWithSaved("Saved", kcalLeftAfterSave);
+      ports.feedback.finishWithSaved("Saved");
     } catch (error) {
       ports.state.setCommandError(
         "auto_save_failure",
@@ -621,7 +463,7 @@ export function createCommandCenterController(
       // The server already created the pending row (and the provider put it in
       // the dashboard cache); this is the same acknowledgement as a direct capture.
       operation.mealAcknowledged = true;
-      ports.feedback.finishWithSaved("Logged — estimating calories", null, "processing");
+      ports.feedback.finishWithSaved("Logged — estimating calories", "processing");
       return;
     }
     if (interpreted.intent === "meal") {
@@ -877,7 +719,7 @@ export function createCommandCenterController(
           await ports.preview.delay(550);
           try { await ports.cache.refreshAfterSave(); } catch { /* Acknowledged preview. */ }
           operation.workoutBatchAcknowledged = true;
-          ports.feedback.finishWithSaved("Sets added", null, "workout");
+          ports.feedback.finishWithSaved("Sets added", "workout");
           return;
         }
 
@@ -903,7 +745,7 @@ export function createCommandCenterController(
         operation.workoutBatchAcknowledged = true;
         operation.workoutBatch = undefined;
         try { await ports.cache.refreshAfterSave(); } catch { /* Acknowledged: never retry a write for a cache failure. */ }
-        ports.feedback.finishWithSaved("Sets added", null, "workout");
+        ports.feedback.finishWithSaved("Sets added", "workout");
       } catch (error) {
         ports.state.setCommandError("auto_save_failure", getErrorMessage(error));
       } finally {
@@ -911,13 +753,6 @@ export function createCommandCenterController(
       }
       return;
     }
-
-    await runSaveAction({
-      kind: "entry",
-      interpreted: reviewDraft.interpreted,
-      transcript: reviewDraft.transcript,
-      source: reviewDraft.source,
-    });
   };
 
   const editReviewTranscript = () => {
@@ -936,10 +771,6 @@ export function createCommandCenterController(
     if (!subtype) return;
     if (operation.mealCapture) {
       await retryPendingMeal();
-      return;
-    }
-    if (operation.mealSave) {
-      await retryLegacyMeal();
       return;
     }
 
@@ -1069,14 +900,13 @@ export function createCommandCenterController(
       review: ports.state.getReviewDraft(),
       toast: {
         message: ports.state.getCommandToast(),
-        lastSavedKcalLeft: ports.state.getLastSavedKcalLeft(),
         kind: ports.state.getSavedFeedbackKind?.(),
         ready: ports.state.getSavedFeedbackReady?.(),
       },
       error: {
         subtype: errorSubtype,
         detail: ports.state.getCommandErrorDetail(),
-        copy: errorSubtype && (operation.mealCapture || operation.mealSave)
+        copy: errorSubtype && operation.mealCapture
           ? { ...ERROR_COPY[errorSubtype], title: "Meal save not confirmed", body: "The original meal may already be saved. Retry original before starting another meal. This retry is kept in memory only; closing the app loses it.", primary: "Retry original", secondary: null }
           : errorSubtype === "auto_save_failure" && operation.workoutBatchAcknowledged
           ? { ...ERROR_COPY[errorSubtype], title: "Original workout saved", body: "Your changed entry was not saved. Close and correct the saved sets in your workout.", primary: "Close", secondary: null }
@@ -1102,7 +932,7 @@ export function createCommandCenterController(
 
   const runDispatchedEvent = (event: CommandCenterEvent) => {
     if (operation.saving) return;
-    if ((operation.mealCapture || operation.mealSave) && event.type !== "error.primary") {
+    if (operation.mealCapture && event.type !== "error.primary") {
       if (!operation.saving) blockFrozenMealEdit();
       return;
     }
@@ -1145,16 +975,6 @@ export function createCommandCenterController(
         return updateWorkoutSet(event.index, event.patch);
       case "workout-set.add":
         return addWorkoutSet();
-      case "ingredient.edit-grams":
-        return editIngredientGrams(event.id, event.grams);
-      case "ingredient.replace":
-        return replaceIngredient(event.id, event.replacement);
-      case "ingredient.add":
-        return addIngredient(event.ingredient);
-      case "ingredient.remove":
-        return removeIngredient(event.id);
-      case "ingredient.lookup":
-        return fetchInterpretedIngredient(event.name, event.grams);
       case "error.primary":
         return handleErrorPrimary();
       case "error.secondary":
@@ -1180,11 +1000,6 @@ export function createCommandCenterController(
     handleCommandInputChange,
     updateWorkoutSet,
     addWorkoutSet,
-    editIngredientGrams,
-    replaceIngredient,
-    addIngredient,
-    removeIngredient,
-    fetchInterpretedIngredient,
     startRecording,
     stopRecording,
     interpretVoiceTranscript,

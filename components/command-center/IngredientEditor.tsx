@@ -10,11 +10,10 @@ import {
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import type { MealIngredient } from "@voicefit/contracts/types";
 import { color as t, font } from "@/lib/tokens";
-import type { MealReviewIngredient } from "@/components/command-center/types";
 import { getErrorMessage } from "@/components/command-center/helpers";
-import { scaleEditedIngredient, type EditableIngredient } from "@/components/command-center/ingredient-edit";
+import { IngredientRow, scaleEditedIngredient, type EditableIngredient } from "@/components/command-center/ingredient-edit";
 
-export type IngredientEditorMode<T extends EditableIngredient = MealReviewIngredient> =
+export type IngredientEditorMode<T extends EditableIngredient = IngredientRow> =
   | { kind: "add" }
   | { kind: "edit"; ingredient: T };
 
@@ -46,7 +45,7 @@ interface IngredientEditorProps<T extends EditableIngredient> {
  * Stays open on error with an inline message + Retry. Closes only on success
  * or explicit Cancel / native Back.
  */
-export function IngredientEditor<T extends EditableIngredient = MealReviewIngredient>({
+export function IngredientEditor<T extends EditableIngredient = IngredientRow>({
   mode,
   fetchInterpreted,
   onSubmitEdit,

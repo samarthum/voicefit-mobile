@@ -4,8 +4,7 @@ import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { KeyboardController } from "react-native-keyboard-controller";
 import type { MealIngredient } from "@voicefit/contracts/types";
 import { IngredientEditor, type IngredientEditorMode } from "@/components/command-center/IngredientEditor";
-import type { EditableIngredient } from "@/components/command-center/ingredient-edit";
-import type { MealReviewIngredient } from "@/components/command-center/types";
+import type { IngredientRow, EditableIngredient } from "@/components/command-center/ingredient-edit";
 import { color as t, font } from "@/lib/tokens";
 
 interface IngredientEditorModalProps<T extends EditableIngredient> {
@@ -21,7 +20,7 @@ interface IngredientEditorModalProps<T extends EditableIngredient> {
  * saving-only seams compatible; this host has no bottom-sheet dependencies.
  * Each new mode object owns one consumed session, including its native Modal.
  */
-export function IngredientEditorModal<T extends EditableIngredient = MealReviewIngredient>({
+export function IngredientEditorModal<T extends EditableIngredient = IngredientRow>({
   mode, fetchInterpreted, onSubmitAdd, onSubmitEdit, onClose,
 }: IngredientEditorModalProps<T>) {
   const sessionRef = useRef({ id: 0, mode, active: !!mode });

@@ -1,6 +1,6 @@
 const {test}=require('node:test'),assert=require('node:assert/strict');
 const {harness,act}=require('./ingredient-modal-harness.cjs');
-for(const caller of ['saved','overlay'])test(`${caller}: branded ingredient removal is cancel-safe and late confirm cannot change another review/route`,async()=>{
+for(const caller of ['saved'])test(`${caller}: branded ingredient removal is cancel-safe and late confirm cannot change another review/route`,async()=>{
  const h=await harness({caller});try{
  const id=caller==='saved'?'meal-edit-ingredient-0':'cc-review-ingredient-0';
  await act(async()=>h.byId(id).props.onLongPress());

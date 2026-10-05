@@ -115,15 +115,6 @@ test('actual voice capture retries original transcript without recording again',
   }finally{await h.close();}
 });
 const legacyAction=()=>({kind:'entry',source:'text',transcript:'I ate rice',interpreted:{intent:'meal',payload:{mealType:'lunch',description:'Rice',calories:120,proteinG:2,carbsG:25,fatG:1,ingredients:[{name:'Rice',grams:100,calories:120,proteinG:2,carbsG:25,fatG:1}]}}});
-test('actual legacy create meal freezes UUID/time/components and retries the original after action mutation',async()=>{
-  const h=await harness();try{
-    const action=legacyAction();await h.invoke(c=>c.runSaveAction(action));
-    const first=h.requests[0].payload;assert.match(first.requestId,/^[0-9a-f-]{36}$/);
-    action.interpreted.payload.ingredients[0].grams=500;action.interpreted.payload.description='Changed';
-    await h.dispatch({type:'error.primary'});
-    assert.equal(h.requests.length,2);assert.deepEqual(h.requests[1].payload,first);assert.equal(h.receipts.size,1);
-  }finally{await h.close();}
-});
 test('successful meal capture ignores trailing submit taps until a new draft is opened',async()=>{
   const h=await harness();try{
     h.setFailures(0);await h.dispatch({type:'text.set',text:'I ate rice'});await h.dispatch({type:'text.submit'});
@@ -161,12 +152,6 @@ test('acknowledged capture stays saved when cache refresh fails and primary acti
     await h.dispatch({type:'text.set',text:'I ate rice'});await h.dispatch({type:'text.submit'});
     assert.equal(h.snapshot().state,'cc_saved');await h.dispatch({type:'error.primary'});
     assert.equal(h.requests.length,1);
-  }finally{await h.close();}
-});
-test('actual legacy acknowledged save cannot create again after refresh failure',async()=>{
-  const h=await harness();try{
-    h.setFailures(0);h.setRefreshFailure(true);await h.invoke(c=>c.runSaveAction(legacyAction()));
-    assert.equal(h.snapshot().state,'cc_saved');await h.dispatch({type:'error.primary'});assert.equal(h.requests.length,1);
   }finally{await h.close();}
 });
 test('uncertain capture also blocks a direct late workout interpretation from replacing the meal draft',async()=>{
