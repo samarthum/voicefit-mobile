@@ -39,6 +39,8 @@ const REVIEW_SNAP_POINTS = ["92%"];
 // Recording and the voice hand-off are a single focused moment; a short sheet
 // keeps the dashboard visible behind it instead of a mostly-empty 92% panel.
 const VOICE_SHEET_CONTENT_HEIGHT = 452;
+// The hand-off after Done is only a status line and the transcript.
+const VOICE_PROGRESS_SHEET_HEIGHT = 300;
 // The photo source choice is two rows; size the sheet to them.
 const PHOTO_SOURCE_SHEET_HEIGHT = 292;
 // How long the "Got it" check stays up before the sheet slides away.
@@ -61,8 +63,10 @@ export function CommandCenterOverlay() {
     ((isSaving || commandState === "cc_saved") && isVoiceCapture);
   const compactHeight = photoSourceChoice
     ? PHOTO_SOURCE_SHEET_HEIGHT
-    : commandState === "cc_recording" || isVoiceProgress
+    : commandState === "cc_recording"
     ? VOICE_SHEET_CONTENT_HEIGHT
+    : isVoiceProgress
+    ? VOICE_PROGRESS_SHEET_HEIGHT
     : null;
   const snapPoints = compactHeight
     ? [Math.min(Math.round(windowHeight * 0.92), compactHeight + insets.bottom)]

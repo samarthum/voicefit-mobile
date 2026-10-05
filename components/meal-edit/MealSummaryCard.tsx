@@ -85,12 +85,15 @@ export function MealSummaryCard({
               key={type}
               onPress={() => onSelectMealType(type)}
               style={[styles.mealTypePill, selected && styles.mealTypePillSelected]}
+              accessibilityRole="button"
+              accessibilityState={{ selected }}
             >
               <Text
                 style={[
                   styles.mealTypePillText,
                   selected && styles.mealTypePillTextSelected,
                 ]}
+                numberOfLines={1}
               >
                 {type.charAt(0).toUpperCase() + type.slice(1)}
               </Text>
@@ -197,32 +200,38 @@ const styles = StyleSheet.create({
     color: t.textMute,
     marginTop: 2,
   },
+  // One segmented track instead of four bordered pills: four separate
+  // outlines crowded the card and clipped "Breakfast" on narrow widths.
   mealTypeRow: {
     flexDirection: "row",
-    gap: 8,
-    marginTop: 14,
+    marginTop: 16,
+    padding: 3,
+    borderRadius: 12,
+    borderCurve: "continuous",
+    backgroundColor: t.surface2,
   },
   mealTypePill: {
     flex: 1,
     paddingVertical: 8,
-    borderRadius: r.pill,
-    borderWidth: 1,
-    borderColor: t.line,
+    borderRadius: 9,
+    borderCurve: "continuous",
     alignItems: "center",
+    justifyContent: "center",
   },
   mealTypePillSelected: {
-    backgroundColor: t.accent,
-    borderColor: t.accent,
+    backgroundColor: t.surface,
+    boxShadow: "0 1px 3px rgba(15,20,25,0.12)",
   },
   mealTypePillText: {
-    fontFamily: font.sans[600],
-    fontSize: 12,
-    fontWeight: "600",
+    fontFamily: font.sans[500],
+    fontSize: 13,
+    fontWeight: "500",
     color: t.textSoft,
-    letterSpacing: 0.4,
   },
   mealTypePillTextSelected: {
-    color: t.accentInk,
+    fontFamily: font.sans[600],
+    fontWeight: "600",
+    color: t.text,
   },
   macrosGrid: {
     flexDirection: "row",
