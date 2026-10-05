@@ -613,11 +613,7 @@ export default function DashboardScreen() {
               )}
             </View>
             <View style={styles.metricsRow}>
-              <Pressable
-                style={styles.metricCard}
-                onPress={() => { haptic.tap(); router.push({ pathname: "/trends", params: { metric: "steps" } }); }}
-                testID="home-steps-card"
-              >
+              <View style={styles.metricCard} testID="home-steps-card">
                 <View style={styles.metricTopRow}>
                   <Text style={styles.metricLabel}>Steps</Text>
                   <StepsTrendIcon />
@@ -638,13 +634,9 @@ export default function DashboardScreen() {
                     ]}
                   />
                 </View>
-              </Pressable>
+              </View>
 
-              <Pressable
-                style={styles.metricCard}
-                onPress={() => { haptic.tap(); router.push({ pathname: "/trends", params: { metric: "weight" } }); }}
-                testID="home-weight-card"
-              >
+              <View style={styles.metricCard} testID="home-weight-card">
                 <View style={styles.metricTopRow}>
                   <Text style={styles.metricLabel}>Weight</Text>
                   {weightDelta != null && weightDelta !== 0 ? (
@@ -672,7 +664,7 @@ export default function DashboardScreen() {
                     <WeightSparkline values={weeklyCurrent.map((day) => day.weight)} />
                   </View>
                 )}
-              </Pressable>
+              </View>
             </View>
 
             <Pressable style={styles.coachCard} onPress={() => { haptic.tap(); router.push("/coach"); }} testID="home-ask-coach">
