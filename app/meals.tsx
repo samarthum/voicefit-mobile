@@ -394,6 +394,7 @@ export default function MealsScreen() {
         safeAreaBottom
         onPress={() => cc.open()}
         onMicPress={() => cc.startRecording()}
+        onPhotoPress={() => void cc.openPhoto()}
       />
     </View>
   );

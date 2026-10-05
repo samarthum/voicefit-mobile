@@ -104,6 +104,8 @@ interface CommandCenterOverlayValue {
   dispatch: CommandCenterOverlayDispatch;
   showSavedFeedback: () => void;
   photoSourceChoice: { choose: (mode: PhotoPickerMode | null) => void } | null;
+  /** True while the system camera / photo picker is up; the sheet steps aside. */
+  isPickingPhoto: boolean;
   /** Live recorder, read only by the waveform for metering. */
   recorder: MeteredRecorder | null;
 }
@@ -147,6 +149,7 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
   const [commandErrorDetail, setCommandErrorDetail] = useState<string | null>(null);
   const [screenContext, setScreenContextState] = useState<ScreenContext>({});
   const [photoSourceChoice, setPhotoSourceChoice] = useState<CommandCenterOverlayValue["photoSourceChoice"]>(null);
+  const [isPickingPhoto, setIsPickingPhoto] = useState(false);
   const photoSourceRef = useRef<CommandCenterOverlayValue["photoSourceChoice"]>(null);
   const mountedRef = useRef(true);
   const cancelPhotoSource = useCallback(() => photoSourceRef.current?.choose(null), []);
@@ -592,6 +595,10 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
         return permission.granted;
       },
       pickMealPhoto: async (mode) => {
+        // The sheet lives in a full-window overlay on iOS, which would sit on
+        // top of the native picker; let it slide away until the pick returns.
+        setIsPickingPhoto(true);
+        try {
         const result = mode === "camera"
           ? await ImagePicker.launchCameraAsync({
               allowsEditing: false,
@@ -607,6 +614,9 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
             });
         if (result.canceled || !result.assets[0]) return null;
         return buildPhotoAttachment(result.assets[0]);
+        } finally {
+          if (mountedRef.current) setIsPickingPhoto(false);
+        }
       },
     },
     platform: {
@@ -676,6 +686,16 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
     [commandCenterController, cancelPhotoSource],
   );
 
+  // Straight to "Take photo / Choose from library" from the logging bar.
+  const openPhoto = useCallback(
+    async () => {
+      cancelPhotoSource();
+      await commandCenterController.dispatch({ type: "open" });
+      await commandCenterController.dispatch({ type: "photo.menu.open" });
+    },
+    [commandCenterController, cancelPhotoSource],
+  );
+
   // ---- Screen context ----
   const setScreenContext = useCallback((ctx: ScreenContext) => { cancelPhotoSource(); setScreenContextState(ctx); }, [cancelPhotoSource]);
   const clearScreenContext = useCallback(() => { cancelPhotoSource(); setScreenContextState({}); }, [cancelPhotoSource]);
@@ -684,7 +704,8 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
   const launcherProps = useMemo<CommandCenterLauncherProps>(() => ({
     onPress: openCommandCenter,
     onMicPress: startRecording,
-  }), [openCommandCenter, startRecording]);
+    onPhotoPress: openPhoto,
+  }), [openCommandCenter, startRecording, openPhoto]);
 
   const publicValue = useMemo<CommandCenterPublicValue>(() => ({
     commandState,
@@ -694,11 +715,12 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
     open: openCommandCenter,
     record: startRecording,
     startRecording,
+    openPhoto,
     close: closeCommandCenterForConsumers,
     launcherProps,
     setScreenContext,
     clearScreenContext,
-  }), [commandState, commandToast, openCommandCenter, startRecording, closeCommandCenterForConsumers, launcherProps, setScreenContext, clearScreenContext]);
+  }), [commandState, commandToast, openCommandCenter, startRecording, openPhoto, closeCommandCenterForConsumers, launcherProps, setScreenContext, clearScreenContext]);
 
   // The sheet's dismiss-completion callback can be a closure from an earlier
   // render (gorhom fires it from the close animation), so read the live state
@@ -717,8 +739,9 @@ export function CommandCenterProvider({ children }: { children: React.ReactNode 
     },
     showSavedFeedback,
     photoSourceChoice,
+    isPickingPhoto,
     recorder: audioRecorder as MeteredRecorder,
-  }), [commandCenterController.dispatch, overlaySnapshot, showSavedFeedback, photoSourceChoice, cancelPhotoSource, audioRecorder]);
+  }), [commandCenterController.dispatch, overlaySnapshot, showSavedFeedback, photoSourceChoice, isPickingPhoto, cancelPhotoSource, audioRecorder]);
 
   return (
     <CommandCenterPublicContext.Provider value={publicValue}>

@@ -101,6 +101,7 @@ export type CommandCenterContext = ScreenContext;
 export interface CommandCenterLauncherProps {
   onPress: () => void;
   onMicPress: () => Promise<void>;
+  onPhotoPress: () => Promise<void>;
 }
 
 export interface CommandCenterHandle {
@@ -108,6 +109,8 @@ export interface CommandCenterHandle {
   toast: string | null;
   open: () => void;
   record: () => Promise<void>;
+  /** Opens the logger straight on the photo source choice. */
+  openPhoto: () => Promise<void>;
   close: () => void;
   launcherProps: CommandCenterLauncherProps;
 }

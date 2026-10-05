@@ -11,14 +11,16 @@ test('real workout caller retains sets and blocks stale edit/close/save callback
  }finally{await h.close()}
 });
 
-test('actual photo submit stays on the photo action until upload ACK and failure retries that action',async()=>{
+// Photo hands off like voice: a read-only upload beat, then a success hold.
+const PHOTO_HOLD=async()=>act(async()=>new Promise(resolve=>setTimeout(resolve,1000)));
+test('actual photo submit hands off to the upload beat until ACK and failure returns to the photo to retry',async()=>{
  const h=await harness();try{
  await act(async()=>h.controller().launchPhotoPicker('library'));h.defer();const submit=byId(h.r,'cc-photo-submit').props.onPress;
- await h.start(submit);assert.ok(byId(h.r,'cc-photo-preview'));assert.match(textOf(h.r),/Uploading…/);
- assert.equal(byId(h.r,'cc-photo-submit').props.disabled,true);assert.equal(byId(h.r,'cc-photo-replace').props.disabled,true);assert.equal(byId(h.r,'cc-photo-context').props.editable,false);
+ await h.start(submit);assert.ok(byId(h.r,'cc-voice-progress')); assert.equal(byId(h.r,'cc-photo-submit'),undefined,'no second submit surface during upload');assert.equal(byId(h.r,'cc-interpreting-discard'),undefined,'write in flight cannot be cancelled');assert.equal(h.modal().enableDynamicSizing,true);
  await act(async()=>submit());assert.equal(h.requests.length,1);await h.reject();
  assert.ok(byId(h.r,'cc-photo-preview'));assert.match(textOf(h.r),/Retry original/);
- h.defer();await h.start(byId(h.r,'cc-photo-submit').props.onPress);await h.release({id:'canonical-photo',eatenAt:new Date().toISOString(),calories:null,interpretationStatus:'interpreting'});await h.dismiss();
+ h.defer();await h.start(byId(h.r,'cc-photo-submit').props.onPress);await h.release({id:'canonical-photo',eatenAt:new Date().toISOString(),calories:null,interpretationStatus:'interpreting'});
+ assert.ok(byId(h.r,'cc-voice-progress'));await PHOTO_HOLD();await h.dismiss();
  const toast=byId(h.r,'cc-saved-toast');assert.ok(toast);assert.equal(toast.findByType('Icon').props.name,'sparkle');assert.match(textOf(h.r),/Photo logged — estimating calories/);assert.doesNotMatch(textOf(h.r),/LOGGED|ENTRY SAVED|KCAL LEFT/);
  }finally{await h.close()}
 });
@@ -72,7 +74,7 @@ for(const capture of ['photo','text','voice'])test(`actual ${capture} capture AC
  h.defer();await h.start(()=>capture==='photo'?byId(h.r,'cc-photo-submit').props.onPress():capture==='voice'?h.controller().interpretVoiceTranscript('I ate rice'):byId(h.r,'cc-send').props.onPress());
  assert.equal(byId(h.r,'home-meal-row-canonical-ack'),undefined,'No invented optimistic record before ACK');
  const row={id:'canonical-ack',description:capture==='photo'?'Meal photo':'I ate rice',calories:null,mealType:'snack',eatenAt:day+'T12:00:00.000Z',interpretationStatus:'interpreting'};
- await h.release(row);await h.dismiss();assert.ok(byId(h.r,'home-meal-row-canonical-ack'));assert.match(textOf(h.r),/Estimating…/);
+ await h.release(row);if(capture==='photo')await PHOTO_HOLD();await h.dismiss();assert.ok(byId(h.r,'home-meal-row-canonical-ack'));assert.match(textOf(h.r),/Estimating…/);
  assert.equal(byId(h.r,'cc-saved-toast').findByType('Icon').props.name,'sparkle');
  await act(async()=>new Promise(resolve=>setTimeout(resolve,2300)));assert.equal(byId(h.r,'cc-saved-toast'),undefined);assert.ok(byId(h.r,'home-meal-row-canonical-ack'));
  await h.dashboard({...base,recentMeals:[{...row,description:'Rice and tofu',calories:450,interpretationStatus:'needs_review'}]});assert.equal(h.r.root.findAll(n=>n.type==='Pressable'&&n.props.testID==='home-meal-row-canonical-ack').length,1);assert.match(textOf(h.r),/450/);assert.doesNotMatch(textOf(h.r),/Analyzing/);
@@ -82,8 +84,17 @@ test('quick-add actual caller routes to full-source repeat selection, never writ
  const h=await harness();try{await h.dispatch({type:'open'});await h.dispatch({type:'quick-add.save',item:{id:'source-meal',description:'Rice',calories:120,mealType:'lunch'}});assert.equal(h.snapshot().state,'cc_collapsed');assert.deepEqual(h.pushes,[{pathname:'/meal-repeat',params:{id:'source-meal'}}]);assert.equal(h.requests.length,0);}finally{await h.close()}
 });
 
+test('photo capture shows a read-only success beat with no actions through ACK dismissal',async()=>{
+ const h=await harness();try{
+ await h.dispatch({type:'open'});await act(async()=>h.controller().launchPhotoPicker('library'));
+ h.defer();await h.start(byId(h.r,'cc-photo-submit').props.onPress);
+ await h.release({id:'capture-ack',interpretationStatus:'interpreting',calories:null,eatenAt:new Date().toISOString()});
+ assert.equal(h.snapshot().state,'cc_saved');assert.ok(byId(h.r,'cc-voice-progress'));assert.equal(byId(h.r,'cc-photo-submit'),undefined);assert.equal(byId(h.r,'cc-photo-context'),undefined);
+ await PHOTO_HOLD();await h.dismiss();assert.ok(byId(h.r,'cc-saved-toast'));
+ }finally{await h.close()}
+});
 test('capture upload action stays busy and immutable throughout ACK dismissal',async()=>{
- for(const capture of ['photo','text']){const h=await harness();try{
+ for(const capture of ['text']){const h=await harness();try{
  await h.dispatch({type:'open'});if(capture==='photo')await act(async()=>h.controller().launchPhotoPicker('library'));else await h.dispatch({type:'text.set',text:'I ate rice'});
  h.defer();const id=capture==='photo'?'cc-photo-submit':'cc-send';await h.start(byId(h.r,id).props.onPress);await h.release({id:'capture-ack',interpretationStatus:'interpreting',calories:null,eatenAt:new Date().toISOString()});
  assert.equal(h.snapshot().state,'cc_saved');assert.equal(byId(h.r,id).props.disabled,true,'Retained action must not flicker enabled during dismissal');assert.equal(byId(h.r,id).props.accessibilityState.busy,true);await h.dismiss();

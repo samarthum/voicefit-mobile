@@ -50,7 +50,7 @@ const IOS_OVERLAY = process.env.EXPO_OS === "ios"
 export function CommandCenterOverlay() {
   const insets = useSafeAreaInsets();
 
-  const { snapshot, dispatch, showSavedFeedback, photoSourceChoice } = useCommandCenterOverlay();
+  const { snapshot, dispatch, showSavedFeedback, photoSourceChoice, isPickingPhoto } = useCommandCenterOverlay();
 
   const { state: commandState, review: reviewDraft, error, toast, input } = snapshot;
   const isSaving = isSavingState(commandState);
@@ -61,11 +61,16 @@ export function CommandCenterOverlay() {
     commandState === "cc_transcribing_voice" ||
     commandState === "cc_interpreting_voice" ||
     ((isSaving || commandState === "cc_saved") && isVoiceCapture);
+  // A submitted photo gets the same hand-off beat as voice: upload, "Got it".
+  const isPhotoCapture = !reviewDraft && !!input.selectedMealPhoto;
+  const isPhotoProgress = isPhotoCapture && (isSaving || commandState === "cc_saved");
+  const isHandOff = isVoiceProgress || isPhotoProgress;
   // Recording, the voice hand-off and the photo-source choice are short,
   // focused moments: let the sheet measure its content (dynamic sizing) so it
   // hugs it instead of a mostly-empty 92% panel. Fixed numeric heights don't
   // work here: gorhom measures them from a container shorter than the screen.
-  const isCompact = !!photoSourceChoice || commandState === "cc_recording" || isVoiceProgress;
+  const isCompact = !!photoSourceChoice || commandState === "cc_recording" || isHandOff ||
+    commandState === "cc_photo_context" || (isPhotoCapture && commandState === "cc_error");
   const isVisible = commandState !== "cc_collapsed";
   const canCloseViaBackdrop =
     commandState === "cc_expanded_empty" || commandState === "cc_expanded_typing";
@@ -96,7 +101,7 @@ export function CommandCenterOverlay() {
   // already keeps the sheet up; a "holding" flag set from an effect would let
   // that first render dismiss the sheet before the hold began.
   const [voiceSuccessElapsed, setVoiceSuccessElapsed] = useState(false);
-  const voiceSaved = commandState === "cc_saved" && isVoiceCapture;
+  const voiceSaved = commandState === "cc_saved" && (isVoiceCapture || isPhotoCapture);
   useEffect(() => {
     if (!voiceSaved) {
       setVoiceSuccessElapsed(false);
@@ -105,7 +110,8 @@ export function CommandCenterOverlay() {
     const timer = setTimeout(() => setVoiceSuccessElapsed(true), VOICE_SUCCESS_HOLD_MS);
     return () => clearTimeout(timer);
   }, [voiceSaved]);
-  const shouldPresentSheet = isVisible && (commandState !== "cc_saved" || (voiceSaved && !voiceSuccessElapsed));
+  const shouldPresentSheet = isVisible && !isPickingPhoto &&
+    (commandState !== "cc_saved" || (voiceSaved && !voiceSuccessElapsed));
   // Match retained content and actions through acknowledgement dismissal.
   const lastSheetCompact = useRef(isCompact);
   const presentedCompact = shouldPresentSheet
@@ -176,6 +182,10 @@ export function CommandCenterOverlay() {
           <IdleState />
         </SheetShell>
       );
+    }
+
+    if (isPhotoProgress) {
+      return <InterpretingState />;
     }
 
     if (commandState === "cc_photo_context" || (!reviewDraft && !!snapshot.input.selectedMealPhoto &&

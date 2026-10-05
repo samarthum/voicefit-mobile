@@ -24,6 +24,8 @@ type FloatingCommandBarProps = {
   hint: string;
   onPress: () => void;
   onMicPress?: () => void;
+  /** Shows a camera button for meal photos (meal-capable screens only). */
+  onPhotoPress?: () => void;
   testID?: string;
   bottomOffset?: number;
   /**
@@ -45,6 +47,7 @@ export function FloatingCommandBar({
   hint,
   onPress,
   onMicPress,
+  onPhotoPress,
   testID,
   bottomOffset = 0,
   safeAreaBottom = false,
@@ -73,6 +76,18 @@ export function FloatingCommandBar({
             {hint}
           </Text>
         </Pressable>
+        {onPhotoPress ? (
+          <Pressable
+            style={({ pressed }) => [styles.photoButton, pressed && styles.pressed]}
+            onPress={() => { haptic.press(); onPhotoPress(); }}
+            hitSlop={4}
+            accessibilityRole="button"
+            accessibilityLabel="Log a meal photo"
+            testID="cc-bar-photo"
+          >
+            <Icon name="camera" size={20} color={color.textSoft} />
+          </Pressable>
+        ) : null}
         <Pressable
           style={({ pressed }) => [styles.micButton, pressed && styles.pressed]}
           onPress={() => { haptic.press(); (onMicPress ?? onPress)(); }}
@@ -123,6 +138,14 @@ const styles = StyleSheet.create({
     fontSize: 14.5,
     color: color.textSoft,
     letterSpacing: -0.07,
+  },
+  photoButton: {
+    width: 44,
+    height: 44,
+    marginRight: 4,
+    borderRadius: radius.pill,
+    alignItems: "center",
+    justifyContent: "center",
   },
   micButton: {
     width: 44,
