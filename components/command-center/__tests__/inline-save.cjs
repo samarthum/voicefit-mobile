@@ -98,7 +98,7 @@ test('a new workout opened after acknowledged dismissal can save normally',async
 test('voice meal capture hands off on the progress view, never the editor, and keeps its transcript if the save fails',async()=>{
  const h=await harness();try{
  await h.dispatch({type:'open'});await h.dispatch({type:'voice.transcript.change',text:'I ate rice'});h.defer();await h.start(()=>h.controller().interpretVoiceTranscript('I ate rice'));
- assert.ok(byId(h.r,'cc-voice-progress'));assert.equal(byId(h.r,'cc-input-text'),undefined);assert.equal(h.modal().snapPoints[0]<844,true);
+ assert.ok(byId(h.r,'cc-voice-progress'));assert.equal(byId(h.r,'cc-input-text'),undefined);assert.equal(h.modal().enableDynamicSizing,true);
  await h.reject();assert.equal(byId(h.r,'cc-input-text').props.value,'I ate rice');assert.equal(byId(h.r,'cc-input-text').props.editable,false);
  }finally{await h.close()}
 });
