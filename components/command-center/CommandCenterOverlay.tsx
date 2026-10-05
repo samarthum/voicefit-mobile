@@ -1,11 +1,11 @@
 import type { ReactNode } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { FullWindowOverlay } from "react-native-screens";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   StyleSheet,
   Text,
   View,
-  useWindowDimensions,
 } from "react-native";
 import {
   BottomSheetBackdrop,
@@ -36,19 +36,19 @@ import { color as t, font } from "@/lib/tokens";
 
 // Saving stays in the action surface; the review never changes detent.
 const REVIEW_SNAP_POINTS = ["92%"];
-// Recording and the voice hand-off are a single focused moment; a short sheet
-// keeps the dashboard visible behind it instead of a mostly-empty 92% panel.
-const VOICE_SHEET_CONTENT_HEIGHT = 452;
-// The hand-off after Done is only a status line and the transcript.
-const VOICE_PROGRESS_SHEET_HEIGHT = 300;
-// The photo source choice is two rows; size the sheet to them.
-const PHOTO_SOURCE_SHEET_HEIGHT = 292;
 // How long the "Got it" check stays up before the sheet slides away.
 const VOICE_SUCCESS_HOLD_MS = 900;
 
+// On iOS, host the sheet in a full-window overlay so gorhom measures its
+// container against the whole screen (and the sheet sits above native
+// modals). Inside the app tree it measured an offset container and drew
+// every content-sized sheet ~116pt taller than its content.
+const IOS_OVERLAY = process.env.EXPO_OS === "ios"
+  ? ({ children }: { children?: ReactNode }) => <FullWindowOverlay>{children}</FullWindowOverlay>
+  : undefined;
+
 export function CommandCenterOverlay() {
   const insets = useSafeAreaInsets();
-  const { height: windowHeight } = useWindowDimensions();
 
   const { snapshot, dispatch, showSavedFeedback, photoSourceChoice } = useCommandCenterOverlay();
 
@@ -61,16 +61,11 @@ export function CommandCenterOverlay() {
     commandState === "cc_transcribing_voice" ||
     commandState === "cc_interpreting_voice" ||
     ((isSaving || commandState === "cc_saved") && isVoiceCapture);
-  const compactHeight = photoSourceChoice
-    ? PHOTO_SOURCE_SHEET_HEIGHT
-    : commandState === "cc_recording"
-    ? VOICE_SHEET_CONTENT_HEIGHT
-    : isVoiceProgress
-    ? VOICE_PROGRESS_SHEET_HEIGHT
-    : null;
-  const snapPoints = compactHeight
-    ? [Math.min(Math.round(windowHeight * 0.92), compactHeight + insets.bottom)]
-    : REVIEW_SNAP_POINTS;
+  // Recording, the voice hand-off and the photo-source choice are short,
+  // focused moments: let the sheet measure its content (dynamic sizing) so it
+  // hugs it instead of a mostly-empty 92% panel. Fixed numeric heights don't
+  // work here: gorhom measures them from a container shorter than the screen.
+  const isCompact = !!photoSourceChoice || commandState === "cc_recording" || isVoiceProgress;
   const isVisible = commandState !== "cc_collapsed";
   const canCloseViaBackdrop =
     commandState === "cc_expanded_empty" || commandState === "cc_expanded_typing";
@@ -112,10 +107,11 @@ export function CommandCenterOverlay() {
   }, [voiceSaved]);
   const shouldPresentSheet = isVisible && (commandState !== "cc_saved" || (voiceSaved && !voiceSuccessElapsed));
   // Match retained content and actions through acknowledgement dismissal.
-  const lastSheetSnapPoints = useRef(snapPoints);
-  const presentedSnapPoints = shouldPresentSheet
-    ? (lastSheetSnapPoints.current = snapPoints)
-    : lastSheetSnapPoints.current;
+  const lastSheetCompact = useRef(isCompact);
+  const presentedCompact = shouldPresentSheet
+    ? (lastSheetCompact.current = isCompact)
+    : lastSheetCompact.current;
+  const presentedSnapPoints = presentedCompact ? undefined : REVIEW_SNAP_POINTS;
   const lastSheetHasFooter = useRef(false);
   const showReviewFooter = shouldPresentSheet
     ? (lastSheetHasFooter.current = isReview)
@@ -241,11 +237,12 @@ export function CommandCenterOverlay() {
     <>
       <BottomSheetModal
         ref={sheetRef}
+        containerComponent={IOS_OVERLAY}
         topInset={insets.top}
         accessible={false}
         accessibilityRole="none"
         onDismiss={handleSheetDismiss}
-        enableDynamicSizing={false}
+        enableDynamicSizing={presentedCompact}
         snapPoints={presentedSnapPoints}
         enablePanDownToClose={canCloseViaBackdrop}
         backdropComponent={renderBackdrop}

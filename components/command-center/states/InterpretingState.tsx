@@ -104,7 +104,7 @@ export function InterpretingState() {
             <Animated.Text
               entering={reducedMotion ? undefined : FadeInDown.duration(260)}
               style={styles.transcript}
-              numberOfLines={3}
+              numberOfLines={2}
             >
               “{transcript}”
             </Animated.Text>
@@ -144,7 +144,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   label: {
-    marginTop: 18,
+    marginTop: 14,
     fontFamily: font.sans[600],
     fontSize: 18,
     fontWeight: "600",
@@ -152,7 +152,7 @@ const styles = StyleSheet.create({
     color: t.text,
     textAlign: "center",
   },
-  transcriptSlot: { minHeight: 66, marginTop: 8, alignSelf: "stretch" },
+  transcriptSlot: { marginTop: 6, alignSelf: "stretch" },
   transcript: {
     fontFamily: font.sans[400],
     fontSize: 15,
@@ -160,7 +160,7 @@ const styles = StyleSheet.create({
     color: t.textSoft,
     textAlign: "center",
   },
-  footer: { height: 36, alignItems: "center", justifyContent: "center" },
+  footer: { marginTop: 4, alignItems: "center", justifyContent: "center" },
   cancel: { paddingHorizontal: 16, paddingVertical: 6 },
   cancelText: { fontFamily: font.sans[500], fontSize: 14, color: t.textMute },
   pressed: { opacity: 0.6 },
