@@ -443,9 +443,6 @@ function MealEditSession({ id }: { id: string }) {
             {mealStatus === "failed" ? <Pressable testID="meal-edit-retry-estimate" disabled={retryEstimateMutation.isPending || isDirty} style={styles.retryButton} onPress={() => retryEstimateMutation.mutate()}>
               <Text style={styles.retryButtonText}>{retryEstimateMutation.isPending ? "Retrying…" : "Retry nutrition estimate"}</Text>
             </Pressable> : null}
-            {mealStatus === "reviewed" && !isDirty ? <Pressable testID="meal-edit-repeat" style={styles.retryButton} onPress={() => router.push({ pathname: "/meal-repeat", params: { id } })}>
-              <Text style={styles.retryButtonText}>Repeat this meal…</Text>
-            </Pressable> : null}
 
             <View style={styles.summaryCard}>
               <MealSummaryCard
@@ -473,6 +470,19 @@ function MealEditSession({ id }: { id: string }) {
             <Text style={styles.hint}>
               Tap a row to edit · Long-press to delete
             </Text>
+
+            {(mealStatus === "reviewed" || mealStatus === "needs_review") && !isDirty ? (
+              <Pressable
+                testID="meal-edit-repeat"
+                accessibilityRole="button"
+                hitSlop={6}
+                style={({ pressed }) => [styles.repeatLink, pressed && { opacity: 0.6 }]}
+                onPress={() => router.push({ pathname: "/meal-repeat", params: { id } })}
+              >
+                <Icon name="repeat" size={16} color={t.accent} />
+                <Text style={styles.repeatLinkText}>Log this meal again</Text>
+              </Pressable>
+            ) : null}
 
             {errorMessage ? <Text style={styles.errorText} selectable>{errorMessage}</Text> : null}
           </ScrollView>
@@ -545,6 +555,21 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: t.textSoft,
     textAlign: "center",
+  },
+  repeatLink: {
+    marginTop: 18,
+    alignSelf: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  repeatLinkText: {
+    fontFamily: font.sans[600],
+    fontSize: 14,
+    fontWeight: "600",
+    color: t.accent,
   },
   retryButton: {
     marginTop: 6,

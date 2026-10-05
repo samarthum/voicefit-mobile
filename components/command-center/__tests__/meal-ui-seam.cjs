@@ -244,6 +244,7 @@ async function repeatFlow(initialId='one') {
   const load=loader({
     '@clerk/clerk-expo':{useAuth:()=>({getToken:async()=> 'token'})},
     '@tanstack/react-query':{useQueryClient:()=>({setQueryData:(key,value)=>calls.push({cache:key,value}),invalidateQueries:async key=>invalidations.push(key)})},
+    '@/components/Icon':{Icon:'Icon'},
     'expo-crypto':{randomUUID:()=>`00000000-0000-4000-8000-${String(++uuid).padStart(12,'0')}`},
     '@/lib/api-client':{apiRequest:async(url,options={})=>{
       calls.push({url,...options,parsedBody:options.body?JSON.parse(options.body):undefined});
@@ -270,16 +271,16 @@ test('undo stays retryable until the server confirms deletion',async()=>{
   assert.match(textOf(f.r),/Repeat removed/);
   await act(async()=>f.r.unmount());
 });
-test('chooser selects exact source, validates custom portions and blocks duplicate saves',async()=>{
+test('chooser selects exact source, bounds the portion stepper and blocks duplicate saves',async()=>{
   const f=await repeatFlow('');
   assert.ok(!f.calls.some(c=>c.url==='/api/meals/one'));
   await act(async()=>byId(f.r,'meal-repeat-source-two').props.onPress());
   assert.ok(f.calls.some(c=>c.url==='/api/meals/two'));
-  for(const value of ['0','-1','21','']){
-    await act(async()=>byId(f.r,'meal-repeat-custom').props.onChangeText(value));
-    assert.equal(byId(f.r,'meal-repeat-save').props.disabled,true);
-  }
-  await act(async()=>byId(f.r,'meal-repeat-custom').props.onChangeText('1.25'));
+  for(let i=0;i<6;i++) await act(async()=>byId(f.r,'meal-repeat-portion-down').props.onPress());
+  assert.match(textOf(f.r),/(^|\n)0\.25×(\n|$)/);assert.equal(byId(f.r,'meal-repeat-portion-down').props.disabled,true);
+  await act(async()=>byId(f.r,'meal-repeat-portion-1').props.onPress());
+  await act(async()=>byId(f.r,'meal-repeat-portion-up').props.onPress());
+  assert.match(textOf(f.r),/(^|\n)1\.25×(\n|$)/);
   const press=byId(f.r,'meal-repeat-save').props.onPress;
   await act(async()=>{press();press();});
   const writes=f.calls.filter(c=>c.url?.endsWith('/repeat'));
@@ -291,9 +292,9 @@ test('chooser selects exact source, validates custom portions and blocks duplica
 test('repeat loads full saved source, previews proportional ingredients, retries identical UUID and undoes only canonical new record',async()=>{
   const f=await repeatFlow();
   assert.ok(f.calls.some(c=>c.url==='/api/meals/one'));
+  assert.equal(f.calls.filter(c=>c.url?.startsWith('/api/meals?')).length,0,'a passed-in source skips the chooser');
   await act(async()=>byId(f.r,'meal-repeat-portion-0.5').props.onPress());
-  assert.match(textOf(f.r),/50.125/);
-  assert.match(textOf(f.r),/proportional/i);
+  assert.match(textOf(f.r),/Log 60 kcal/);
   f.fail(1);
   await act(async()=>byId(f.r,'meal-repeat-save').props.onPress());
   assert.ok(byId(f.r,'meal-repeat-save'));
@@ -305,7 +306,7 @@ test('repeat loads full saved source, previews proportional ingredients, retries
   assert.equal(writes[0].parsedBody.portionMultiplier,0.5);
   assert.equal(f.calls.filter(c=>c.url==='/api/meals'&&c.method==='POST').length,0);
   assert.match(textOf(f.r),/Canonical server meal/);
-  assert.match(textOf(f.r),/59.75/);
+  assert.match(textOf(f.r),/60 kcal/);
   assert.ok(f.calls.some(c=>c.cache?.[1]==='new-record'));
   await act(async()=>byId(f.r,'meal-repeat-undo').props.onPress());
   assert.deepEqual(f.calls.filter(c=>c.method==='DELETE').map(c=>c.url),['/api/meals/new-record']);
