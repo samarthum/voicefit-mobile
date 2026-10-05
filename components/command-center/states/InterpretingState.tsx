@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Image } from "expo-image";
 import Animated, {
   Easing,
   FadeIn,
@@ -43,7 +44,7 @@ function phaseLabel(state: string, isWorkout: boolean) {
 const BAR_PEAKS = [0.45, 0.7, 0.9, 1, 0.9, 0.7, 0.45];
 const BAR_HEIGHT = 34;
 
-function ThinkingBar({ index, peak, reducedMotion }: { index: number; peak: number; reducedMotion: boolean }) {
+function ThinkingBar({ index, peak, reducedMotion, small = false }: { index: number; peak: number; reducedMotion: boolean; small?: boolean }) {
   const level = useSharedValue(0.3);
   useEffect(() => {
     if (reducedMotion) {
@@ -63,26 +64,43 @@ function ThinkingBar({ index, peak, reducedMotion }: { index: number; peak: numb
     );
   }, [index, level, peak, reducedMotion]);
   const style = useAnimatedStyle(() => ({ transform: [{ scaleY: level.value }] }));
-  return <Animated.View style={[styles.bar, style]} />;
+  return <Animated.View style={[styles.bar, small && styles.barSmall, style]} />;
 }
 
 export function InterpretingState() {
   const { snapshot, dispatch } = useCommandCenterOverlay();
   const reducedMotion = useReducedMotion();
   const { state, input } = snapshot;
-  const transcript = input.voiceTranscript.trim();
+  const photo = input.selectedMealPhoto;
+  // Photo: the optional details the user typed; voice: what we heard.
+  const transcript = (photo ? input.text : input.voiceTranscript).trim();
   const isDone = state === "cc_saved";
   // Reads can be cancelled; once a write is in flight, closing would only
   // hide it, so the escape hatch disappears.
   const cancellable = state === "cc_transcribing_voice" || state === "cc_interpreting_voice";
-  const label = phaseLabel(state, snapshot.screenContext.screen === "workout");
+  const label = photo && !isDone ? "Uploading photo…" : phaseLabel(state, snapshot.screenContext.screen === "workout");
   const fade = reducedMotion ? undefined : FadeIn.duration(220);
 
   return (
     <SheetShell title={null} onClose={() => dispatch({ type: "close" })} showCloseButton={false}>
       <View style={styles.body} testID="cc-voice-progress" accessibilityLiveRegion="polite">
         <View style={styles.visual}>
-          {isDone ? (
+          {photo ? (
+            <View style={styles.photoWrap}>
+              <Image source={{ uri: photo.uri }} style={styles.photoThumb} contentFit="cover" transition={120} />
+              {isDone ? (
+                <Animated.View entering={reducedMotion ? undefined : ZoomIn.springify().damping(12)} style={styles.photoCheck}>
+                  <Icon name="check" size={16} color={t.accentInk} />
+                </Animated.View>
+              ) : (
+                <View style={styles.photoBars}>
+                  {BAR_PEAKS.slice(1, 6).map((peak, i) => (
+                    <ThinkingBar key={i} index={i} peak={peak} reducedMotion={reducedMotion} small />
+                  ))}
+                </View>
+              )}
+            </View>
+          ) : isDone ? (
             <Animated.View entering={reducedMotion ? undefined : ZoomIn.springify().damping(12)} style={styles.doneBadge}>
               <Icon name="check" size={28} color={t.accentInk} />
             </Animated.View>
@@ -132,7 +150,34 @@ export function InterpretingState() {
 
 const styles = StyleSheet.create({
   body: { paddingHorizontal: 28, paddingTop: 12, alignItems: "center" },
-  visual: { height: 56, alignItems: "center", justifyContent: "center" },
+  visual: { minHeight: 56, alignItems: "center", justifyContent: "center" },
+  photoWrap: { width: 88, height: 88 },
+  photoThumb: { width: 88, height: 88, borderRadius: 20, borderCurve: "continuous", backgroundColor: t.surface2 },
+  photoBars: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 8,
+    height: 18,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 3,
+  },
+  photoCheck: {
+    position: "absolute",
+    right: -6,
+    bottom: -6,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: t.accent,
+    borderWidth: 2,
+    borderColor: t.bg,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  barSmall: { width: 3, height: 18, backgroundColor: "#FFFFFF", boxShadow: "0 0 4px rgba(0,0,0,0.35)" },
   bars: { flexDirection: "row", alignItems: "center", gap: 5, height: BAR_HEIGHT },
   bar: { width: 4, height: BAR_HEIGHT, borderRadius: 2, backgroundColor: t.accent },
   doneBadge: {

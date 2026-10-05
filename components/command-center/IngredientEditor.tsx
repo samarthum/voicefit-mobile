@@ -11,6 +11,9 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import type { MealIngredient } from "@voicefit/contracts/types";
 import { color as t, font } from "@/lib/tokens";
 import { getErrorMessage } from "@/components/command-center/helpers";
+import { PortionSlider } from "@/components/command-center/PortionSlider";
+import { formatKcal, formatMacro, formatNutrient } from "@/lib/format";
+import { haptic } from "@/lib/haptics";
 import { IngredientRow, scaleEditedIngredient, type EditableIngredient } from "@/components/command-center/ingredient-edit";
 
 export type IngredientEditorMode<T extends EditableIngredient = IngredientRow> =
@@ -129,7 +132,11 @@ export function IngredientEditor<T extends EditableIngredient = IngredientRow>({
 
   const portionPreview = mode.kind === "edit" && !isNameChanged && gramsValid && parsedGrams !== null && typeof mode.ingredient.grams === "number" && mode.ingredient.grams > 0
     ? scaleEditedIngredient(mode.ingredient, parsedGrams) : null;
-  const formatNutrition = (value: number | null) => value === null ? "Unknown" : String(Number(value.toFixed(3)));
+  // The AI's estimate the slider and multiplier chips scale around.
+  const originalGrams = mode.kind === "edit" && typeof mode.ingredient.grams === "number" && mode.ingredient.grams > 0
+    ? mode.ingredient.grams : null;
+  const setGrams = (grams: number) => setGramsText(String(Math.round(grams * 100) / 100));
+  const multiplier = originalGrams && parsedGrams ? parsedGrams / originalGrams : null;
 
   const submitLabel = mode.kind === "add" ? "Add ingredient" : "Save";
 
@@ -151,7 +158,9 @@ export function IngredientEditor<T extends EditableIngredient = IngredientRow>({
           onChangeText={setName}
           placeholder="e.g. Paneer"
           placeholderTextColor={t.textMute}
-          autoFocus
+          // Only a new ingredient starts by typing; editing usually means
+          // adjusting the portion, which the keyboard would cover.
+          autoFocus={mode.kind === "add"}
           autoCapitalize="sentences"
           autoCorrect
           editable={!isSaving}
@@ -160,10 +169,44 @@ export function IngredientEditor<T extends EditableIngredient = IngredientRow>({
         />
       </View>
 
-      <View style={styles.fieldRow}>
-        <Text style={styles.label}>GRAMS</Text>
-        <TextInput
-          style={[styles.input, !gramsValid ? styles.inputError : null]}
+      {originalGrams ? (
+        <View style={styles.fieldRow}>
+          <View style={styles.portionHeader}>
+            <Text style={styles.label}>PORTION</Text>
+            {multiplier ? (
+              <Text style={styles.multiplierText}>
+                {Math.abs(multiplier - 1) < 0.005 ? "AI estimate" : `${formatNutrient(multiplier)}× estimate`}
+              </Text>
+            ) : null}
+          </View>
+          <PortionSlider
+            value={parsedGrams && gramsValid ? parsedGrams : originalGrams}
+            original={originalGrams}
+            onChange={setGrams}
+            disabled={isSaving}
+          />
+          <View style={styles.portionControls}>
+            <View style={styles.chips}>
+              {([[0.5, "½×"], [1, "1×"], [1.5, "1½×"], [2, "2×"]] as const).map(([factor, label]) => {
+                const selected = multiplier !== null && Math.abs(multiplier - factor) < 0.005;
+                return (
+                  <Pressable
+                    key={label}
+                    onPress={() => { haptic.selection(); setGrams(originalGrams * factor); }}
+                    disabled={isSaving}
+                    style={({ pressed }) => [styles.chip, selected && styles.chipSelected, pressed && { opacity: 0.7 }]}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${label} portion`}
+                    accessibilityState={{ selected }}
+                  >
+                    <Text style={[styles.chipText, selected && styles.chipTextSelected]}>{label}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <View style={styles.gramsField}>
+              <TextInput
+          style={[styles.input, originalGrams ? styles.gramsInputCompact : null, !gramsValid ? styles.inputError : null]}
           value={gramsText}
           onChangeText={setGramsText}
           placeholder="Optional"
@@ -173,12 +216,35 @@ export function IngredientEditor<T extends EditableIngredient = IngredientRow>({
           testID="cc-ingredient-editor-grams"
           accessibilityLabel="Grams"
         />
-      </View>
+              <Text style={styles.gramsUnit}>g</Text>
+            </View>
+          </View>
+        </View>
+      ) : (
+        <View style={styles.fieldRow}>
+          <Text style={styles.label}>GRAMS</Text>
+          <TextInput
+          style={[styles.input, originalGrams ? styles.gramsInputCompact : null, !gramsValid ? styles.inputError : null]}
+          value={gramsText}
+          onChangeText={setGramsText}
+          placeholder="Optional"
+          placeholderTextColor={t.textMute}
+          keyboardType="decimal-pad"
+          editable={!isSaving}
+          testID="cc-ingredient-editor-grams"
+          accessibilityLabel="Grams"
+        />
+        </View>
+      )}
 
-      {portionPreview ? <View testID="cc-ingredient-editor-nutrition-preview" style={styles.fieldRow}>
-        <Text style={styles.label}>SAME FOOD · PROPORTIONAL PORTION</Text>
-        <Text style={styles.previewText}>{formatNutrition(portionPreview.calories)} kcal · P {formatNutrition(portionPreview.proteinG)} g · C {formatNutrition(portionPreview.carbsG)} g · F {formatNutrition(portionPreview.fatG)} g</Text>
-      </View> : mode.kind === "edit" ? <Text style={styles.previewText}>Nutrition will be re-estimated when you save a changed food name or unknown original portion.</Text> : null}
+      {portionPreview ? (
+        <View testID="cc-ingredient-editor-nutrition-preview" style={styles.previewCard}>
+          <Text style={styles.previewKcal}>{formatKcal(portionPreview.calories)}<Text style={styles.previewKcalUnit}> kcal</Text></Text>
+          <Text style={styles.previewMacros}>
+            {[formatMacro("P", portionPreview.proteinG), formatMacro("C", portionPreview.carbsG), formatMacro("F", portionPreview.fatG)].join(" · ")}
+          </Text>
+        </View>
+      ) : mode.kind === "edit" ? <Text style={styles.previewText}>Nutrition will be re-estimated when you save a changed food name or unknown original portion.</Text> : null}
 
       {errorMessage ? (
         <Text style={styles.errorText} testID="cc-ingredient-editor-error" selectable>
@@ -222,6 +288,38 @@ export function IngredientEditor<T extends EditableIngredient = IngredientRow>({
 
 const styles = StyleSheet.create({
   previewText: { fontFamily: font.sans[400], fontSize: 13, color: t.textSoft, marginBottom: 12 },
+  portionHeader: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between" },
+  multiplierText: { fontFamily: font.sans[600], fontSize: 12, color: t.accent },
+  portionControls: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 4 },
+  chips: { flex: 1, flexDirection: "row", gap: 6 },
+  chip: {
+    flex: 1,
+    height: 36,
+    borderRadius: 10,
+    borderCurve: "continuous",
+    backgroundColor: t.surface2,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  chipSelected: { backgroundColor: t.accent },
+  chipText: { fontFamily: font.sans[600], fontSize: 13, color: t.textSoft },
+  chipTextSelected: { color: t.accentInk },
+  gramsField: { flexDirection: "row", alignItems: "center", gap: 6 },
+  gramsInputCompact: { width: 76, minHeight: 40, paddingVertical: process.env.EXPO_OS === "ios" ? 9 : 6, textAlign: "right" },
+  gramsUnit: { fontFamily: font.sans[500], fontSize: 15, color: t.textSoft },
+  previewCard: {
+    marginBottom: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    borderCurve: "continuous",
+    backgroundColor: t.accentTintBg,
+    borderWidth: 1,
+    borderColor: t.accentTintBorder,
+  },
+  previewKcal: { fontFamily: font.mono[500], fontSize: 22, color: t.text },
+  previewKcalUnit: { fontFamily: font.sans[500], fontSize: 13, color: t.textSoft },
+  previewMacros: { marginTop: 2, fontFamily: font.mono[400], fontSize: 12.5, color: t.textSoft },
   scroll: { flex: 1 },
   form: {
     paddingHorizontal: 22,

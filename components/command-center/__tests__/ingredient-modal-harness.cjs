@@ -11,7 +11,7 @@ const ingredient=(id='a')=>({id,name:'Rice '+id,grams:100.25,calories:120.5,prot
 const meal=()=>({kind:'meal',interpreted:{payload:{description:'Rice lunch',mealType:'lunch',calories:241}},transcript:'Rice lunch',totalGrams:200.5,eatenAtLabel:'12 PM',macros:{protein:5,carbs:51,fat:1},ingredients:[ingredient('a'),ingredient('b')]});
 async function harness({caller='single',lookup,os='android',unknownNutrition=false}={}){
  const log=[],cache=new Map(),backListeners=new Set();let keyboardVisible=false,routeId='saved-one',ports,api,renderer,mode,setMode;
- const native={StyleSheet:{create:x=>x,absoluteFillObject:{},flatten:x=>x},useWindowDimensions:()=>({height:844,width:390,fontScale:1}),Platform:{OS:os,select:x=>x[os]??x.default},Keyboard:{isVisible:()=>keyboardVisible,dismiss(){log.push({event:'keyboardDismiss'})}},BackHandler:{addEventListener:(_event,f)=>{backListeners.add(f);return {remove:()=>backListeners.delete(f)}}},Alert:{alert(){}},Linking:{openSettings:async()=>{}}};
+ const native={PanResponder:{create:()=>({panHandlers:{}})},StyleSheet:{create:x=>x,absoluteFillObject:{},flatten:x=>x},useWindowDimensions:()=>({height:844,width:390,fontScale:1}),Platform:{OS:os,select:x=>x[os]??x.default},Keyboard:{isVisible:()=>keyboardVisible,dismiss(){log.push({event:'keyboardDismiss'})}},BackHandler:{addEventListener:(_event,f)=>{backListeners.add(f);return {remove:()=>backListeners.delete(f)}}},Alert:{alert(){}},Linking:{openSettings:async()=>{}}};
  for(const n of ['View','Text','Pressable','ScrollView','TextInput','ActivityIndicator'])native[n]=n;
  // Execute the installed Modal class and its native-host prop forwarding intact.
  const modalFile=path.join(root,'node_modules/react-native/Libraries/Modal/Modal.js');

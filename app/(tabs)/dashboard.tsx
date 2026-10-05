@@ -698,6 +698,7 @@ export default function DashboardScreen() {
         hint="Log a meal, workout, or weight…"
         onPress={() => cc.open()}
         onMicPress={() => cc.startRecording()}
+        onPhotoPress={() => void cc.openPhoto()}
         overTabBar
       />
     </SafeAreaView>

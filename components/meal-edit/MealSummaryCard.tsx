@@ -7,6 +7,7 @@
  * All data and callbacks come from the route file — this component is
  * intentionally stateless.
  */
+import { formatNutrient } from "@/lib/format";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { color as t, font, radius as r } from "@/lib/tokens";
 
@@ -108,7 +109,7 @@ export function MealSummaryCard({
           <Text style={styles.macroLabel}>PROTEIN</Text>
           <View style={styles.macroValueRow}>
             <Text style={[styles.macroValue, styles.macroValueAccent]} selectable>
-              {macros.protein ?? "--"}
+              {formatNutrient(macros.protein)}
             </Text>
             <Text style={styles.macroUnit}>g</Text>
           </View>
@@ -117,7 +118,7 @@ export function MealSummaryCard({
           <Text style={styles.macroLabel}>CARBS</Text>
           <View style={styles.macroValueRow}>
             <Text style={[styles.macroValue, styles.macroValueSoft]} selectable>
-              {macros.carbs ?? "--"}
+              {formatNutrient(macros.carbs)}
             </Text>
             <Text style={styles.macroUnit}>g</Text>
           </View>
@@ -126,7 +127,7 @@ export function MealSummaryCard({
           <Text style={styles.macroLabel}>FAT</Text>
           <View style={styles.macroValueRow}>
             <Text style={[styles.macroValue, styles.macroValueSoft]} selectable>
-              {macros.fat ?? "--"}
+              {formatNutrient(macros.fat)}
             </Text>
             <Text style={styles.macroUnit}>g</Text>
           </View>
