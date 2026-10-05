@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  LayoutChangeEvent,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -9,54 +8,27 @@ import {
   View,
 } from "react-native";
 import { useAuth } from "@clerk/clerk-expo";
-import { Stack, useLocalSearchParams, useRouter } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import type { DashboardData, TopMealsResponse } from "@voicefit/contracts/types";
-import Svg, {
-  Circle as SvgCircle,
-  Line,
-  Path,
-} from "react-native-svg";
+import Svg, { Line } from "react-native-svg";
 import { apiRequest } from "@/lib/api-client";
 import { FloatingCommandBar } from "@/components/FloatingCommandBar";
 import { useCommandCenter, toLocalDateString } from "@/components/command-center";
 import { color as token, font, radius as r } from "@/lib/tokens";
-import { type TrendMetric, getISOWeek, safeNumber, metricValueFromPoint } from "@/lib/trends";
 import { isWebPreviewMode } from "@/lib/web-preview-mode";
 import { haptic } from "@/lib/haptics";
-import { formatCompact } from "@/lib/format";
 
-const TAB_LABELS: Record<TrendMetric, string> = {
-  calories: "Calories",
-  steps: "Steps",
-  weight: "Weight",
-};
-const TABS: TrendMetric[] = ["calories", "steps", "weight"];
+const CHART_HEIGHT = 150;
 
-const CHART_HEIGHT = 140;
-const GRID_LINES = [0, 35, 70, 105, 140] as const;
-
-function formatAverage(metric: TrendMetric, avg: number | null): { num: string; unit: string } {
-  if (avg == null) return { num: "—", unit: unitFor(metric) };
-  if (metric === "calories") return { num: formatCompact(Math.round(avg)), unit: "kcal/day" };
-  if (metric === "steps") return { num: formatCompact(Math.round(avg)), unit: "steps/day" };
-  return { num: avg.toFixed(1), unit: "kg avg" };
-}
-
-function unitFor(metric: TrendMetric) {
-  if (metric === "calories") return "kcal/day";
-  if (metric === "steps") return "steps/day";
-  return "kg avg";
-}
-
-function lastSevenDayLabels(): string[] {
-  // Returns short weekday names in chronological order ending today.
-  const out: string[] = [];
+function lastSevenDays(): { date: string; label: string }[] {
+  // Chronological, ending today.
+  const out: { date: string; label: string }[] = [];
   const today = new Date();
   for (let i = 6; i >= 0; i -= 1) {
     const d = new Date(today);
     d.setDate(today.getDate() - i);
-    out.push(d.toLocaleDateString("en-US", { weekday: "short" }));
+    out.push({ date: toLocalDateString(d), label: i === 0 ? "Today" : d.toLocaleDateString("en-US", { weekday: "short" }) })
   }
   return out;
 }
@@ -129,14 +101,6 @@ export default function TrendsScreen() {
   const today = toLocalDateString(new Date());
   const isWebPreview = isWebPreviewMode();
 
-  const params = useLocalSearchParams<{ metric?: string }>();
-  const initialTab: TrendMetric =
-    params.metric === "steps" || params.metric === "weight" ? params.metric : "calories";
-  const [tab, setTab] = useState<TrendMetric>(initialTab);
-  const [chartWidth, setChartWidth] = useState(320);
-
-  const weekNumber = useMemo(() => getISOWeek(new Date()), []);
-
   const dashboardQuery = useQuery<DashboardData>({
     queryKey: ["dashboard", "full", timezone, today],
     queryFn: async () => {
@@ -151,7 +115,7 @@ export default function TrendsScreen() {
   });
 
   const TOP_MEALS_DAYS = 7;
-  const TOP_MEALS_LIMIT = 4;
+  const TOP_MEALS_LIMIT = 5;
   const topMealsQuery = useQuery<TopMealsResponse>({
     queryKey: ["top-meals", TOP_MEALS_DAYS, TOP_MEALS_LIMIT],
     queryFn: async () => {
@@ -166,85 +130,29 @@ export default function TrendsScreen() {
   });
 
   const dashboard = dashboardQuery.data;
-  const weeklyFull = dashboard?.weeklyTrends ?? [];
-  const weeklyCurrent = weeklyFull.slice(-7);
-  const weeklyPrior = weeklyFull.slice(-14, -7);
+  const goal = dashboard?.today.calories.goal ?? null;
+  const days = useMemo(() => lastSevenDays(), []);
 
-  const currentValues = useMemo(
-    () =>
-      weeklyCurrent
-        .map((p) => safeNumber(metricValueFromPoint(p, tab)))
-        .filter((v): v is number => v != null),
-    [weeklyCurrent, tab]
-  );
+  // The API reports 0 kcal for days with nothing logged. Those are gaps, not
+  // fasting days, so they're left out of the averages and drawn as stubs.
+  const { series, avgCurrent, loggedDays, change } = useMemo(() => {
+    const byDate = new Map((dashboard?.weeklyTrends ?? []).map((p) => [p.date, p.calories]));
+    const logged = (v: number | null | undefined): v is number => typeof v === "number" && Number.isFinite(v) && v > 0;
+    const values = days.map((d) => byDate.get(d.date));
+    const current = values.filter(logged);
+    const prior = (dashboard?.weeklyTrends ?? []).slice(-14, -7).map((p) => p.calories).filter(logged);
+    const avg = average(current);
+    const avgPrior = average(prior);
+    return {
+      series: values.map((v) => (logged(v) ? v : null)),
+      avgCurrent: avg,
+      loggedDays: current.length,
+      change: avg != null && avgPrior != null && avgPrior > 0 ? ((avg - avgPrior) / avgPrior) * 100 : null,
+    };
+  }, [dashboard, days]);
 
-  const priorValues = useMemo(
-    () =>
-      weeklyPrior
-        .map((p) => safeNumber(metricValueFromPoint(p, tab)))
-        .filter((v): v is number => v != null),
-    [weeklyPrior, tab]
-  );
-
-  const avgCurrent = useMemo(() => average(currentValues), [currentValues]);
-  const avgPrior = useMemo(() => average(priorValues), [priorValues]);
-
-  const change = useMemo(() => {
-    if (avgCurrent == null || avgPrior == null || avgPrior === 0) return null;
-    return ((avgCurrent - avgPrior) / avgPrior) * 100;
-  }, [avgCurrent, avgPrior]);
-
-  const displaySeries = useMemo(
-    () => weeklyCurrent.map((point) => safeNumber(metricValueFromPoint(point, tab))),
-    [weeklyCurrent, tab],
-  );
-
-  const settingsQuery = useQuery<{ weightGoalKg: number | null }>({
-    queryKey: ["user-settings"],
-    enabled: !isWebPreview,
-    queryFn: async () => {
-      const token = await getToken();
-      if (!token) throw new Error("Not signed in");
-      return apiRequest("/api/user/settings", { token });
-    },
-  });
-  const goal = tab === "calories" ? dashboard?.today.calories.goal ?? null
-    : tab === "steps" ? dashboard?.today.steps.goal ?? null
-    : settingsQuery.data?.weightGoalKg ?? null;
-
-  // SVG chart math: map series to 320×140 viewBox to match the reference design.
-  const chartCoords = useMemo(() => {
-    const vbW = 320;
-    const vbH = CHART_HEIGHT;
-    const measured = displaySeries.filter((value): value is number => value != null);
-    const min = measured.length ? Math.min(...measured, goal ?? Infinity) : 0;
-    const max = measured.length ? Math.max(...measured, goal ?? -Infinity) : 1;
-    const range = max - min || 1;
-    const padTop = 8;
-    const padBottom = 8;
-    let connected = false;
-    const points: { x: number; y: number }[] = [];
-    const segments = displaySeries.map((value, index) => {
-      if (value == null) { connected = false; return ""; }
-      const x = displaySeries.length === 1 ? vbW / 2 : index * vbW / (displaySeries.length - 1);
-      const y = max === min ? vbH / 2 : vbH - padBottom - (value - min) / range * (vbH - padTop - padBottom);
-      points.push({ x, y });
-      const command = connected ? "L" : "M";
-      connected = true;
-      return `${command}${x.toFixed(2)} ${y.toFixed(2)}`;
-    });
-    const polyline = segments.filter(Boolean).join(" ");
-
-    let goalY: number | null = null;
-    if (goal != null && measured.length) {
-      const norm = (goal - min) / range;
-      goalY = vbH - padBottom - norm * (vbH - padTop - padBottom);
-    }
-
-    return { vbW, vbH, points, polyline, goalY };
-  }, [displaySeries, goal]);
-
-  const dayLabels = useMemo(() => lastSevenDayLabels(), []);
+  const scaleMax = Math.max(...series.map((v) => v ?? 0), goal ?? 0, 1) * 1.12;
+  const goalBottom = goal != null ? (goal / scaleMax) * CHART_HEIGHT : null;
 
   const topMeals = useMemo<MealAggregate[]>(
     () =>
@@ -256,24 +164,10 @@ export default function TrendsScreen() {
       })),
     [topMealsQuery.data]
   );
-  const topKcal = topMeals.length ? Math.max(...topMeals.map((m) => m.kcal), 1) : 1;
-
-  const avgDisplay = formatAverage(tab, avgCurrent);
-
-  const goalLabel = useMemo(() => {
-    if (tab === "calories" && goal != null) return `Goal · ${formatCompact(goal)} kcal`;
-    if (tab === "steps" && goal != null) return `Goal · ${formatCompact(goal)} steps`;
-    return null;
-  }, [tab, goal]);
-
-  function onChartLayout(e: LayoutChangeEvent) {
-    setChartWidth(e.nativeEvent.layout.width);
-  }
 
   return (
     <>
-      {/* NUI-5: native header — provides title + back button; replaces hand-rolled headerRow */}
-      <Stack.Screen options={{ headerShown: true, title: `Trends · Wk ${weekNumber}` }} />
+      <Stack.Screen options={{ headerShown: true, title: "Calories" }} />
 
       <ScrollView
         style={styles.root}
@@ -282,132 +176,76 @@ export default function TrendsScreen() {
         keyboardDismissMode="on-drag"
         keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.tabsRow}>
-          {TABS.map((t) => {
-            const active = t === tab;
-            return (
-              <Pressable
-                key={t}
-                onPress={() => {
-                  haptic.selection();
-                  setTab(t);
-                }}
-                style={[styles.tabPill, active && styles.tabPillActive]}
-                testID={`trends-tab-${t}`}
-                accessibilityRole="tab"
-                accessibilityState={{ selected: active }}
-                accessibilityLabel={TAB_LABELS[t]}
-              >
-                <Text style={[styles.tabText, active && styles.tabTextActive]}>{TAB_LABELS[t]}</Text>
-              </Pressable>
-            );
-          })}
-        </View>
-
         {!dashboard ? (
-          <View style={styles.bigCard}>
+          <View style={[styles.bigCard, styles.centered]}>
             {dashboardQuery.isError ? (
               <>
-                <Text style={styles.emptyText}>Couldn’t load trends. Your data hasn’t changed.</Text>
-                <Pressable accessibilityRole="button" style={{ padding: 16 }} onPress={() => void dashboardQuery.refetch()}><Text style={{ color: token.accent }}>Try again</Text></Pressable>
+                <Text style={styles.emptyText}>Couldn’t load your calories. Your data hasn’t changed.</Text>
+                <Pressable accessibilityRole="button" style={{ padding: 12 }} onPress={() => void dashboardQuery.refetch()}>
+                  <Text style={styles.sectionLink}>Try again</Text>
+                </Pressable>
               </>
-            ) : <ActivityIndicator color={token.accent} accessibilityLabel="Loading trends" />}
+            ) : <ActivityIndicator color={token.accent} accessibilityLabel="Loading calories" />}
           </View>
-        ) : <View style={styles.bigCard}>
-          <View style={styles.bigCardTopRow}>
-            <View style={styles.bigCardLeft}>
-              <Text style={styles.smallLabel}>7-day average</Text>
-              <View style={styles.avgRow}>
-                <Text selectable style={styles.avgNum}>{avgDisplay.num}</Text>
-                <Text style={styles.avgUnit}>{avgDisplay.unit}</Text>
-              </View>
+        ) : (
+          <View style={styles.bigCard} testID="trends-calories-card">
+            <Text style={styles.smallLabel}>Daily average · last 7 days</Text>
+            <View style={styles.avgRow}>
+              <Text selectable style={styles.avgNum}>{avgCurrent == null ? "—" : Math.round(avgCurrent).toLocaleString()}</Text>
+              <Text style={styles.avgUnit}>kcal</Text>
             </View>
-            <View style={styles.bigCardRight}>
-              <Text
-                selectable
-                style={[
-                  styles.changeText,
-                  { color: token.textSoft },
-                ]}
-              >
-                {change == null
-                  ? "—"
-                  : `${change >= 0 ? "↑" : "↓"} ${Math.abs(Math.round(change))}%`}
+            <View style={styles.metaRow}>
+              <Text style={styles.metaText}>
+                {loggedDays === 0 ? "No meals logged this week" : `Across ${loggedDays} logged ${loggedDays === 1 ? "day" : "days"}`}
               </Text>
-              <Text style={styles.vsLabel}>vs last 7</Text>
+              {change != null && Math.round(change) !== 0 ? (
+                <View style={styles.changeChip}>
+                  <Text style={styles.changeText}>{change > 0 ? "↑" : "↓"} {Math.abs(Math.round(change))}% vs prior week</Text>
+                </View>
+              ) : null}
+            </View>
+
+            <View style={styles.chart} accessible accessibilityLabel={days.map((d, i) => `${d.label}: ${series[i] == null ? "nothing logged" : `${Math.round(series[i]!)} kcal`}`).join(", ")}>
+              {goalBottom != null ? (
+                <View pointerEvents="none" style={[styles.goalLayer, { bottom: goalBottom }]}>
+                  <Svg width="100%" height={2}>
+                    <Line x1="0" y1="1" x2="100%" y2="1" stroke={token.accent} strokeOpacity={0.55} strokeWidth={1.5} strokeDasharray="4 4" />
+                  </Svg>
+                  <Text style={styles.goalTag}>Goal {goal!.toLocaleString()}</Text>
+                </View>
+              ) : null}
+              {series.map((value, i) => {
+                const isToday = i === series.length - 1;
+                const over = value != null && goal != null && value > goal;
+                return (
+                  <View key={days[i].date} style={styles.barCol}>
+                    {value == null ? (
+                      <View style={styles.barEmpty} />
+                    ) : (
+                      <View
+                        style={[
+                          styles.bar,
+                          { height: Math.max(6, (value / scaleMax) * CHART_HEIGHT) },
+                          over && styles.barOver,
+                          !isToday && styles.barPast,
+                        ]}
+                      />
+                    )}
+                  </View>
+                );
+              })}
+            </View>
+            <View style={styles.dayRow}>
+              {days.map((d, i) => (
+                <Text key={d.date} style={[styles.dayLabel, i === days.length - 1 && styles.dayLabelToday]}>{d.label}</Text>
+              ))}
             </View>
           </View>
-
-          <View style={styles.chartWrap} onLayout={onChartLayout}>
-            <Svg
-              width="100%"
-              height={CHART_HEIGHT}
-              viewBox={`0 0 ${chartCoords.vbW} ${chartCoords.vbH}`}
-              preserveAspectRatio="none"
-            >
-              {GRID_LINES.map((y) => (
-                <Line
-                  key={y}
-                  x1={0}
-                  y1={y}
-                  x2={chartCoords.vbW}
-                  y2={y}
-                  stroke={token.line}
-                  strokeDasharray="2 4"
-                />
-              ))}
-              {chartCoords.goalY != null ? (
-                <Line
-                  x1={0}
-                  y1={chartCoords.goalY}
-                  x2={chartCoords.vbW}
-                  y2={chartCoords.goalY}
-                  stroke={token.accent}
-                  strokeWidth={1}
-                  strokeDasharray="3 3"
-                />
-              ) : null}
-              {chartCoords.polyline ? (
-                <Path
-                  d={chartCoords.polyline}
-                  fill="none"
-                  stroke={token.accent}
-                  strokeWidth={2}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              ) : null}
-              {chartCoords.points.map((p, i) => (
-                <SvgCircle
-                  key={i}
-                  cx={p.x}
-                  cy={p.y}
-                  r={3}
-                  fill={token.bg}
-                  stroke={token.accent}
-                  strokeWidth={2}
-                />
-              ))}
-            </Svg>
-          </View>
-
-          <View style={styles.dayLabelsRow}>
-            {dayLabels.map((d, i) => (
-              <Text key={`${d}-${i}`} style={styles.dayLabel}>{d}</Text>
-            ))}
-          </View>
-
-          {goalLabel ? (
-            <View style={styles.goalRow}>
-              <View style={styles.goalLine} />
-              <Text style={styles.goalLabel}>{goalLabel}</Text>
-            </View>
-          ) : null}
-        </View>}
+        )}
 
         <View style={styles.sectionHeaderRow}>
           <Text style={styles.sectionTitle}>Top meals this week</Text>
-          <Pressable onPress={() => router.push("/meals")} hitSlop={8}>
+          <Pressable onPress={() => router.push("/meals")} hitSlop={8} accessibilityRole="link">
             <Text style={styles.sectionLink}>All meals</Text>
           </Pressable>
         </View>
@@ -415,87 +253,44 @@ export default function TrendsScreen() {
         <View style={styles.topMealsCard}>
           {topMealsQuery.isError ? (
             <Pressable accessibilityRole="button" onPress={() => void topMealsQuery.refetch()}><Text style={styles.emptyText}>Couldn’t load top meals. Tap to retry.</Text></Pressable>
-          ) : topMealsQuery.isLoading ? <ActivityIndicator color={token.accent} /> : topMeals.length === 0 ? (
-            <Text style={styles.emptyText}>
-              No meals this week yet — log some to see your top.
-            </Text>
+          ) : topMealsQuery.isLoading ? <ActivityIndicator style={{ padding: 18 }} color={token.accent} /> : topMeals.length === 0 ? (
+            <Text style={styles.emptyText}>Log a few meals and your most-eaten ones will show up here.</Text>
           ) : (
-            topMeals.map((meal, i) => {
-              const widthPct = Math.max(4, (meal.kcal / topKcal) * 100);
-              return (
-                <View key={meal.key} style={styles.mealRow}>
-                  <View style={styles.mealRowTop}>
-                    <Text style={styles.mealName} numberOfLines={1}>{meal.name}</Text>
-                    <Text style={styles.mealCount}>{meal.count}×</Text>
-                    <Text selectable style={styles.mealKcal}>{formatCompact(meal.kcal)}</Text>
-                  </View>
-                  <View style={styles.mealTrack}>
-                    <View
-                      style={[
-                        styles.mealFill,
-                        {
-                          width: `${widthPct}%`,
-                          backgroundColor: i === 0 ? token.accent : token.textSoft,
-                        },
-                      ]}
-                    />
-                  </View>
+            topMeals.map((meal, i) => (
+              <View key={meal.key} style={[styles.mealRow, i > 0 && styles.mealRowDivider]}>
+                <Text style={styles.rank}>{i + 1}</Text>
+                <View style={styles.mealCopy}>
+                  <Text style={styles.mealName} numberOfLines={2}>{meal.name}</Text>
+                  <Text style={styles.mealMeta}>
+                    {meal.count === 1 ? "Once" : `${meal.count} times`}
+                    {meal.count > 1 ? ` · ${Math.round(meal.kcal / meal.count).toLocaleString()} kcal each` : ""}
+                  </Text>
                 </View>
-              );
-            })
+                <View style={styles.mealKcalCol}>
+                  <Text selectable style={styles.mealKcal}>{Math.round(meal.kcal).toLocaleString()}</Text>
+                  <Text style={styles.mealKcalUnit}>kcal</Text>
+                </View>
+              </View>
+            ))
           )}
         </View>
       </ScrollView>
 
       <FloatingCommandBar
         safeAreaBottom
-        hint="Log a meal, lift, or weight…"
+        hint="Log a meal…"
         onPress={() => cc.open()}
         onMicPress={() => cc.startRecording()}
+        onPhotoPress={() => void cc.openPhoto()}
       />
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: token.bg,
-  },
-  scroll: {
-    paddingHorizontal: 20,
-    paddingTop: 4,
-    paddingBottom: 146,
-  },
-  tabsRow: {
-    flexDirection: "row",
-    gap: 6,
-    marginBottom: 16,
-  },
-  tabPill: {
-    height: 32,
-    paddingHorizontal: 14,
-    borderRadius: r.pill,
-    borderWidth: 1,
-    borderColor: token.line,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "transparent",
-  },
-  tabPillActive: {
-    backgroundColor: token.accent,
-    borderColor: "transparent",
-  },
-  tabText: {
-    fontFamily: font.sans[600],
-    fontSize: 12,
-    fontWeight: "600",
-    letterSpacing: 0.24,
-    color: token.textSoft,
-  },
-  tabTextActive: {
-    color: token.accentInk,
-  },
+  root: { flex: 1, backgroundColor: token.bg },
+  scroll: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 146 },
+  centered: { alignItems: "center", justifyContent: "center", minHeight: 200 },
   bigCard: {
     backgroundColor: token.surface,
     borderWidth: 1,
@@ -503,168 +298,90 @@ const styles = StyleSheet.create({
     borderRadius: r.lg,
     borderCurve: "continuous",
     paddingTop: 20,
-    paddingHorizontal: 22,
-    paddingBottom: 18,
+    paddingHorizontal: 20,
+    paddingBottom: 16,
   },
-  bigCardTopRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-  },
-  bigCardLeft: {
-    flexShrink: 1,
-  },
-  bigCardRight: {
-    alignItems: "flex-end",
-  },
-  smallLabel: {
-    fontFamily: font.sans[600],
-    fontSize: 10.5,
-    fontWeight: "600",
-    letterSpacing: 1.68,
-    textTransform: "uppercase",
-    color: token.textMute,
-  },
-  avgRow: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    gap: 6,
-    marginTop: 8,
-  },
+  smallLabel: { fontFamily: font.sans[500], fontSize: 13, color: token.textMute },
+  avgRow: { flexDirection: "row", alignItems: "baseline", gap: 6, marginTop: 6 },
   avgNum: {
     fontFamily: font.mono[500],
-    fontSize: 44,
+    fontSize: 40,
     fontWeight: "500",
-    letterSpacing: -1.76,
+    letterSpacing: -1.6,
     color: token.text,
     lineHeight: 44,
   },
-  avgUnit: {
-    fontFamily: font.sans[400],
-    fontSize: 13,
-    color: token.textMute,
+  avgUnit: { fontFamily: font.sans[500], fontSize: 15, color: token.textMute },
+  metaRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8, marginTop: 6 },
+  metaText: { fontFamily: font.sans[400], fontSize: 13, color: token.textSoft },
+  changeChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: r.pill,
+    backgroundColor: token.surface2,
   },
-  changeText: {
-    fontFamily: font.sans[700],
-    fontSize: 10.5,
-    fontWeight: "700",
-    letterSpacing: 1.47,
-    textTransform: "uppercase",
-  },
-  vsLabel: {
-    fontFamily: font.sans[400],
-    fontSize: 11,
-    color: token.textMute,
-    marginTop: 2,
-  },
-  chartWrap: {
-    marginTop: 22,
+  changeText: { fontFamily: font.sans[600], fontSize: 12, fontWeight: "600", color: token.textSoft },
+  chart: {
+    marginTop: 24,
     height: CHART_HEIGHT,
-    position: "relative",
-  },
-  dayLabelsRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 8,
+    alignItems: "flex-end",
+    borderBottomWidth: 1,
+    borderBottomColor: token.line2,
   },
-  dayLabel: {
-    fontFamily: font.sans[400],
-    fontSize: 10,
-    color: token.textMute,
-    letterSpacing: 0.8,
-  },
-  goalRow: {
-    marginTop: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  goalLine: {
-    width: 16,
-    height: 1,
-    backgroundColor: "rgba(199,251,65,0.6)",
-  },
-  goalLabel: {
-    fontFamily: font.sans[400],
-    fontSize: 11,
-    color: "rgba(199,251,65,0.6)",
-    letterSpacing: 0.88,
-  },
-  sectionHeaderRow: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    justifyContent: "space-between",
-    marginTop: 22,
-    marginBottom: 10,
-  },
-  sectionTitle: {
-    fontFamily: font.sans[600],
-    fontSize: 10.5,
-    fontWeight: "600",
-    letterSpacing: 1.68,
-    textTransform: "uppercase",
-    color: token.text,
-  },
-  sectionLink: {
+  goalLayer: { position: "absolute", left: 0, right: 0, height: 2, zIndex: 1 },
+  goalTag: {
+    position: "absolute",
+    right: 0,
+    bottom: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 6,
+    overflow: "hidden",
+    backgroundColor: token.surface,
     fontFamily: font.sans[600],
     fontSize: 11,
     fontWeight: "600",
     color: token.accent,
   },
+  barCol: { flex: 1, alignItems: "center", justifyContent: "flex-end" },
+  bar: { width: 22, borderTopLeftRadius: 6, borderTopRightRadius: 6, backgroundColor: token.accent },
+  barPast: { opacity: 0.45 },
+  barOver: { backgroundColor: token.warn },
+  barEmpty: { width: 22, height: 3, borderRadius: 2, backgroundColor: token.line2, marginBottom: 2 },
+  dayRow: { flexDirection: "row", marginTop: 8 },
+  dayLabel: { flex: 1, textAlign: "center", fontFamily: font.sans[400], fontSize: 11, color: token.textMute },
+  dayLabelToday: { fontFamily: font.sans[600], fontWeight: "600", color: token.text },
+  sectionHeaderRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    marginTop: 24,
+    marginBottom: 10,
+  },
+  sectionTitle: { fontFamily: font.sans[700], fontSize: 17, fontWeight: "700", letterSpacing: -0.3, color: token.text },
+  sectionLink: { fontFamily: font.sans[600], fontSize: 14, fontWeight: "600", color: token.accent },
   topMealsCard: {
     backgroundColor: token.surface,
     borderWidth: 1,
     borderColor: token.line,
     borderRadius: r.md,
     borderCurve: "continuous",
-    paddingVertical: 6,
-  },
-  mealRow: {
-    paddingVertical: 12,
-    paddingHorizontal: 18,
-  },
-  mealRowTop: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 6,
-  },
-  mealName: {
-    flex: 1,
-    fontFamily: font.sans[500],
-    fontSize: 13.5,
-    fontWeight: "500",
-    color: token.text,
-  },
-  mealCount: {
-    fontFamily: font.mono[400],
-    fontSize: 12,
-    color: token.textMute,
-    width: 60,
-    textAlign: "right",
-  },
-  mealKcal: {
-    fontFamily: font.mono[500],
-    fontSize: 13,
-    fontWeight: "500",
-    color: token.text,
-    width: 60,
-    textAlign: "right",
-  },
-  mealTrack: {
-    height: 3,
-    backgroundColor: token.line,
-    borderRadius: 2,
-    borderCurve: "continuous",
     overflow: "hidden",
   },
-  mealFill: {
-    height: "100%",
-    borderRadius: 2,
-    borderCurve: "continuous",
-  },
+  mealRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12, paddingHorizontal: 16 },
+  mealRowDivider: { borderTopWidth: 1, borderTopColor: token.line },
+  rank: { width: 16, fontFamily: font.mono[500], fontSize: 13, color: token.textMute, textAlign: "center" },
+  mealCopy: { flex: 1, minWidth: 0 },
+  mealName: { fontFamily: font.sans[500], fontSize: 15, lineHeight: 20, fontWeight: "500", color: token.text },
+  mealMeta: { marginTop: 2, fontFamily: font.sans[400], fontSize: 12.5, color: token.textMute },
+  mealKcalCol: { flexDirection: "row", alignItems: "baseline", gap: 3 },
+  mealKcal: { fontFamily: font.mono[500], fontSize: 15, fontWeight: "500", color: token.text },
+  mealKcalUnit: { fontFamily: font.sans[400], fontSize: 11, color: token.textMute },
   emptyText: {
     fontFamily: font.sans[400],
-    fontSize: 13,
+    fontSize: 14,
+    lineHeight: 20,
     color: token.textSoft,
     padding: 18,
     textAlign: "center",
