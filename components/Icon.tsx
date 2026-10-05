@@ -68,6 +68,8 @@ export const ICON_NAMES = {
   link: "link-outline",
   externalLink: "open-outline",
   pulseDot: "ellipse",
+  repeat: "repeat-outline",
+  restaurant: "restaurant-outline",
 } as const satisfies Record<string, ComponentProps<typeof Ionicons>["name"]>;
 export type IconName = keyof typeof ICON_NAMES;
 

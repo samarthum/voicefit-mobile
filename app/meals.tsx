@@ -118,6 +118,24 @@ function formatMealTime(value: string) {
   return `${hh}:${mm}`;
 }
 
+const MEAL_TYPE_LABEL: Record<string, string> = {
+  breakfast: "Breakfast",
+  lunch: "Lunch",
+  dinner: "Dinner",
+  snack: "Snack",
+};
+
+// Header pair: "Today" / "Yesterday" / weekday over "October 5".
+function formatDateTitle(date: string) {
+  const relative = formatHeaderDate(date);
+  if (relative === "Today" || relative === "Yesterday") return relative;
+  return new Date(date + "T00:00:00").toLocaleDateString("en-US", { weekday: "long" });
+}
+
+function formatMonthDay(date: string) {
+  return new Date(date + "T00:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric" });
+}
+
 function formatHeaderDate(date: string) {
   const today = toLocalDateString(new Date());
   if (date === today) return "Today";
@@ -221,6 +239,14 @@ export default function MealsScreen() {
   }, [meals]);
 
   const totalCalories = meals.reduce((sum, m) => sum + (isFiniteNumber(m.calories) ? m.calories : 0), 0);
+  const totals = meals.reduce(
+    (acc, m) => ({
+      protein: acc.protein + (isFiniteNumber(m.proteinG) ? m.proteinG : 0),
+      carbs: acc.carbs + (isFiniteNumber(m.carbsG) ? m.carbsG : 0),
+      fat: acc.fat + (isFiniteNumber(m.fatG) ? m.fatG : 0),
+    }),
+    { protein: 0, carbs: 0, fat: 0 },
+  );
 
   const handleOpenMeal = (mealId: string) => {
     if (isWebPreview) return;
@@ -249,30 +275,16 @@ export default function MealsScreen() {
         keyboardShouldPersistTaps="handled"
       >
 
-        <Pressable testID="meals-repeat-open" accessibilityRole="button" style={styles.retryButton} onPress={() => router.push({ pathname: "/meal-repeat" })}>
-          <Text style={styles.retryButtonText}>Repeat a familiar meal…</Text>
-        </Pressable>
-        <Text style={styles.emptyBody}>Choose a saved meal and portion; no new AI estimate.</Text>
-        <View style={styles.statsRow}>
-          <View style={styles.statPill}>
-            <Text style={styles.statLabel}>Calories</Text>
-            <Text style={styles.statValue} selectable>{totalCalories.toLocaleString()}</Text>
-            <Text style={styles.statSub}>kcal</Text>
+        <View style={styles.dateHeader}>
+          <View style={styles.dateCopy}>
+            <Text style={styles.dateTitle} accessibilityRole="header">{formatDateTitle(effectiveDate)}</Text>
+            <Text style={styles.dateSub}>{formatMonthDay(effectiveDate)}</Text>
           </View>
-          <View style={styles.statPill}>
-            <Text style={styles.statLabel}>Entries</Text>
-            <Text style={styles.statValue} selectable>{meals.length}</Text>
-            <Text style={styles.statSub}>this day</Text>
-          </View>
-        </View>
-
-        <View style={styles.weekNavigation}>
-          <Pressable accessibilityRole="button" accessibilityLabel="Previous week" onPress={() => moveWeek(-1)} style={({ pressed }) => [styles.weekButton, pressed && { opacity: 0.65 }]}>
-            <Icon name="chevronLeft" size={18} color={token.accent} />
+          <Pressable accessibilityRole="button" accessibilityLabel="Previous week" hitSlop={6} onPress={() => moveWeek(-1)} style={({ pressed }) => [styles.weekButton, pressed && styles.pressed]}>
+            <Icon name="chevronLeft" size={16} color={token.textSoft} />
           </Pressable>
-          <Text style={styles.weekDate}>{formatHeaderDate(effectiveDate)}</Text>
-          <Pressable accessibilityRole="button" accessibilityLabel="Next week" accessibilityState={{ disabled: weekEnd >= today }} disabled={weekEnd >= today} onPress={() => moveWeek(1)} style={({ pressed }) => [styles.weekButton, { opacity: weekEnd >= today ? 0.35 : pressed ? 0.65 : 1 }]}>
-            <Icon name="chevronRight" size={18} color={token.accent} />
+          <Pressable accessibilityRole="button" accessibilityLabel="Next week" accessibilityState={{ disabled: weekEnd >= today }} disabled={weekEnd >= today} hitSlop={6} onPress={() => moveWeek(1)} style={({ pressed }) => [styles.weekButton, weekEnd >= today ? styles.disabled : pressed && styles.pressed]}>
+            <Icon name="chevronRight" size={16} color={token.textSoft} />
           </Pressable>
         </View>
         <View style={styles.filterRow}>
@@ -285,7 +297,7 @@ export default function MealsScreen() {
                 accessibilityLabel={new Date(`${day.date}T12:00:00`).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
                 accessibilityState={{ selected: active }}
                 style={[styles.dayItem, active && styles.dayItemActive]}
-                onPress={() => setSelectedDate(day.date)}
+                onPress={() => { if (!active) haptic.selection(); setSelectedDate(day.date); }}
               >
                 <Text style={[styles.dayLabel, active && styles.dayLabelActive]}>{day.dayLabel}</Text>
                 <Text style={[styles.dayNum, active && styles.dayNumActive]}>{day.dayNum}</Text>
@@ -293,6 +305,26 @@ export default function MealsScreen() {
             );
           })}
         </View>
+
+        {meals.length > 0 ? (
+          <View style={styles.summaryCard} testID="meals-day-summary">
+            <View style={styles.summaryTop}>
+              <View style={styles.summaryKcal}>
+                <Text style={styles.summaryValue} selectable>{totalCalories.toLocaleString()}</Text>
+                <Text style={styles.summaryUnit}>kcal</Text>
+              </View>
+              <Text style={styles.summaryCount}>{meals.length} {meals.length === 1 ? "meal" : "meals"}</Text>
+            </View>
+            <View style={styles.macroRow}>
+              {([["Protein", totals.protein], ["Carbs", totals.carbs], ["Fat", totals.fat]] as const).map(([label, grams]) => (
+                <View key={label} style={styles.macroCell}>
+                  <Text style={styles.macroLabel}>{label}</Text>
+                  <Text style={styles.macroValue}>{Math.round(grams)}<Text style={styles.macroUnit}>g</Text></Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        ) : null}
 
         {mealsQuery.isLoading && !isWebPreview ? (
           <View style={styles.loadingWrap}>
@@ -314,16 +346,18 @@ export default function MealsScreen() {
 
         {!meals.length && !mealsQuery.isLoading && !mealsQuery.isError && !mealsQuery.hasNextPage ? (
           <View style={styles.emptyCard}>
-            <Text style={styles.emptyTitle}>No meals yet</Text>
+            <View style={styles.emptyIcon}>
+              <Icon name="restaurant" size={20} color={token.accent} />
+            </View>
+            <Text style={styles.emptyTitle}>{effectiveDate === today ? "Nothing logged yet" : "No meals this day"}</Text>
             <Text style={styles.emptyBody}>
-              Tap the mic below to log a meal for today. You can review or edit it in today’s meals.
+              {effectiveDate === today ? "Say, type or snap a meal with the bar below." : "Meals you log for this day will show up here."}
             </Text>
           </View>
         ) : null}
 
         {grouped.map(([date, items]) => (
           <View key={date} style={styles.daySection}>
-            <Text style={styles.dayHeading}>{formatHeaderDate(date)}</Text>
             <View style={styles.mealsCard}>
               {items.map((meal, idx) => {
                 const status = normalizeMealStatus(meal.interpretationStatus, meal.calories);
@@ -335,14 +369,17 @@ export default function MealsScreen() {
                     style={[styles.mealRow, idx > 0 ? styles.mealRowDivider : null]}
                     testID={`meals-row-${meal.id}`}
                   >
-                    <Text style={styles.mealTime}>{formatMealTime(meal.eatenAt)}</Text>
                     <View style={styles.mealCopy}>
-                      <Text style={styles.mealName} numberOfLines={1}>{meal.description}</Text>
+                      <Text style={styles.mealName} numberOfLines={2}>{meal.description}</Text>
                       <View style={styles.mealMetaRow}>
                         {status !== "interpreting" ? (
-                          <Text style={styles.mealMeta} numberOfLines={1}>{meal.mealType}</Text>
+                          <Text style={styles.mealMeta} numberOfLines={1}>
+                            {MEAL_TYPE_LABEL[meal.mealType] ?? meal.mealType} · {formatMealTime(meal.eatenAt)}
+                          </Text>
                         ) : null}
-                        <MealStatusBadge status={status} />
+                        <View style={styles.mealBadge}>
+                          <MealStatusBadge status={status} />
+                        </View>
                       </View>
                     </View>
                     <View style={styles.mealTrailing}>
@@ -382,6 +419,26 @@ export default function MealsScreen() {
             </View>
           </View>
         ))}
+        {!mealsQuery.isLoading ? (
+          <Pressable
+            testID="meals-repeat-open"
+            accessibilityRole="button"
+            accessibilityLabel="Repeat a meal"
+            accessibilityHint="Re-log a saved meal without a new estimate"
+            style={({ pressed }) => [styles.repeatCard, pressed && styles.pressed]}
+            onPress={() => { haptic.tap(); router.push({ pathname: "/meal-repeat" }); }}
+          >
+            <View style={styles.repeatIcon}>
+              <Icon name="repeat" size={18} color={token.accent} />
+            </View>
+            <View style={styles.repeatCopy}>
+              <Text style={styles.repeatTitle}>Repeat a meal</Text>
+              <Text style={styles.repeatBody}>Re-log something you've had before</Text>
+            </View>
+            <Icon name="chevronRight" size={16} color={token.textMute} />
+          </Pressable>
+        ) : null}
+
         {mealsQuery.hasNextPage ? (
           <Pressable accessibilityRole="button" disabled={mealsQuery.isFetchingNextPage} style={styles.retryButton} onPress={() => void mealsQuery.fetchNextPage()}>
             <Text style={styles.retryButtonText}>{mealsQuery.isFetchingNextPage ? "Loading…" : "Load more meals"}</Text>
@@ -401,9 +458,6 @@ export default function MealsScreen() {
 }
 
 const styles = StyleSheet.create({
-  weekNavigation: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 8 },
-  weekButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: 22, backgroundColor: token.surface, borderWidth: 1, borderColor: token.line },
-  weekDate: { flex: 1, textAlign: "center", fontFamily: font.sans[500], fontSize: 14, color: token.textSoft },
   root: {
     flex: 1,
     backgroundColor: token.bg,
@@ -416,42 +470,79 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     paddingBottom: 96,
   },
-  statsRow: {
-    flexDirection: "row",
-    gap: 10,
-    marginBottom: 14,
+  pressed: { opacity: 0.65 },
+  disabled: { opacity: 0.35 },
+  dateHeader: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 },
+  dateCopy: { flex: 1, minWidth: 0 },
+  dateTitle: { fontFamily: font.sans[700], fontSize: 24, fontWeight: "700", letterSpacing: -0.5, color: token.text },
+  dateSub: { marginTop: 1, fontFamily: font.sans[400], fontSize: 13, color: token.textMute },
+  weekButton: {
+    width: 36,
+    height: 36,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: r.pill,
+    backgroundColor: token.surface,
+    borderWidth: 1,
+    borderColor: token.line,
   },
-  statPill: {
-    flex: 1,
-    borderRadius: r.sm,
+  summaryCard: {
+    marginBottom: 12,
+    padding: 16,
+    borderRadius: r.md,
     borderCurve: "continuous",
     backgroundColor: token.surface,
     borderWidth: 1,
     borderColor: token.line,
+  },
+  summaryTop: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between" },
+  summaryKcal: { flexDirection: "row", alignItems: "baseline", gap: 5 },
+  summaryValue: { fontFamily: font.mono[500], fontSize: 30, fontWeight: "500", letterSpacing: -1, color: token.text },
+  summaryUnit: { fontFamily: font.sans[500], fontSize: 14, color: token.textMute },
+  summaryCount: { fontFamily: font.sans[500], fontSize: 13, color: token.textSoft },
+  macroRow: {
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: token.line,
+    flexDirection: "row",
+  },
+  macroCell: { flex: 1 },
+  macroLabel: { fontFamily: font.sans[500], fontSize: 12, color: token.textMute },
+  macroValue: { marginTop: 2, fontFamily: font.mono[500], fontSize: 16, fontWeight: "500", color: token.text },
+  macroUnit: { fontFamily: font.sans[400], fontSize: 12, color: token.textMute },
+  repeatCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 18,
     paddingHorizontal: 14,
     paddingVertical: 12,
+    borderRadius: r.md,
+    borderCurve: "continuous",
+    backgroundColor: token.surface,
+    borderWidth: 1,
+    borderColor: token.line,
   },
-  statLabel: {
-    fontFamily: font.sans[600],
-    fontSize: 9.5,
-    fontWeight: "600",
-    letterSpacing: 1.52,
-    textTransform: "uppercase",
-    color: token.textMute,
+  repeatIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: token.accentTintBg,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  statValue: {
-    marginTop: 4,
-    fontFamily: font.mono[500],
-    fontSize: 22,
-    fontWeight: "500",
-    letterSpacing: -0.66,
-    color: token.text,
-  },
-  statSub: {
-    marginTop: 2,
-    fontFamily: font.sans[400],
-    fontSize: 10.5,
-    color: token.textMute,
+  repeatCopy: { flex: 1, minWidth: 0 },
+  repeatTitle: { fontFamily: font.sans[600], fontSize: 15, fontWeight: "600", color: token.text },
+  repeatBody: { marginTop: 1, fontFamily: font.sans[400], fontSize: 13, color: token.textMute },
+  emptyIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: token.accentTintBg,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 4,
   },
   filterRow: {
     flexDirection: "row",
@@ -496,16 +587,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   daySection: {
-    marginBottom: 18,
-  },
-  dayHeading: {
-    paddingBottom: 10,
-    fontFamily: font.sans[600],
-    fontSize: 10.5,
-    fontWeight: "600",
-    letterSpacing: 1.68,
-    textTransform: "uppercase",
-    color: token.text,
+    marginBottom: 12,
   },
   mealsCard: {
     backgroundColor: token.surface,
@@ -527,22 +609,18 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: token.line,
   },
-  mealTime: {
-    width: 42,
-    fontFamily: font.mono[400],
-    fontSize: 11,
-    color: token.textMute,
-  },
   mealCopy: {
     flex: 1,
     minWidth: 0,
   },
   mealName: {
     fontFamily: font.sans[500],
-    fontSize: 14,
+    fontSize: 15,
+    lineHeight: 20,
     fontWeight: "500",
     color: token.text,
   },
+  mealBadge: { flexShrink: 0 },
   mealMetaRow: {
     marginTop: 3,
     flexDirection: "row",
@@ -551,11 +629,8 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   mealMeta: {
-    fontFamily: font.sans[600],
-    fontSize: 10.5,
-    fontWeight: "600",
-    letterSpacing: 0.84,
-    textTransform: "uppercase",
+    fontFamily: font.sans[400],
+    fontSize: 12.5,
     color: token.textMute,
     flexShrink: 1,
   },
@@ -616,9 +691,11 @@ const styles = StyleSheet.create({
     backgroundColor: token.surface,
     borderWidth: 1,
     borderColor: token.line,
-    padding: 18,
+    paddingVertical: 28,
+    paddingHorizontal: 24,
     gap: 6,
-    marginBottom: 18,
+    marginBottom: 12,
+    alignItems: "center",
   },
   emptyTitle: {
     fontFamily: font.sans[600],
@@ -632,6 +709,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 19,
     color: token.textSoft,
+    textAlign: "center",
   },
   errorCard: {
     borderRadius: r.md,
