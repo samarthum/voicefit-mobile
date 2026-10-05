@@ -6,7 +6,8 @@ test('modal form uses plain native inputs in a keyboard-aware scrolling form wit
   assert.equal(scroll.length,1,'Modal body must not use a Gorhom scrollable');
   assert.equal(scroll[0].props.keyboardShouldPersistTaps,'handled');
   assert.equal(scroll[0].findAllByType('TextInput').length,2);
-  assert.equal(h.byId('cc-ingredient-editor-name').props.autoFocus,true);
+  // Editing starts on the portion, so the keyboard stays down; adding starts by typing a name.
+  assert.equal(h.byId('cc-ingredient-editor-name').props.autoFocus,false);
   assert.equal(h.byId('cc-ingredient-editor-grams').props.keyboardType,'decimal-pad');
   assert.ok(scroll[0].findAll(n=>n.props.testID==='cc-ingredient-editor-submit').length);
  }finally{await h.close()}

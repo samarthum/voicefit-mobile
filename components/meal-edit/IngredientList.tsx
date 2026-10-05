@@ -7,6 +7,7 @@
  * All state lives in the parent route file; this component is fully
  * presentational.
  */
+import { formatKcal, formatMacro, formatNutrient } from "@/lib/format";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { EditableIngredient } from "@/components/command-center/ingredient-edit";
 import { color as t, font } from "@/lib/tokens";
@@ -19,7 +20,6 @@ interface Props {
   onLongPress: (ingredient: EditableIngredient) => void;
 }
 
-const nutrition = (value: number | null) => value === null ? "Unknown" : String(Number(value.toFixed(3)));
 
 function IngredientRow({
   ingredient,
@@ -52,11 +52,11 @@ function IngredientRow({
       <View style={styles.ingredientCopy}>
         <Text style={styles.ingredientName}>{ingredient.name}</Text>
         <Text style={styles.ingredientMacros}>
-          {`P ${nutrition(ingredient.proteinG)}g · C ${nutrition(ingredient.carbsG)}g · F ${nutrition(ingredient.fatG)}g`}
+          {[formatMacro("P", ingredient.proteinG), formatMacro("C", ingredient.carbsG), formatMacro("F", ingredient.fatG)].join(" · ")}
         </Text>
       </View>
-      <Text style={styles.ingredientQty} selectable>{`${nutrition(ingredient.grams)} g`}</Text>
-      <Text style={styles.ingredientCal} selectable>{nutrition(ingredient.calories)}</Text>
+      <Text style={styles.ingredientQty} selectable>{`${formatNutrient(ingredient.grams)} g`}</Text>
+      <Text style={styles.ingredientCal} selectable>{formatKcal(ingredient.calories)}</Text>
     </Pressable>
   );
 }

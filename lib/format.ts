@@ -23,3 +23,24 @@ export function formatCompact(n: number): string {
   }
   return sign + abs.toString();
 }
+
+/**
+ * Nutrition display. Drafts keep full precision (scaling an ingredient gives
+ * values like 45.333…); only presentation rounds. Grams and macros keep one
+ * decimal below 10 so small amounts don't read as zero; calories are whole.
+ */
+export function formatNutrient(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return "--";
+  if (Math.abs(value) >= 10) return String(Math.round(value));
+  return String(Math.round(value * 10) / 10);
+}
+
+export function formatKcal(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return "--";
+  return Math.round(value).toLocaleString();
+}
+
+/** "P 12g" style macro label; unknown nutrition reads as a dash, never 0. */
+export function formatMacro(prefix: string, value: number | null | undefined): string {
+  return value == null || !Number.isFinite(value) ? `${prefix} —` : `${prefix} ${formatNutrient(value)}g`;
+}

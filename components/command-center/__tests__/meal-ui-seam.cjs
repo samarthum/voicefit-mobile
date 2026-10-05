@@ -14,7 +14,7 @@ const React = testRequire('react');
 const { create, act } = testRequire('react-test-renderer');
 global.IS_REACT_ACT_ENVIRONMENT = true;
 const root = path.resolve(__dirname, '../../..');
-const native = { StyleSheet: { create: x => x, absoluteFillObject: {} }, useWindowDimensions: () => ({height: 800}), Alert: { alert() {} }, Platform: { OS: 'ios', select: x=>x.ios??x.default }, Keyboard: { dismiss() {}, isVisible:()=>false } };
+const native = { PanResponder: { create: () => ({ panHandlers: {} }) }, StyleSheet: { create: x => x, absoluteFillObject: {} }, useWindowDimensions: () => ({height: 800}), Alert: { alert() {} }, Platform: { OS: 'ios', select: x=>x.ios??x.default }, Keyboard: { dismiss() {}, isVisible:()=>false } };
 for (const name of ['View','Text','Pressable','ScrollView','TextInput','ActivityIndicator','Modal']) native[name] = name;
 const sheet = { BottomSheetView: 'View', BottomSheetScrollView: 'ScrollView', BottomSheetTextInput: 'TextInput', BottomSheetBackdrop: 'Backdrop' };
 let dismissCallback;
@@ -30,7 +30,8 @@ function loader(extra = {}) {
     'react-native-reanimated': {runOnJS:f=>f,useAnimatedReaction(){},Easing:{exp:x=>x,out:f=>f}},
     '@gorhom/bottom-sheet': sheet, 'react-native-safe-area-context': { useSafeAreaInsets: () => ({top:0,bottom:0}), SafeAreaProvider:'View', SafeAreaView:'View' },
     'react-native-keyboard-controller': { KeyboardAwareScrollView:'ScrollView', KeyboardController:{isVisible:()=>false} },
-    '@/components/command-center/SheetTextInput': { BottomSheetTextInput: 'TextInput' }, ...extra };
+    '@/components/command-center/SheetTextInput': { BottomSheetTextInput: 'TextInput' },
+    '@/lib/haptics': { haptic: { selection() {}, tap() {}, press() {}, success() {}, warning() {}, error() {} } }, ...extra };
   function load(name, from = path.join(root, 'index.ts')) {
     if (name in shims) return shims[name];
     if (!name.startsWith('@/') && !name.startsWith('.') && !name.startsWith('/')) return require(name);
@@ -201,8 +202,8 @@ test('saved editor preserves unknown nutrition through proportional edits and us
   assert.equal(s.r.root.findByType('IngredientList').props.ingredients[0].proteinG,null);
   await act(async()=>{const list=s.r.root.findByType('IngredientList');list.props.onEdit(list.props.ingredients[0]);});
   await act(async()=>byId(s.r,'cc-ingredient-editor-grams').props.onChangeText('50.125'));
-  assert.match(textOf(s.r),/60.25/);
-  assert.match(textOf(s.r),/Unknown/);
+  assert.match(textOf(s.r),/(^|\n)60(\n|$)/);
+  assert.match(textOf(s.r),/P —/);
   await act(async()=>byId(s.r,'cc-ingredient-editor-submit').props.onPress());
   await s.update({...original,updatedAt:'2026-10-02T09:00:00Z'});
   await act(async()=>s.r.root.findByType('MealActionsBar').props.onPrimaryAction());
