@@ -35,28 +35,21 @@ async function harness({caller='single',lookup,os='android',unknownNutrition=fal
   new Function('require','module','exports',code)(n=>load(n,file),m,m.exports);return m.exports;
  }
  const Host=load('@/components/command-center/IngredientEditorSheet').IngredientEditorSheet;
- let Saved,AppProvider,Overlay;
+ let Saved;
  if(caller==='saved'){
   const data={id:routeId,description:'Saved lunch',mealType:'lunch',eatenAt:'2026-10-02T12:00:00Z',updatedAt:'2026-10-02T12:00:00Z',interpretationStatus:'reviewed',calories:241,proteinG:5,carbsG:51,fatG:1,totalGrams:200.5,ingredients:[{...ingredient('a'),position:0},{...ingredient('b'),position:1}]};
   if(unknownNutrition)data.ingredients[0].proteinG=null;
   overrides['expo-router']={Stack:{Screen:'Screen'},useLocalSearchParams:()=>({id:routeId}),useRouter:()=>({back:()=>log.push({event:'navigationBack'}),push(){throw Error('unexpected navigation')}})};
   overrides['@tanstack/react-query']={useQuery:()=>({data,isLoading:false,isError:false}),useMutation:()=>({isPending:false,mutate(){throw Error('unexpected final meal write')}}),useQueryClient:()=>({setQueryData(){},invalidateQueries:async()=>{}})};
   Saved=load('@/app/meal-edit/[id]').default;
- }else if(caller==='overlay'){
-  const controller=load('@/components/command-center/controller');
-  overrides['@/components/command-center/controller']={...controller,createCommandCenterController:(p,o)=>{ports=p.state;return controller.createCommandCenterController(p,o)}};
-  for(const n of ['SheetShell','IdleState','PhotoState','RecordingState','InterpretingState','WorkoutReviewState','ReviewActionsFooter','SavingState','ErrorState','SavedToastState'])overrides['@/components/command-center/states/'+n]={[n]:()=>null};
-  AppProvider=load('@/components/command-center/CommandCenterProvider');Overlay=load('@/components/command-center/CommandCenterOverlay').CommandCenterOverlay;
  }
- function Probe(){api=AppProvider.useCommandCenterOverlay();return null}
  function Single(){[mode,setMode]=React.useState(null);return React.createElement(Host,{mode,fetchInterpreted:lookup??(async(name,grams)=>{log.push({event:'lookup',name,grams});return {...ingredient('lookup'),name,grams:grams??100}}),onSubmitAdd:r=>{log.push({event:'submit',result:r});setMode(null)},onSubmitEdit:r=>{log.push({event:'submit',result:r});setMode(null)},onClose:()=>{log.push({event:'close'});setMode(null)}})}
- await act(async()=>{renderer=create(caller==='saved'?React.createElement(Saved):caller==='overlay'?React.createElement(AppProvider.CommandCenterProvider,null,React.createElement(Probe),React.createElement(Overlay)):React.createElement(Single))});
- if(caller==='overlay')await act(async()=>{ports.setReviewDraft(meal());ports.setCommandState('cc_review_meal')});
+ await act(async()=>{renderer=create(caller==='saved'?React.createElement(Saved):React.createElement(Single))});
  const byId=id=>renderer.root.findAll(n=>typeof n.type==='string'&&n.props.testID===id)[0];
- const draft=()=>structuredClone(caller==='overlay'?api.snapshot.review.ingredients:caller==='saved'?renderer.root.findByType(load('@/components/meal-edit/IngredientList').IngredientList).props.ingredients:log.filter(e=>e.event==='submit').map(e=>e.result));
+ const draft=()=>structuredClone(caller==='saved'?renderer.root.findByType(load('@/components/meal-edit/IngredientList').IngredientList).props.ingredients:log.filter(e=>e.event==='submit').map(e=>e.result));
  return {renderer,byId,log,backListeners,Host,load,modal:()=>renderer.root.findAllByType('RCTModalHostView')[0],draft,
   mode:()=>caller==='single'?mode:renderer.root.findByType(Host).props.mode,
-  open:async id=>{await act(async()=>caller==='single'?setMode(id==='add'?{kind:'add'}:{kind:'edit',ingredient:ingredient(id)}):byId(caller==='saved'?(id==='add'?'meal-edit-add-ingredient':'meal-edit-ingredient-'+(id==='a'?0:1)):(id==='add'?'cc-review-add-ingredient':'cc-review-ingredient-'+(id==='a'?0:1))).props.onPress())},
+  open:async id=>{await act(async()=>caller==='single'?setMode(id==='add'?{kind:'add'}:{kind:'edit',ingredient:ingredient(id)}):byId(caller==='saved'?(id==='add'?'meal-edit-add-ingredient':'meal-edit-ingredient-'+(id==='a'?0:1)):'unused').props.onPress())},
   setMode:async next=>{await act(async()=>setMode(next))},
   press:async id=>{await act(async()=>byId(id).props.onPress())},
   type:async(id,value)=>{await act(async()=>byId(id).props.onChangeText(value))},

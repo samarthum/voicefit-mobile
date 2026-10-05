@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { MealIngredient } from "@voicefit/contracts/types";
 import {
   StyleSheet,
   Text,
@@ -17,16 +16,12 @@ import {
   BottomSheetView,
 } from "@gorhom/bottom-sheet";
 import { useCommandCenterOverlay } from "@/components/command-center/CommandCenterProvider";
-import { type IngredientEditorMode } from "@/components/command-center/IngredientEditor";
-import { IngredientEditorSheet } from "@/components/command-center/IngredientEditorSheet";
-import type { MealReviewIngredient } from "@/components/command-center/types";
 import { SheetShell } from "@/components/command-center/states/SheetShell";
 import { IdleState } from "@/components/command-center/states/IdleState";
 import { PhotoState } from "@/components/command-center/states/PhotoState";
 import { PhotoSourceState } from "@/components/command-center/states/PhotoSourceState";
 import { RecordingState } from "@/components/command-center/states/RecordingState";
 import { InterpretingState } from "@/components/command-center/states/InterpretingState";
-import { MealReviewState } from "@/components/command-center/states/MealReviewState";
 import { WorkoutReviewState } from "@/components/command-center/states/WorkoutReviewState";
 import { ReviewActionsFooter } from "@/components/command-center/states/ReviewActionsFooter";
 import { isSavingState } from "@/components/command-center/states/saving-ui";
@@ -34,7 +29,6 @@ import { isSavingState } from "@/components/command-center/states/saving-ui";
 import { ErrorState } from "@/components/command-center/states/ErrorState";
 
 import { color as t, font } from "@/lib/tokens";
-import { useAppPrompt } from "@/components/AppPrompt";
 
 // ---------------------------------------------------------------------------
 // Main Overlay Component
@@ -76,7 +70,7 @@ export function CommandCenterOverlay() {
   const isVisible = commandState !== "cc_collapsed";
   const canCloseViaBackdrop =
     commandState === "cc_expanded_empty" || commandState === "cc_expanded_typing";
-  const isReview = commandState === "cc_review_meal" || commandState === "cc_review_workout" ||
+  const isReview = commandState === "cc_review_workout" ||
     (!!reviewDraft && (isSaving || (commandState === "cc_error" && error.subtype === "auto_save_failure")));
   const closeCommandCenter = useCallback(() => dispatch({ type: "close" }), [dispatch]);
 
@@ -174,39 +168,6 @@ export function CommandCenterOverlay() {
     [showReviewFooter],
   );
 
-  // The ingredient editor is an independent full-screen native Modal, shared
-  // with meal edit. It is not a stacked Gorhom sheet.
-  const [ingredientEditor, setIngredientEditor] = useState<IngredientEditorMode | null>(null);
-  const prompt = useAppPrompt([commandState, reviewDraft, ingredientEditor]);
-
-  // Auto-dismiss the editor if the review sheet itself goes away (user
-  // discarded, navigated, etc.) so we don't leave a stale editor mounted.
-  useEffect(() => {
-    if (commandState !== "cc_review_meal" && ingredientEditor) {
-      setIngredientEditor(null);
-    }
-  }, [commandState, ingredientEditor]);
-
-  const openAddIngredientEditor = () => setIngredientEditor({ kind: "add" });
-  const openEditIngredientEditor = (ingredient: MealReviewIngredient) =>
-    setIngredientEditor({ kind: "edit", ingredient });
-  const closeIngredientEditor = () => setIngredientEditor(null);
-
-  const handleLongPressIngredient = (ingredient: MealReviewIngredient) => {
-    prompt.alert(
-      "Delete ingredient?",
-      `Remove "${ingredient.name}" from this meal.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete ingredient",
-          style: "destructive",
-          onPress: () => dispatch({ type: "ingredient.remove", id: ingredient.id }),
-        },
-      ],
-    );
-  };
-
   const renderContent = (): ReactNode => {
     if (photoSourceChoice) return <PhotoSourceState choose={photoSourceChoice.choose} onClose={closeCommandCenter} />;
     if (commandState === "cc_expanded_empty" || commandState === "cc_expanded_typing") {
@@ -238,16 +199,6 @@ export function CommandCenterOverlay() {
 
     if (commandState === "cc_recording") {
       return <RecordingState onClose={closeCommandCenter} />;
-    }
-
-    if (isReview && reviewDraft?.kind === "meal") {
-      return (
-        <MealReviewState
-          onAddIngredient={openAddIngredientEditor}
-          onEditIngredient={openEditIngredientEditor}
-          onLongPressIngredient={handleLongPressIngredient}
-        />
-      );
     }
 
     if (isReview && reviewDraft?.kind === "workout") {
@@ -306,33 +257,7 @@ export function CommandCenterOverlay() {
       >
         {shouldPresentSheet ? (lastSheetContent.current = renderContent()) : lastSheetContent.current}
       </BottomSheetModal>
-
-
-
-      {/* Ingredient editor — an independent full-screen native Modal,
-          shared with the meal-edit screen via IngredientEditorSheet. */}
-      <IngredientEditorSheet
-        mode={ingredientEditor}
-        fetchInterpreted={(name, grams) =>
-          dispatch({ type: "ingredient.lookup", name, grams }) as Promise<MealIngredient>
-        }
-        onSubmitAdd={(ingredient) => {
-          dispatch({ type: "ingredient.add", ingredient });
-          closeIngredientEditor();
-        }}
-        onSubmitEdit={(replacement) => {
-          if (ingredientEditor?.kind !== "edit") return;
-          const id = ingredientEditor.ingredient.id;
-          // grams-only edit returns a MealReviewIngredient (already scaled
-          // locally); rename returns an authoritative MealIngredient from the
-          // LLM. Either works as a replacement input.
-          dispatch({ type: "ingredient.replace", id, replacement });
-          closeIngredientEditor();
-        }}
-        onClose={closeIngredientEditor}
-      />
       {commandState !== "cc_saved" ? toastNode : null}
-      {prompt.dialog}
     </>
   );
 }

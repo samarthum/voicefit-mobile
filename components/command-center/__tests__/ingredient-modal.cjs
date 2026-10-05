@@ -31,7 +31,7 @@ for(const os of ['android','ios'])test(`${os}: obsolete native dismissal and req
   assert.equal(h.byId('cc-ingredient-editor-name').props.value,'Rice a');assert.ok(h.modal());assert.ok(h.mode());
  }finally{await h.close()}
 });
-for(const caller of ['single','overlay','saved'])test(`${caller}: full-screen native host can cancel before layout and immediately reopen`,async()=>{
+for(const caller of ['single','saved'])test(`${caller}: full-screen native host can cancel before layout and immediately reopen`,async()=>{
  const h=await harness({caller});try{
   await h.open('a');const modal=h.modal();assert.ok(modal,'Ingredient editor must render the installed RN Modal, not another sheet');
   assert.equal(modal.props.presentationStyle,'fullScreen');assert.equal(modal.props.animationType,'none');assert.equal(modal.props.transparent,false);

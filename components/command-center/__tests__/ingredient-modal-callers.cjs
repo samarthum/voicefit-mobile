@@ -2,7 +2,7 @@
 const {test}=require('node:test'),assert=require('node:assert/strict');
 const {harness,act,ingredient}=require('./ingredient-modal-harness.cjs');
 const input='cc-ingredient-editor-',exits=['cancel','header','requestClose','grams','rename','add'];
-for(const caller of ['overlay','saved'])for(const exit of exits)for(const next of ['a','b','add'])test(`${caller}: ${exit} -> immediate ${next}, no layout/dismiss callback`,async()=>{
+for(const caller of ['saved'])for(const exit of exits)for(const next of ['a','b','add'])test(`${caller}: ${exit} -> immediate ${next}, no layout/dismiss callback`,async()=>{
  const h=await harness({caller});try{
   await h.open(exit==='add'?'add':'a');const modal=h.modal(),oldClose=modal.props.onRequestClose,oldNativeDismiss=modal.props.onDismiss;
   const oldIdentifier=modal.props.identifier;
@@ -27,10 +27,9 @@ for(const caller of ['overlay','saved'])for(const exit of exits)for(const next o
   assert.equal(h.byId(input+'name').props.value,row?.name??'');
   assert.equal(h.byId(input+'grams').props.value,row?String(row.grams):'');
   assert.equal(h.log.filter(x=>x.event==='navigationBack').length,0);
-  if(caller==='overlay')assert.equal(h.log.filter(x=>x.event==='sheetDismiss').length,0);
  }finally{await h.close()}
 });
-for(const caller of ['overlay','saved'])test(`${caller}: IME-only native Back retains dirty fields until a later Back while hidden`,async()=>{
+for(const caller of ['saved'])test(`${caller}: IME-only native Back retains dirty fields until a later Back while hidden`,async()=>{
  const h=await harness({caller});try{
   await h.open('a');await h.type(input+'name','Dirty name');await h.type(input+'grams','50.25');const before=h.draft();
   h.setKeyboardVisible(true);await h.requestClose();await h.requestClose();
@@ -41,7 +40,7 @@ for(const caller of ['overlay','saved'])test(`${caller}: IME-only native Back re
   assert.equal(h.backListeners.size,0,'Modal must not rely on scoped BackHandler');
  }finally{await h.close()}
 });
-for(const caller of ['overlay','saved'])for(const exit of ['cancel','header','requestClose','same','different','add','callerExit'])for(const outcome of ['resolve','reject'])test(`${caller}: lookup ${outcome} after ${exit} cannot write or revive`,async()=>{
+for(const caller of ['saved'])for(const exit of ['cancel','header','requestClose','same','different','add','callerExit'])for(const outcome of ['resolve','reject'])test(`${caller}: lookup ${outcome} after ${exit} cannot write or revive`,async()=>{
  let resolve,reject;const h=await harness({caller,lookup:()=>new Promise((r,j)=>{resolve=r;reject=j})});try{
   await h.open('a');await h.type(input+'name','Late name');await h.press(input+'submit');
   const oldClose=h.modal().props.onRequestClose;
@@ -60,7 +59,7 @@ for(const caller of ['overlay','saved'])for(const exit of ['cancel','header','re
   assert.equal(h.log.filter(x=>x.event==='navigationBack').length,0);
  }finally{await h.close()}
 });
-for(const caller of ['overlay','saved'])test(`${caller}: failed lookup retains fields, allows correction and one successful retry`,async()=>{
+for(const caller of ['saved'])test(`${caller}: failed lookup retains fields, allows correction and one successful retry`,async()=>{
  let attempts=0;const h=await harness({caller,lookup:async(name,grams)=>{if(++attempts===1)throw Error('Offline');return {...ingredient(),name,grams}}});try{
   await h.open('a');await h.type(input+'name','Paneer');await h.type(input+'grams','75.25');const before=h.draft();
   await h.press(input+'submit');assert.ok(h.modal());assert.equal(h.byId(input+'name').props.value,'Paneer');assert.equal(h.byId(input+'grams').props.value,'75.25');assert.ok(h.byId(input+'error'));assert.deepEqual(h.draft(),before);

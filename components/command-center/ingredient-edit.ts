@@ -1,7 +1,16 @@
-import type { MealReviewIngredient } from "./types";
+/** One ingredient row with known nutrition. */
+export interface IngredientRow {
+  id: string;
+  name: string;
+  grams: number;
+  calories: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+}
 
 /** Saved nutrition may be unknown; never turn null into a reported zero. */
-export type EditableIngredient = Omit<MealReviewIngredient, "grams" | "calories" | "proteinG" | "carbsG" | "fatG"> & {
+export type EditableIngredient = Omit<IngredientRow, "grams" | "calories" | "proteinG" | "carbsG" | "fatG"> & {
   grams: number | null; calories: number | null; proteinG: number | null; carbsG: number | null; fatG: number | null;
 };
 

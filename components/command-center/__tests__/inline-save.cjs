@@ -1,36 +1,6 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
-const {harness,meal,workout,act,byId,textOf}=require('./inline-save-harness.cjs');
-test('real reviewed meal callback retains review and pinned busy action until acknowledgement/dismissal',async()=>{
- const h=await harness();try{
- await h.seed(meal());h.defer();const save=byId(h.r,'cc-review-save').props.onPress;
- const {pending}=await h.start(save);
- assert.equal(h.snapshot().state,'cc_saving');assert.deepEqual(h.modal().snapPoints,['92%']);
- assert.match(textOf(h.r),/Rice/);assert.ok(byId(h.r,'cc-review-save'),'Keep original action mounted');
- assert.match(textOf(h.r),/Saving…/);assert.equal(byId(h.r,'cc-review-save').props.disabled,true);
- assert.deepEqual(byId(h.r,'cc-review-save').props.accessibilityState,{busy:true,disabled:true});
- assert.equal(byId(h.r,'cc-review-discard').props.disabled,true);
- await act(async()=>save());assert.equal(h.requests.length,1);
- await h.release({id:'canonical-reviewed'});await pending;
- assert.equal(h.snapshot().state,'cc_saved');assert.match(textOf(h.r),/Rice/);
- assert.ok(h.modal().footerComponent({}),'Retain footer through ACK animation');
- assert.equal(byId(h.r,'cc-saved-toast'),undefined,'Do not cover closing review');
- await h.dismiss();assert.ok(byId(h.r,'cc-saved-toast'));
- }finally{await h.close()}
-});
-
-test('failure keeps the actual meal review, freezes edits/close, and retries the original from its action',async()=>{
- const h=await harness();try{
- await h.seed(meal());h.defer();await h.start(byId(h.r,'cc-review-save').props.onPress);await h.reject();
- assert.equal(h.snapshot().state,'cc_error');assert.match(textOf(h.r),/Rice/);
- const retry=byId(h.r,'cc-review-save');assert.ok(retry);assert.match(textOf(h.r),/Retry original/);
- assert.equal(byId(h.r,'cc-review-discard').props.disabled,true);
- for(const id of ['cc-review-edit-transcript','cc-review-add-ingredient','cc-review-ingredient-0'])assert.equal(byId(h.r,id).props.disabled,true,id);
- const frozen=h.requests[0].payload;h.defer();await h.start(retry.props.onPress);
- assert.match(textOf(h.r),/Saving…/);await h.release({id:'same-canonical'});
- assert.equal(h.requests.length,2);assert.deepEqual(h.requests[1].payload,frozen);assert.equal(h.snapshot().state,'cc_saved');
- }finally{await h.close()}
-});
+const {harness,workout,act,byId,textOf}=require('./inline-save-harness.cjs');
 test('real workout caller retains sets and blocks stale edit/close/save callbacks during the deferred write',async()=>{
  const h=await harness();try{
  await h.seed(workout());const save=byId(h.r,'cc-review-save').props.onPress,edit=byId(h.r,'cc-review-workout-kg-0').props.onChangeText,close=byId(h.r,'cc-review-discard').props.onPress;
@@ -38,18 +8,6 @@ test('real workout caller retains sets and blocks stale edit/close/save callback
  assert.equal(byId(h.r,'cc-review-workout-kg-0').props.editable,false);assert.equal(byId(h.r,'cc-review-add-set').props.disabled,true);
  await act(async()=>{save();edit('150');close()});assert.equal(h.requests.length,2,'session lookup then batch, no duplicate');assert.equal(h.snapshot().review.sets[0].weightKg,'80');
  await h.release({id:'canonical-workout'});assert.equal(h.snapshot().state,'cc_saved');await h.dismiss();assert.match(textOf(h.r),/Sets added/);
- }finally{await h.close()}
-});
-
-test('acknowledged reviewed meal is one short noninteractive snackbar in the actual logging-bar layout',async()=>{
- const h=await harness();try{
- await h.seed(meal());await act(async()=>byId(h.r,'cc-review-save').props.onPress());await h.dismiss();
- const toast=byId(h.r,'cc-saved-toast');assert.ok(toast);assert.equal(toast.props.pointerEvents,'none');
- assert.equal(toast.props.accessibilityLiveRegion,'polite');
- assert.equal(toast.findAll(n=>n.type==='Text').map(n=>n.props.children).join(' '),'Meal added');
- assert.equal(toast.findAll(n=>n.type==='Pressable').length,0);
- assert.equal(toast.findAll(n=>n.type==='Text').length,1);let parent=toast.parent;while(parent&&typeof parent.type!=='string')parent=parent.parent;assert.equal(parent.type,'View');
- assert.equal(toast.props.style.some?.(s=>s?.position==='absolute')??false,false);
  }finally{await h.close()}
 });
 

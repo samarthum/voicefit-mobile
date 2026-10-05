@@ -5,8 +5,6 @@ import { color as token } from "@/lib/tokens";
 import type {
   CommandErrorSubtype,
   EntrySource,
-  MealReviewDraft,
-  MealReviewIngredient,
   QuickAddItem,
   RecentMeal,
   WorkoutReviewDraft,
@@ -55,20 +53,12 @@ export function toLocalDateString(value: Date) {
   return `${year}-${month}-${day}`;
 }
 
-export function formatClockTime(value: Date) {
-  return value.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-}
-
 export function formatRecordingDuration(totalSeconds: number) {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
-export function formatMealTypeLabel(mealType: string) {
-  if (!mealType) return "Meal";
-  return mealType.charAt(0).toUpperCase() + mealType.slice(1);
-}
 
 export function confidenceLabel(confidence: number) {
   if (confidence >= 0.9) return { text: "High confidence", color: COLORS.steps, bg: "rgba(52,199,89,0.12)" };
@@ -169,113 +159,6 @@ export function generateIngredientId() {
   return `ing_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-export function buildMealReviewDraft(
-  interpreted: Extract<InterpretEntryResponse, { intent: "meal" }>,
-  transcript: string,
-  source: EntrySource,
-): MealReviewDraft {
-  const payload = interpreted.payload;
-  const ingredients: MealReviewIngredient[] = payload.ingredients.map((ing) => ({
-    id: generateIngredientId(),
-    name: ing.name,
-    grams: ing.grams,
-    calories: ing.calories,
-    proteinG: ing.proteinG,
-    carbsG: ing.carbsG,
-    fatG: ing.fatG,
-  }));
-
-  return {
-    kind: "meal",
-    interpreted,
-    transcript,
-    source,
-    eatenAtLabel: formatClockTime(new Date()),
-    totalGrams: payload.totalGrams,
-    ingredients,
-    macros: {
-      protein: payload.proteinG,
-      carbs: payload.carbsG,
-      fat: payload.fatG,
-    },
-  };
-}
-
-/**
- * Recomputes a meal review draft's totals (calories, macros, totalGrams)
- * from its current ingredient list. Pure — call this after any ingredient
- * mutation. Also keeps `interpreted.payload` in sync so the existing save
- * path (which reads from interpreted.payload) writes the user's edits to DB.
- */
-export function recalculateMealTotals(draft: MealReviewDraft): MealReviewDraft {
-  const totals = draft.ingredients.reduce(
-    (acc, ing) => {
-      acc.grams += ing.grams;
-      acc.calories += ing.calories;
-      acc.protein += ing.proteinG;
-      acc.carbs += ing.carbsG;
-      acc.fat += ing.fatG;
-      return acc;
-    },
-    { grams: 0, calories: 0, protein: 0, carbs: 0, fat: 0 },
-  );
-
-  const totalGrams = Math.round(totals.grams);
-  const calories = Math.round(totals.calories);
-  const proteinG = Math.round(totals.protein);
-  const carbsG = Math.round(totals.carbs);
-  const fatG = Math.round(totals.fat);
-
-  return {
-    ...draft,
-    totalGrams,
-    macros: { protein: proteinG, carbs: carbsG, fat: fatG },
-    interpreted: {
-      ...draft.interpreted,
-      payload: {
-        ...draft.interpreted.payload,
-        totalGrams,
-        calories,
-        proteinG,
-        carbsG,
-        fatG,
-        ingredients: draft.ingredients.map((ing) => ({
-          name: ing.name,
-          grams: ing.grams,
-          calories: ing.calories,
-          proteinG: ing.proteinG,
-          carbsG: ing.carbsG,
-          fatG: ing.fatG,
-        })),
-      },
-    },
-  };
-}
-
-/**
- * Linearly scales an ingredient's macros when grams change without a name
- * change. Falls back to zeroed macros if the original grams is non-positive
- * (a defensive case — shouldn't happen for LLM-returned rows). Rounds to
- * integers for display parity with the rest of the macro UI.
- */
-export function scaleIngredientByGrams(
-  ingredient: MealReviewIngredient,
-  newGrams: number,
-): MealReviewIngredient {
-  if (!Number.isFinite(newGrams) || newGrams <= 0) return ingredient;
-  if (ingredient.grams <= 0) {
-    return { ...ingredient, grams: newGrams, calories: 0, proteinG: 0, carbsG: 0, fatG: 0 };
-  }
-  const ratio = newGrams / ingredient.grams;
-  return {
-    ...ingredient,
-    grams: newGrams,
-    calories: Math.round(ingredient.calories * ratio),
-    proteinG: Math.round(ingredient.proteinG * ratio),
-    carbsG: Math.round(ingredient.carbsG * ratio),
-    fatG: Math.round(ingredient.fatG * ratio),
-  };
-}
 
 // ---------------------------------------------------------------------------
 // Workout helpers

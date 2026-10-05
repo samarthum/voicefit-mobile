@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import type { InterpretEntryResponse, MealIngredient } from "@voicefit/contracts/types";
+import type { InterpretEntryResponse } from "@voicefit/contracts/types";
 import {
   createCommandCenterController,
   type CommandCenterVoiceRecording,
@@ -100,29 +100,12 @@ function workoutReviewDraft(): Extract<ReviewDraft, { kind: "workout" }> {
   };
 }
 
-function mealReviewDraft(): Extract<ReviewDraft, { kind: "meal" }> {
-  const interpreted = mealInterpretation();
-  return {
-    kind: "meal",
-    interpreted,
-    transcript: "chicken rice bowl",
-    source: "text",
-    eatenAtLabel: "10:15 AM",
-    totalGrams: 350,
-    ingredients: [
-      { id: "ing-1", name: "Chicken", grams: 150, calories: 240, proteinG: 45, carbsG: 0, fatG: 5 },
-      { id: "ing-2", name: "Rice", grams: 200, calories: 260, proteinG: 5, carbsG: 58, fatG: 1 },
-    ],
-    macros: { protein: 50, carbs: 58, fat: 6 },
-  };
-}
 
 function createHarness(options: {
   text: string;
   commandState?: CommandState;
   interpreted?: InterpretEntryResponse;
   screenContext?: ScreenContext;
-  kcalLeft?: number | null;
   voiceTranscript?: string;
   reviewDraft?: ReviewDraft | null;
   errorSubtype?: CommandErrorSubtype;
@@ -135,7 +118,6 @@ function createHarness(options: {
   selectedPhotoSource?: "camera" | "library" | null;
   transcribedText?: string;
   openSettingsReject?: boolean;
-  interpretedIngredient?: MealIngredient;
   previewEnabled?: boolean;
 }) {
   let currentCommandState = options.commandState ?? "cc_expanded_empty";
@@ -148,7 +130,6 @@ function createHarness(options: {
   let reviewDraft = options.reviewDraft ?? null;
   let pendingSaveAction = options.pendingSaveAction ?? null;
   let commandToast: string | null = null;
-  let lastSavedKcalLeft: number | null = null;
   let commandErrorSubtype = options.errorSubtype ?? null;
   let commandErrorDetail: string | null = null;
 
@@ -157,17 +138,15 @@ function createHarness(options: {
     pendingMeals: [] as Array<{ transcript: string; source: string }>,
     pendingPhotoMeals: [] as Array<{ photo: PhotoAttachment; context: string }>,
     transcribedAudio: [] as unknown[],
-    meals: [] as unknown[],
     workoutSets: [] as unknown[],
     dailyMetrics: [] as unknown[],
     coach: [] as string[],
     refreshed: 0,
-    finished: [] as Array<{ toast: string; kcalLeft: number | null | undefined }>,
+    finished: [] as Array<{ toast: string; kind?: string }>,
     states: [] as CommandState[],
     errors: [] as unknown[],
     reviewDrafts: [] as unknown[],
     pendingActions: [] as unknown[],
-    fetchedIngredients: [] as Array<{ name: string; grams?: number }>,
     selectedPhotos: [] as Array<PhotoAttachment | null>,
     commandTexts: [] as string[],
     voiceTranscripts: [] as string[],
@@ -199,7 +178,6 @@ function createHarness(options: {
       getActiveRecording: () => activeRecording,
       getReviewDraft: () => reviewDraft,
       getCommandToast: () => commandToast,
-      getLastSavedKcalLeft: () => lastSavedKcalLeft,
       getCommandErrorSubtype: () => commandErrorSubtype,
       getCommandErrorDetail: () => commandErrorDetail,
       getQuickAddItems: () => [],
@@ -283,9 +261,6 @@ function createHarness(options: {
         calls.transcribedAudio.push(audio);
         return options.transcribedText ?? "I had chicken rice for lunch";
       },
-      createMeal: async (input) => {
-        calls.meals.push(input);
-      },
       ensureQuickSession: async () => {
         calls.ensuredSessions += 1;
         return "quick-session-1";
@@ -297,23 +272,11 @@ function createHarness(options: {
       upsertDailyMetrics: async (input) => {
         calls.dailyMetrics.push(input);
       },
-      fetchInterpretedIngredient: async (name, grams) => {
-        calls.fetchedIngredients.push({ name, grams });
-        return options.interpretedIngredient ?? {
-          name,
-          grams: grams ?? 100,
-          calories: 150,
-          proteinG: 10,
-          carbsG: 12,
-          fatG: 4,
-        };
-      },
     },
     cache: {
       refreshAfterSave: async () => {
         calls.refreshed += 1;
       },
-      computeKcalLeftAfterMeal: () => options.kcalLeft ?? null,
     },
     clock: {
       now: () => fixedNow,
@@ -327,7 +290,7 @@ function createHarness(options: {
       },
     },
     feedback: {
-      finishWithSaved: (toast, kcalLeft) => calls.finished.push({ toast, kcalLeft }),
+      finishWithSaved: (toast, kind) => calls.finished.push({ toast, kind }),
     },
     media: {
       requestMicrophonePermission: async () => {
@@ -527,7 +490,7 @@ describe("CommandCenterController typed entry boundary", () => {
       },
     ]);
     expect(calls.refreshed).toBe(1);
-    expect(calls.finished).toEqual([{ toast: "Saved", kcalLeft: null }]);
+    expect(calls.finished).toEqual([{ toast: "Saved" }]);
   });
 
   test("steps intent saves local-date daily metrics", async () => {
@@ -540,7 +503,7 @@ describe("CommandCenterController typed entry boundary", () => {
 
     expect(calls.dailyMetrics).toEqual([{ date: "2026-05-19", steps: 12345 }]);
     expect(calls.refreshed).toBe(1);
-    expect(calls.finished).toEqual([{ toast: "Saved", kcalLeft: null }]);
+    expect(calls.finished).toEqual([{ toast: "Saved" }]);
   });
 
   test("weight intent saves local-date daily metrics", async () => {
@@ -553,7 +516,7 @@ describe("CommandCenterController typed entry boundary", () => {
 
     expect(calls.dailyMetrics).toEqual([{ date: "2026-05-19", weightKg: 72.4 }]);
     expect(calls.refreshed).toBe(1);
-    expect(calls.finished).toEqual([{ toast: "Saved", kcalLeft: null }]);
+    expect(calls.finished).toEqual([{ toast: "Saved" }]);
   });
 
   test("questions open Coach pre-filled without calling the server", async () => {
@@ -767,7 +730,7 @@ describe("CommandCenterController review and retry boundary", () => {
       },
     ]);
     expect(calls.refreshed).toBe(1);
-    expect(calls.finished).toEqual([{ toast: "Sets added", kcalLeft: null }]);
+    expect(calls.finished).toEqual([{ toast: "Sets added", kind: "workout" }]);
     expect(calls.closes).toBe(0); // ACK initiates feedback dismissal, not a review reset.
   });
 
@@ -794,7 +757,6 @@ describe("CommandCenterController review and retry boundary", () => {
       text: "",
       errorSubtype: "quick_add_failure",
       pendingSaveAction,
-      kcalLeft: 380,
     });
     const selected: string[] = [];
     Object.assign(ports.backend, { selectRepeatedMeal: (id: string) => { selected.push(id); } });
@@ -802,7 +764,6 @@ describe("CommandCenterController review and retry boundary", () => {
     await controller.handleErrorPrimary();
 
     expect(selected).toEqual(["recent-1"]);
-    expect(calls.meals).toEqual([]);
     expect(calls.finished).toEqual([]);
   });
 
@@ -865,104 +826,6 @@ describe("CommandCenterController review draft editing boundary", () => {
     ]);
   });
 
-  test("meal ingredient gram edits recalculate visible totals and save payload", () => {
-    const { controller, calls } = createHarness({
-      text: "",
-      reviewDraft: mealReviewDraft(),
-    });
-
-    controller.editIngredientGrams("ing-1", 300);
-
-    const updatedDraft = calls.reviewDrafts.at(-1) as Extract<ReviewDraft, { kind: "meal" }>;
-    expect(updatedDraft.totalGrams).toBe(500);
-    expect(updatedDraft.interpreted.payload.calories).toBe(740);
-    expect(updatedDraft.macros).toEqual({ protein: 95, carbs: 58, fat: 11 });
-    expect(updatedDraft.interpreted.payload.ingredients[0]).toEqual({
-      name: "Chicken",
-      grams: 300,
-      calories: 480,
-      proteinG: 90,
-      carbsG: 0,
-      fatG: 10,
-    });
-  });
-
-  test("meal ingredient replace add and remove keep totals in sync", () => {
-    const { controller, calls } = createHarness({
-      text: "",
-      reviewDraft: mealReviewDraft(),
-    });
-
-    controller.replaceIngredient("ing-2", {
-      name: "Potatoes",
-      grams: 180,
-      calories: 160,
-      proteinG: 4,
-      carbsG: 36,
-      fatG: 0,
-    });
-    controller.addIngredient({
-      name: "Olive oil",
-      grams: 10,
-      calories: 90,
-      proteinG: 0,
-      carbsG: 0,
-      fatG: 10,
-    });
-    controller.removeIngredient("ing-1");
-
-    const updatedDraft = calls.reviewDrafts.at(-1) as Extract<ReviewDraft, { kind: "meal" }>;
-    expect(updatedDraft.ingredients.map((ingredient) => ingredient.name)).toEqual(["Potatoes", "Olive oil"]);
-    expect(updatedDraft.totalGrams).toBe(190);
-    expect(updatedDraft.interpreted.payload.calories).toBe(250);
-    expect(updatedDraft.macros).toEqual({ protein: 4, carbs: 36, fat: 10 });
-  });
-
-  test("ingredient lookup trims names and delegates to backend outside preview", async () => {
-    const { controller, calls } = createHarness({
-      text: "",
-      interpretedIngredient: {
-        name: "Banana",
-        grams: 120,
-        calories: 105,
-        proteinG: 1,
-        carbsG: 27,
-        fatG: 0,
-      },
-    });
-
-    const ingredient = await controller.fetchInterpretedIngredient("  Banana  ", 120);
-
-    expect(calls.fetchedIngredients).toEqual([{ name: "Banana", grams: 120 }]);
-    expect(ingredient).toEqual({
-      name: "Banana",
-      grams: 120,
-      calories: 105,
-      proteinG: 1,
-      carbsG: 27,
-      fatG: 0,
-    });
-  });
-
-  test("ingredient lookup uses preview defaults when preview is enabled", async () => {
-    const { controller, calls } = createHarness({
-      text: "",
-      previewEnabled: true,
-    });
-
-    const ingredient = await controller.fetchInterpretedIngredient("  Almonds  ", 50);
-
-    expect(calls.fetchedIngredients).toEqual([]);
-    expect(calls.delays).toContain(700);
-    expect(ingredient).toEqual({
-      name: "Almonds",
-      grams: 50,
-      calories: 75,
-      proteinG: 5,
-      carbsG: 3,
-      fatG: 2,
-    });
-  });
 });
 
 function deferred<T>() {
@@ -1044,7 +907,7 @@ describe("logging races and safe retries", () => {
     await controller.saveReviewedEntry();
     expect(batches).toHaveLength(2);
     expect(batches[1]).toEqual(batches[0]);
-    expect(calls.finished).toEqual([{ toast: "Sets added", kcalLeft: null }]);
+    expect(calls.finished).toEqual([{ toast: "Sets added", kind: "workout" }]);
   });
 
   test("save-time guard retains a changed review until explicit original-batch reconciliation", async () => {
@@ -1114,7 +977,7 @@ describe("logging races and safe retries", () => {
     expect(batches[1]).toEqual(batches[0]);
     expect(requestIds).toBe(1);
     expect(calls.ensuredSessions).toBe(1);
-    expect(calls.finished).toEqual([{ toast: "Sets added", kcalLeft: null }]);
+    expect(calls.finished).toEqual([{ toast: "Sets added", kind: "workout" }]);
   });
 
   test("retry submits the exact workout batch and request ID after an uncertain response", async () => {
@@ -1222,7 +1085,7 @@ describe("CommandCenterController deferred meal classification", () => {
     expect(requests).toHaveLength(1);
     expect(requests[0].deferMeal?.requestId).toBe("00000000-0000-4000-8000-000000000001");
     expect(calls.pendingMeals).toEqual([]);
-    expect(calls.finished).toEqual([{ toast: "Logged — estimating calories", kcalLeft: null }]);
+    expect(calls.finished).toEqual([{ toast: "Logged — estimating calories", kind: "processing" }]);
   });
 
   test("retrying the same text reuses its identity; edited text gets a new one", async () => {
