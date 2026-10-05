@@ -25,6 +25,7 @@ async function harness({mediaEvents=[]}={}){
  '@/components/command-center/IngredientEditorSheet':{IngredientEditorSheet:()=>null},
  '@/components/Icon':{Icon:'Icon'},'expo-image':{Image:'Image'},'react-native-svg':{__esModule:true,default:'Svg',Path:'Path',Circle:'Circle'},
  '@/components/command-center/states/RecordingState':{RecordingState:()=>null},
+ 'react-native-screens':{FullWindowOverlay:'View'},
  'react-native-reanimated':(()=>{const chain={duration(){return chain},springify(){return chain}};return {__esModule:true,default:{View:'View',Text:'Text'},FadeIn:chain,FadeInDown:chain,FadeOut:chain,useReducedMotion:()=>true,useSharedValue:v=>({value:v}),useAnimatedStyle:()=>({}),withRepeat:v=>v,withTiming:v=>v,Easing:{inOut:f=>f,quad:x=>x}}})(),
  '@/components/command-center/states/InterpretingState':{InterpretingState:()=>React.createElement('View',{testID:'cc-voice-progress'})},
  'expo-router':{useRouter:()=>router,useFocusEffect(){}},
